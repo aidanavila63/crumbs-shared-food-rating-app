@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@ai-sdk/react':
         specifier: ^4.0.151
-        version: 4.0.151(react@19.2.4)(zod@3.25.76)
+        version: 4.0.151(react@19.2.4)(zod@4.6.7)
       '@base-ui/react':
         specifier: ^1.5.0
         version: 1.5.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -28,7 +28,7 @@ importers:
         version: 1.10.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       ai:
         specifier: ^7.0.147
-        version: 7.0.147(zod@3.25.76)
+        version: 7.0.147(zod@4.6.7)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -56,6 +56,9 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
+      zod:
+        specifier: ^4.1.12
+        version: 4.6.7
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.3.3
@@ -1993,42 +1996,45 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
 snapshots:
 
-  '@ai-sdk/gateway@4.0.120(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.120(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.31
-      '@ai-sdk/provider-utils': 5.0.64(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.64(zod@4.6.7)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.6.7
 
-  '@ai-sdk/mcp@2.0.80(zod@3.25.76)':
+  '@ai-sdk/mcp@2.0.80(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.31
-      '@ai-sdk/provider-utils': 5.0.64(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.64(zod@4.6.7)
       cross-spawn: 7.0.6
       pkce-challenge: 5.0.1
-      zod: 3.25.76
+      zod: 4.6.7
 
-  '@ai-sdk/provider-utils@5.0.64(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.64(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.31
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
       undici: 7.29.0
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@ai-sdk/provider@4.0.31':
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@4.0.151(react@19.2.4)(zod@3.25.76)':
+  '@ai-sdk/react@4.0.151(react@19.2.4)(zod@4.6.7)':
     dependencies:
-      '@ai-sdk/mcp': 2.0.80(zod@3.25.76)
+      '@ai-sdk/mcp': 2.0.80(zod@4.6.7)
       '@ai-sdk/provider': 4.0.31
-      '@ai-sdk/provider-utils': 5.0.64(zod@3.25.76)
-      ai: 7.0.147(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.64(zod@4.6.7)
+      ai: 7.0.147(zod@4.6.7)
       react: 19.2.4
       swr: 2.5.1(react@19.2.4)
       throttleit: 2.1.0
@@ -2655,12 +2661,12 @@ snapshots:
       mime-types: 3.0.2
       negotiator: 1.0.0
 
-  ai@7.0.147(zod@3.25.76):
+  ai@7.0.147(zod@4.6.7):
     dependencies:
-      '@ai-sdk/gateway': 4.0.120(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.120(zod@4.6.7)
       '@ai-sdk/provider': 4.0.31
-      '@ai-sdk/provider-utils': 5.0.64(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.64(zod@4.6.7)
+      zod: 4.6.7
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
@@ -3775,3 +3781,5 @@ snapshots:
       zod: 3.25.76
 
   zod@3.25.76: {}
+
+  zod@4.6.7: {}
