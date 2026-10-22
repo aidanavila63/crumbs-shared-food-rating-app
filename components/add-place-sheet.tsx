@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
+import { Sheet } from './sheet'
 import { PlaceSearch, type FoundPlace } from './place-search'
 export function AddPlaceSheet({
   userId,
@@ -95,78 +96,75 @@ export function AddPlaceSheet({
     }
   }
   return (
-    <div
-      className="sheet-backdrop"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
-      <section className="sheet">
-        <div className="sheet-handle" />
-        <div className="flex items-center justify-between">
-          <h2 className="font-serif text-2xl font-bold">Add a place</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="mt-5 flex flex-col gap-3">
-          <PlaceSearch
-            autoFocus
-            value={name}
-            onChange={(text) => {
-              setName(text)
-              if (found && text !== found.name) setFound(null)
-            }}
-            onPick={(place) => {
-              setFound(place)
-              setAddress(place.formatted_address ?? '')
-            }}
-            placeholder="Search for a restaurant"
-          />
-          {found ? (
-            <p className="surface-soft text-sm">
-              📍 {found.formatted_address}
-              {found.cuisine ? ` · ${found.cuisine}` : ''}
+    <Sheet label="Add a place" onClose={onClose}>
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-2xl font-bold">Add a place</h2>
+        <button className="icon-btn" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div className="mt-5 flex flex-col gap-3">
+        <PlaceSearch
+          autoFocus
+          value={name}
+          onChange={(text) => {
+            setName(text)
+            if (found && text !== found.name) setFound(null)
+          }}
+          onPick={(place) => {
+            setFound(place)
+            setAddress(place.formatted_address ?? '')
+          }}
+          placeholder="Search for a restaurant"
+        />
+        {found ? (
+          <p className="surface-soft text-sm">
+            📍 {found.formatted_address}
+            {found.cuisine ? ` · ${found.cuisine}` : ''}
+          </p>
+        ) : (
+          <>
+            <input
+              aria-label="Address (optional)"
+              className="field"
+              placeholder="Address (optional)"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Pick a search result to put it on the map. Places typed by hand are saved without a
+              map pin.
             </p>
-          ) : (
-            <>
-              <input
-                className="field"
-                placeholder="Address (optional)"
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Pick a search result to put it on the map. Places typed by hand are saved without a
-                map pin.
-              </p>
-            </>
-          )}
-          <div className="chip-row">
-            {(['Been', 'Want to try'] as Status[]).map((item) => (
-              <button
-                className={`chip ${status === item ? 'chip-active' : ''}`}
-                key={item}
-                onClick={() => setStatus(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          {status === 'Been' && (
-            <>
-              <RatingStars value={score} onChange={setScore} label="Quick rating" />
-              <textarea
-                className="field min-h-24"
-                placeholder="Notes (optional)"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </>
-          )}
-          <button className="primary mt-2 w-full" disabled={saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save place'}
-          </button>
+          </>
+        )}
+        <div className="chip-row">
+          {(['Been', 'Want to try'] as Status[]).map((item) => (
+            <button
+              aria-pressed={status === item}
+              className={`chip ${status === item ? 'chip-active' : ''}`}
+              key={item}
+              onClick={() => setStatus(item)}
+            >
+              {item}
+            </button>
+          ))}
         </div>
-      </section>
-    </div>
+        {status === 'Been' && (
+          <>
+            <RatingStars value={score} onChange={setScore} label="Quick rating" />
+            <textarea
+              aria-label="Notes (optional)"
+              className="field min-h-24"
+              placeholder="Notes (optional)"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          </>
+        )}
+        <button className="primary mt-2 w-full" disabled={saving} onClick={save}>
+          {saving ? 'Saving…' : 'Save place'}
+        </button>
+      </div>
+    </Sheet>
   )
 }

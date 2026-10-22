@@ -149,6 +149,7 @@ export function PlaceSearch({
       <input
         autoFocus={autoFocus}
         className="field"
+        aria-label={placeholder}
         placeholder={placeholder}
         value={value}
         autoComplete="off"

@@ -121,6 +121,7 @@ function CrumbsShell() {
           ) : (
             <>
               <input
+                aria-label="you@example.com"
                 className="field mt-7"
                 type="email"
                 placeholder="you@example.com"
@@ -160,6 +161,7 @@ function CrumbsShell() {
           <section className="surface">
             <h2 className="font-serif text-2xl font-bold">Create a group</h2>
             <input
+              aria-label="Maya & Jordan"
               className="field mt-4"
               placeholder="Maya & Jordan"
               value={groupName}
@@ -172,6 +174,7 @@ function CrumbsShell() {
           <section className="surface">
             <h2 className="font-serif text-2xl font-bold">Join with a code</h2>
             <input
+              aria-label="ABC123"
               className="field mt-4 uppercase tracking-widest"
               maxLength={6}
               placeholder="ABC123"
@@ -237,6 +240,7 @@ function CrumbsShell() {
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-3.5 text-muted-foreground" size={18} />
                 <input
+                  aria-label="Search places"
                   className="field pl-11"
                   placeholder="Search places"
                   value={query}
@@ -255,6 +259,7 @@ function CrumbsShell() {
               {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
                 <button
                   key={item}
+                  aria-pressed={filter === item}
                   className={`chip ${filter === item ? 'chip-active' : ''}`}
                   onClick={() => setFilter(item)}
                 >
@@ -267,6 +272,7 @@ function CrumbsShell() {
                 {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
                   <button
                     key={item}
+                    aria-pressed={sort === item}
                     className={`chip ${sort === item ? 'chip-active' : ''}`}
                     onClick={() => setSort(item)}
                   >
@@ -337,10 +343,11 @@ function CrumbsShell() {
           />
         )}
       </div>
-      <nav className="tab-bar">
+      <nav className="tab-bar" aria-label="Main">
         {tabs.map((item) => (
           <button
             className={tab === item ? 'tab-active' : ''}
+            aria-current={tab === item ? 'page' : undefined}
             key={item}
             onClick={() => setTab(item)}
           >
@@ -363,6 +370,8 @@ function CrumbsShell() {
           place={selected}
           userId={data.user.id}
           names={Object.fromEntries(data.members.map((m) => [m.id, m.display_name]))}
+          lists={data.lists}
+          onLists={data.setLists}
           demo={data.demo}
           supabase={data.supabase}
           onClose={() => setSelected(null)}

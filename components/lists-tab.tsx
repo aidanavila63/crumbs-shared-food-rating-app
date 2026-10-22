@@ -81,6 +81,7 @@ export function ListsTab({
         <h2 className="font-serif text-2xl font-bold">Your lists</h2>
         <div className="mt-4 flex gap-2">
           <input
+            aria-label="Date night"
             className="field"
             placeholder="Date night"
             value={name}
@@ -88,6 +89,7 @@ export function ListsTab({
           />
           <input
             className="field w-16 text-center"
+            aria-label="List emoji"
             value={emoji}
             maxLength={2}
             onChange={(event) => setEmoji(event.target.value)}

@@ -75,6 +75,7 @@ export function GroupTab({
         <h2 className="font-serif text-2xl font-bold">Your profile</h2>
         <input
           className="field mt-4"
+          aria-label="Display name"
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
         />

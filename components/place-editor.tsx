@@ -93,6 +93,7 @@ export function PlaceEditor({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
         <button
+          aria-pressed={place.pinned}
           className={`chip ${place.pinned ? 'chip-active' : ''}`}
           onClick={() => patch({ pinned: !place.pinned })}
         >
@@ -118,18 +119,21 @@ export function PlaceEditor({
         <div className="surface flex flex-col gap-3">
           <input
             className="field"
+            aria-label="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name"
           />
           <input
             className="field"
+            aria-label="Address"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="Address"
           />
           <input
             className="field"
+            aria-label="Cuisine"
             value={cuisine}
             onChange={(e) => setCuisine(e.target.value)}
             placeholder="Cuisine (e.g. Ramen)"
@@ -138,6 +142,7 @@ export function PlaceEditor({
             {PRICES.map((level) => (
               <button
                 key={level}
+                aria-pressed={price === level}
                 className={`chip ${price === level ? 'chip-active' : ''}`}
                 onClick={() => setPrice(price === level ? null : level)}
               >
@@ -147,6 +152,7 @@ export function PlaceEditor({
           </div>
           <input
             className="field"
+            aria-label="Tags"
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="Tags, comma separated (date night, patio)"

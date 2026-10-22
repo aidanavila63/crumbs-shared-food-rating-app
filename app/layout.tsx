@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Figtree, Young_Serif } from 'next/font/google'
 import { SwRegister } from '@/components/sw-register'
+import { OfflineBanner } from '@/components/offline-banner'
 import './globals.css'
 
 const figtree = Figtree({ subsets: ['latin'], variable: '--font-figtree' })
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${figtree.variable} ${youngSerif.variable}`}>
         {children}
+        <OfflineBanner />
         <SwRegister />
       </body>
     </html>

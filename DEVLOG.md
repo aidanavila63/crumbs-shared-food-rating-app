@@ -48,9 +48,17 @@ Production (`main`) is still the old simple version. Nothing below is live until
 - 🟡 `components/place-card.tsx`: shows cuisine and price level.
 - 🟡 `components/map-tab.tsx`: "Locate me" button actually recenters now (it did nothing before); banner counting saved places with no map pin.
 
+### Round 3 (same session)
+- 🟡 **Add to list from the place sheet** (`place-sheet.tsx`, `crumbs-app.tsx`): "Lists" chip row toggles membership; shared with the Lists tab data.
+- 🟡 **Map preview card** (`map-tab.tsx`): tapping a pin shows name, status, cuisine/price, rating, Details and Directions; tapping the map or × closes it. Greedy touch gestures, default map UI hidden, map height uses `dvh`.
+- 🟡 **Dish notes** (`place-sheet.tsx`, new `DishRow`): per-person notes on dishes (stored in `dish_ratings.notes`), partner's rating + note shown with their name, price shown for AI suggestions. Notes need a star rating first (DB requires a score).
+- 🟡 **Offline** (`public/sw.js` rewritten, `components/offline-banner.tsx` new): cache-first for hashed build assets, network-first with cached shell fallback for pages; never touches `/api`, `/auth`, or cross-origin (Supabase/Google). Red banner when the phone is offline. Old cache is cleaned on update (`crumbs-v2`).
+- 🟡 **Accessibility** (`components/sheet.tsx` new): sheets are real dialogs (role, aria-modal, label), close on Escape/backdrop, lock background scroll, restore focus. `aria-pressed` on filter chips, `aria-current` + label on the tab bar, labels on every text input and icon button.
+
 ### Verified
 - `tsc --noEmit` clean; production `next build` succeeds (with fonts stubbed locally because the sandbox can't reach Google Fonts).
-- NOT verified in a real browser or on a phone.
+- Production build served locally: `/`, `/sw.js`, `/manifest.webmanifest` return 200; compiled CSS contains the new classes; `/api/suggest-menu` rejects signed-out requests with a clear error.
+- NOT verified in a real browser or on a phone (no browser available in the sandbox).
 
 ## Known issues / not done yet
 - 🔴 `public/icon-192.png` is the same 763KB file as `icon-512.png` (binary, Claude can't upload through the GitHub connector).
@@ -67,6 +75,9 @@ Production (`main`) is still the old simple version. Nothing below is live until
 - [ ] Lists, For you, Group (rename, members, share code)
 - [ ] Sort chips, search by cuisine/tag, Surprise us
 - [ ] Map: Locate me, unpinned banner
+- [ ] Place sheet: add to a list; dish note; partner's dish note shows
+- [ ] Map: tap pin -> preview card -> Details / Directions
+- [ ] Airplane mode: red offline banner; reload still opens the app shell
 - [ ] Dark mode, iPhone home-screen install
 
 ## Tips
