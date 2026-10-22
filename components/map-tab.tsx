@@ -15,6 +15,16 @@ function FitBounds({ places }: { places: Place[] }) {
   }, [map, places])
   return null
 }
+function Recenter({ target }: { target: { lat: number; lng: number } | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!map || !target) return
+    map.panTo(target)
+    map.setZoom(14)
+  }, [map, target])
+  return null
+}
+
 export function MapTab({
   places,
   apiKey,
@@ -26,6 +36,7 @@ export function MapTab({
 }) {
   const [filter, setFilter] = useState<'All' | Status | 'Pinned'>('All')
   const [location, setLocation] = useState({ lat: 20, lng: 0 })
+  const [locateTarget, setLocateTarget] = useState<{ lat: number; lng: number } | null>(null)
   const filtered = useMemo(
     () =>
       places.filter(
@@ -50,51 +61,67 @@ export function MapTab({
       </div>
     )
   return (
-    <div className="relative overflow-hidden rounded-[28px]">
-      <div className="chip-row absolute left-3 right-3 top-3 z-10">
-        {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
-          <button
-            key={item}
-            className={`chip ${filter === item ? 'chip-active' : ''}`}
-            onClick={() => setFilter(item as typeof filter)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-      <Map
-        mapId="DEMO_MAP_ID"
-        defaultCenter={location}
-        defaultZoom={2}
-        className="h-[calc(100vh-210px)] min-h-[520px] w-full"
-      >
-        <FitBounds places={filtered} />
-        {filtered
-          .filter((place) => place.latitude !== null && place.longitude !== null)
-          .map((place) => (
-            <AdvancedMarker
-              key={place.id}
-              position={{ lat: place.latitude!, lng: place.longitude! }}
-              onClick={() => onSelect(place)}
+    <div className="flex flex-col gap-3">
+      {places.some((place) => place.latitude === null) && (
+        <p className="surface-soft text-sm">
+          📍 {places.filter((place) => place.latitude === null).length} saved place(s) have no map
+          pin. Open one and tap <strong>Find on Google</strong>.
+        </p>
+      )}
+      <div className="relative overflow-hidden rounded-[28px]">
+        <div className="chip-row absolute left-3 right-3 top-3 z-10">
+          {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
+            <button
+              key={item}
+              className={`chip ${filter === item ? 'chip-active' : ''}`}
+              onClick={() => setFilter(item as typeof filter)}
             >
-              <div className={`marker ${place.status === 'Been' ? 'marker-been' : 'marker-want'}`}>
-                {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
-              </div>
-            </AdvancedMarker>
+              {item}
+            </button>
           ))}
-      </Map>
-      <button
-        type="button"
-        aria-label="Locate me"
-        className="icon-btn absolute bottom-4 right-4 z-10"
-        onClick={() =>
-          navigator.geolocation?.getCurrentPosition((position) =>
-            setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }),
-          )
-        }
-      >
-        <LocateFixed />
-      </button>
+        </div>
+        <Map
+          mapId="DEMO_MAP_ID"
+          defaultCenter={location}
+          defaultZoom={2}
+          className="h-[calc(100vh-210px)] min-h-[520px] w-full"
+        >
+          <FitBounds places={filtered} />
+          <Recenter target={locateTarget} />
+          {filtered
+            .filter((place) => place.latitude !== null && place.longitude !== null)
+            .map((place) => (
+              <AdvancedMarker
+                key={place.id}
+                position={{ lat: place.latitude!, lng: place.longitude! }}
+                onClick={() => onSelect(place)}
+              >
+                <div
+                  className={`marker ${place.status === 'Been' ? 'marker-been' : 'marker-want'}`}
+                >
+                  {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
+                </div>
+              </AdvancedMarker>
+            ))}
+        </Map>
+        <button
+          type="button"
+          aria-label="Locate me"
+          className="icon-btn absolute bottom-4 right-4 z-10"
+          onClick={() =>
+            navigator.geolocation?.getCurrentPosition(
+              (position) =>
+                setLocateTarget({
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                }),
+              () => {},
+            )
+          }
+        >
+          <LocateFixed />
+        </button>
+      </div>
     </div>
   )
 }

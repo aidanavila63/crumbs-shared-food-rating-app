@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase'
 
@@ -84,10 +84,11 @@ export function useCrumbsData() {
   const [members, setMembers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(!demo)
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
+  const loadedOnce = useRef(false)
 
   const load = useCallback(async () => {
     if (demo || !user || !group) return
-    setLoading(true)
+    if (!loadedOnce.current) setLoading(true)
     const [{ data: placeRows, error: placesError }, { data: listRows, error: listsError }] =
       await Promise.all([
         supabase
@@ -116,6 +117,7 @@ export function useCrumbsData() {
     }
     setPlaces((placeRows ?? []) as Place[])
     setLists((listRows ?? []) as List[])
+    loadedOnce.current = true
     setLoading(false)
   }, [demo, group, supabase, user])
 
@@ -154,6 +156,7 @@ export function useCrumbsData() {
       })
   }, [user, supabase])
   useEffect(() => {
+    loadedOnce.current = false
     if (group) localStorage.setItem('crumbs-group', group.id)
   }, [group])
   useEffect(() => {

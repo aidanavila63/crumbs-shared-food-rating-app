@@ -27,6 +27,13 @@ export function PlaceCard({ place, onSelect }: { place: Place; onSelect: (place:
             <MapPin size={14} />
             {place.formatted_address || 'Address not added'}
           </p>
+          {(place.cuisine || place.price_level) && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {[place.cuisine, place.price_level ? '$'.repeat(place.price_level) : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
         </div>
         <strong className="font-serif text-3xl text-primary">
           {average ? average.toFixed(1) : '—'}

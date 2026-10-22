@@ -21,7 +21,8 @@ export function ListsTab({
 }) {
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('♡')
-  const [active, setActive] = useState<List | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const active = lists.find((list) => list.id === activeId) ?? null
   async function create() {
     if (!name.trim()) return
     if (demo) {
@@ -48,7 +49,7 @@ export function ListsTab({
       if (error) return toast.error(error.message)
     }
     onLists(lists.filter((item) => item.id !== list.id))
-    setActive(null)
+    setActiveId(null)
   }
   async function toggle(list: List, place: Place) {
     const has = list.list_places?.some((item) => item.place_id === place.id)
@@ -98,7 +99,7 @@ export function ListsTab({
       </div>
       {active ? (
         <div className="surface">
-          <button className="text-sm text-primary" onClick={() => setActive(null)}>
+          <button className="text-sm text-primary" onClick={() => setActiveId(null)}>
             Back to lists
           </button>
           <h2 className="mt-3 font-serif text-2xl font-bold">
@@ -127,7 +128,7 @@ export function ListsTab({
           <button
             className="surface flex items-center justify-between text-left"
             key={list.id}
-            onClick={() => setActive(list)}
+            onClick={() => setActiveId(list.id)}
           >
             <span className="text-2xl">{list.emoji}</span>
             <span className="flex-1 px-3">
@@ -140,7 +141,7 @@ export function ListsTab({
           </button>
         ))
       )}
-      {!lists.length && (
+      {!lists.length && !active && (
         <div className="empty">
           <p className="font-serif text-xl font-bold">Make a list for your next craving</p>
           <p className="mt-2 text-sm text-muted-foreground">

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Search, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Group, type Place } from '@/hooks/use-crumbs-data'
-import { PlaceCard } from './place-card'
+import { PlaceCard, placeAverage } from './place-card'
 import { PlaceSheet } from './place-sheet'
 import { AddPlaceSheet } from './add-place-sheet'
 import { MapTab } from './map-tab'
@@ -24,7 +24,10 @@ export function CrumbsApp() {
 function CrumbsShell() {
   const data = useCrumbsData()
   const [tab, setTab] = useState('Places')
-  const [selected, setSelected] = useState<Place | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = data.places.find((place) => place.id === selectedId) ?? null
+  const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
+  const [sort, setSort] = useState<'Newest' | 'Top rated' | 'A–Z'>('Newest')
   const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -33,21 +36,25 @@ function CrumbsShell() {
   const [groupName, setGroupName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [busy, setBusy] = useState(false)
-  const filtered = useMemo(
-    () =>
-      data.places.filter(
-        (place) =>
-          (filter === 'All' || filter === 'Pinned'
-            ? filter === 'All'
-              ? true
-              : place.pinned
-            : place.status === filter) &&
-          `${place.name} ${place.formatted_address || ''}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-      ),
-    [data.places, filter, query],
-  )
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const list = data.places.filter((place) => {
+      const inFilter =
+        filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
+      const haystack =
+        `${place.name} ${place.formatted_address ?? ''} ${place.cuisine ?? ''} ${(place.tags ?? []).join(' ')}`.toLowerCase()
+      return inFilter && haystack.includes(needle)
+    })
+    if (sort === 'Top rated') return [...list].sort((a, b) => placeAverage(b) - placeAverage(a))
+    if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
+    return list
+  }, [data.places, filter, query, sort])
+  function surprise() {
+    const pool = data.places.filter((place) => place.status === 'Want to try')
+    if (!pool.length) return toast('Nothing on your want-to-try list yet')
+    const pick = pool[Math.floor(Math.random() * pool.length)]
+    setSelected(pick)
+  }
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -87,6 +94,12 @@ function CrumbsShell() {
     setJoinCode('')
     toast.success('Joined group')
   }
+  if (!data.user && data.loading)
+    return (
+      <main className="grid min-h-screen place-items-center bg-background">
+        <p className="text-muted-foreground">Loading Crumbs…</p>
+      </main>
+    )
   if (!data.user)
     return (
       <main className="grid min-h-screen place-items-center bg-background p-5">
@@ -248,6 +261,22 @@ function CrumbsShell() {
                   {item}
                 </button>
               ))}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="chip-row">
+                {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
+                  <button
+                    key={item}
+                    className={`chip ${sort === item ? 'chip-active' : ''}`}
+                    onClick={() => setSort(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <button className="secondary !min-h-10 shrink-0 !px-3 text-sm" onClick={surprise}>
+                🎲 Surprise us
+              </button>
             </div>
             {data.loading ? (
               <div className="surface">Loading your places…</div>
