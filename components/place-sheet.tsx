@@ -163,6 +163,17 @@ export function PlaceSheet({
       setSaving(false)
     }
   }
+  const importedStamp = dishes
+    .filter((dish) => dish.is_ai_suggestion && dish.created_at)
+    .map((dish) => dish.created_at as string)
+    .sort()[0]
+  const importedOn = importedStamp
+    ? new Date(importedStamp).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null
   async function suggestMenu() {
     setSaving(true)
     try {
@@ -455,6 +466,22 @@ export function PlaceSheet({
               {saving ? 'Reading website…' : 'Import menu from website'}
             </button>
           </div>
+          {place.website && (
+            <a
+              className="text-sm font-semibold text-primary underline"
+              href={place.website}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {place.name} website: {websiteHost(place.website)}
+            </a>
+          )}
+          {importedOn && (
+            <p className="text-xs text-muted-foreground">
+              Auto-added from their website on {importedOn}. Dishes and prices may have changed, so
+              check the site.
+            </p>
+          )}
           {[...dishes]
             .sort(
               (a, b) =>
@@ -508,4 +535,12 @@ export function PlaceSheet({
       </div>
     </Sheet>
   )
+}
+
+function websiteHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'open site'
+  }
 }

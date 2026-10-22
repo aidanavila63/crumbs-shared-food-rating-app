@@ -14,6 +14,7 @@ export type Dish = {
   price: number | null
   description: string | null
   is_ai_suggestion: boolean
+  created_at?: string
   dish_ratings: Rating[]
 }
 export type Place = {
