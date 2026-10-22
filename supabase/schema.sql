@@ -1,3 +1,7 @@
+-- !! DO NOT RUN THIS ON THE LIVE DATABASE. !!
+-- It is the ORIGINAL schema and is older than production, which was patched by hand
+-- (create_group / join_group functions, member-wide edit+delete policies, visited_on).
+-- For a brand-new project run this file, THEN supabase/fresh-project-additions.sql.
 create extension if not exists pgcrypto;
 
 create table public.profiles (id uuid primary key references auth.users(id) on delete cascade, display_name text not null default 'Food friend', avatar_url text, created_at timestamptz not null default now());

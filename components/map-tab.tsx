@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { LocateFixed, MapPin } from 'lucide-react'
 import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
 import type { Place, Status } from '@/hooks/use-crumbs-data'

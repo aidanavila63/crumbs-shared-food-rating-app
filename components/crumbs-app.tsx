@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import { Plus, Search, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCrumbsData, type Group, type Place } from '@/hooks/use-crumbs-data'
+import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
 import { PlaceSheet } from './place-sheet'
 import { AddPlaceSheet } from './add-place-sheet'

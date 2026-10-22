@@ -123,7 +123,7 @@ export function useCrumbsData() {
     setLists(((listRows ?? []) as List[]).filter((list) => !pendingDeletes.has(list.id)))
     loadedOnce.current = true
     setLoading(false)
-  }, [demo, group, supabase, user])
+  }, [group, supabase, user])
 
   useEffect(() => {
     if (demo) return
@@ -141,7 +141,7 @@ export function useCrumbsData() {
       ),
     )
     return () => auth.data.subscription.unsubscribe()
-  }, [demo, supabase])
+  }, [supabase])
 
   useEffect(() => {
     if (demo) return
@@ -214,7 +214,7 @@ export function useCrumbsData() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [demo, group, scheduleLoad, supabase])
+  }, [group, scheduleLoad, supabase])
 
   const mutate = useCallback(
     async (work: () => Promise<any>) => {
@@ -224,7 +224,7 @@ export function useCrumbsData() {
       await load()
       return result?.data
     },
-    [demo, load],
+    [load],
   )
 
   return {
