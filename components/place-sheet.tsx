@@ -31,7 +31,7 @@ function DishRow({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-semibold">
-            {dish.name} {dish.is_ai_suggestion && <span className="tag">AI guess</span>}
+            {dish.name} {dish.is_ai_suggestion && <span className="tag">Auto-added</span>}
           </p>
           {dish.description && <p className="text-sm text-muted-foreground">{dish.description}</p>}
           {dish.price !== null && dish.price !== undefined && (
@@ -169,12 +169,7 @@ export function PlaceSheet({
       const response = await fetch('/api/suggest-menu', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name: place.name,
-          address: place.formatted_address,
-          cuisine: place.cuisine,
-          website: place.website,
-        }),
+        body: JSON.stringify({ placeId: place.id }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error)
@@ -182,8 +177,14 @@ export function PlaceSheet({
       result.dishes = result.dishes.filter(
         (dish: any) => !have.has(String(dish.name).trim().toLowerCase()),
       )
-      if (!result.dishes.length)
-        return toast("Not sure what's on the menu here. Add dishes yourself as you try them.")
+      if (!result.dishes.length) {
+        const why: Record<string, string> = {
+          'no-website': 'No website saved for this place, so there is no menu to read.',
+          unreadable: "Couldn't read their website. Add dishes yourself as you try them.",
+          'no-menu': "Didn't find a menu on their website. Add dishes yourself as you try them.",
+        }
+        return toast(why[result.reason] ?? 'No new dishes to add')
+      }
       if (demo)
         setDishes((current) => [
           ...current,
@@ -210,7 +211,7 @@ export function PlaceSheet({
         if (error) throw error
         setDishes((current) => [...current, ...(data ?? [])])
       }
-      toast.success('Added a few guesses. They may not be on the real menu.')
+      toast.success('Added dishes from their website')
     } catch (error: any) {
       toast.error(error.message || 'Could not suggest a menu')
     } finally {
@@ -451,7 +452,7 @@ export function PlaceSheet({
               disabled={saving}
               onClick={suggestMenu}
             >
-              {saving ? 'Thinking…' : 'Suggest menu'}
+              {saving ? 'Reading website…' : 'Import menu from website'}
             </button>
           </div>
           {[...dishes]

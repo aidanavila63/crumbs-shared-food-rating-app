@@ -2,6 +2,9 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
+import { readMenuText } from '@/lib/menu-fetch'
+
+export const maxDuration = 30
 
 const schema = z.object({
   dishes: z
@@ -9,9 +12,10 @@ const schema = z.object({
       z.object({
         name: z.string(),
         description: z.string(),
+        price: z.number().nullable(),
       }),
     )
-    .max(8),
+    .max(25),
 })
 
 export async function POST(request: Request) {
@@ -24,28 +28,39 @@ export async function POST(request: Request) {
       { status: 429 },
     )
 
-  const { name, address, cuisine, website } = await request.json()
-  if (!name || typeof name !== 'string' || name.length > 120) {
-    return Response.json({ error: 'Restaurant name is required' }, { status: 400 })
+  const { placeId } = await request.json()
+  if (!placeId || typeof placeId !== 'string') {
+    return Response.json({ error: 'Place is required' }, { status: 400 })
   }
+  // Read the website from the database (row-level security limits this to your own groups).
+  const { data: place } = await supabase
+    .from('places')
+    .select('name,website')
+    .eq('id', placeId)
+    .maybeSingle()
+  if (!place) return Response.json({ error: 'Place not found' }, { status: 404 })
+  if (!place.website)
+    return Response.json({ dishes: [], reason: 'no-website' })
+
   try {
+    const text = await readMenuText(place.website)
+    if (text.length < 200) return Response.json({ dishes: [], reason: 'unreadable' })
     const result = await generateObject({
       model: 'openai/gpt-4o-mini',
       schema,
       prompt: [
-        `Restaurant: ${name}`,
-        address ? `Address: ${String(address).slice(0, 200)}` : null,
-        cuisine ? `Cuisine type: ${String(cuisine).slice(0, 60)}` : null,
-        website ? `Website: ${String(website).slice(0, 200)}` : null,
+        `Below is text copied from the website of the restaurant "${place.name}".`,
+        'List dishes that are explicitly named in this text. Use the exact dish name as written.',
+        'Only include what the text says. Never add dishes from memory or guess. Copy a price only if it is shown next to the dish, otherwise use null. Description should come from the text, or be an empty string.',
+        'Ignore drinks, hours, and navigation text. If the text is not a menu, return an empty list.',
         '',
-        'You cannot see this restaurant\'s real menu. Only list dishes you are genuinely confident this specific restaurant serves, or classic dishes of its cuisine type when the cuisine is known.',
-        'Do not invent signature dishes, specials, or prices. Keep each description to one short, generic sentence.',
-        'If you do not recognise the restaurant and the cuisine is unknown, return an empty list.',
-      ]
-        .filter((line) => line !== null)
-        .join('\n'),
+        text,
+      ].join('\n'),
     })
-    return Response.json(result.object)
+    return Response.json({
+      dishes: result.object.dishes.filter((dish) => dish.name.trim()),
+      reason: result.object.dishes.length ? 'ok' : 'no-menu',
+    })
   } catch (error: any) {
     return Response.json({ error: error?.message || 'AI request failed' }, { status: 502 })
   }
