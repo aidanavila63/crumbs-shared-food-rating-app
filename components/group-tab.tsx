@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react'
 import { Copy, LogOut, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Group, Profile } from '@/hooks/use-crumbs-data'
+import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 export function GroupTab({
   group,
   groups,
+  places = [],
   members = [],
   profile,
   userId,
@@ -16,6 +17,7 @@ export function GroupTab({
 }: {
   group: Group
   groups: Group[]
+  places?: Place[]
   members?: Profile[]
   profile?: Profile | null
   userId?: string
@@ -82,6 +84,46 @@ export function GroupTab({
         <button className="primary mt-3 w-full" disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Save name'}
         </button>
+      </div>
+      <div className="surface">
+        <h2 className="font-serif text-2xl font-bold">Together so far</h2>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="surface-soft">
+            <p className="font-serif text-3xl text-primary">{places.length}</p>
+            <p className="text-xs text-muted-foreground">places</p>
+          </div>
+          <div className="surface-soft">
+            <p className="font-serif text-3xl text-primary">
+              {places.filter((place) => place.status === 'Been').length}
+            </p>
+            <p className="text-xs text-muted-foreground">been</p>
+          </div>
+          <div className="surface-soft">
+            <p className="font-serif text-3xl text-primary">
+              {places.filter((place) => place.status === 'Want to try').length}
+            </p>
+            <p className="text-xs text-muted-foreground">to try</p>
+          </div>
+        </div>
+        {members.length > 1 && (
+          <ul className="mt-3 flex flex-col gap-1 text-sm text-muted-foreground">
+            {members.map((member) => {
+              const scores = places.flatMap((place) =>
+                place.place_ratings
+                  .filter((rating) => rating.user_id === member.id)
+                  .map((rating) => rating.score),
+              )
+              return (
+                <li key={member.id}>
+                  <strong className="text-foreground">{member.display_name}</strong>:{' '}
+                  {scores.length
+                    ? `${scores.length} ratings, average ${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)}★`
+                    : 'no ratings yet'}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </div>
       <div className="surface">
         <h2 className="font-serif text-2xl font-bold">Members</h2>

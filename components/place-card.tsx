@@ -8,7 +8,15 @@ export function placeAverage(place: Place) {
         place.place_ratings.length
     : 0
 }
-export function PlaceCard({ place, onSelect }: { place: Place; onSelect: (place: Place) => void }) {
+export function PlaceCard({
+  place,
+  names = {},
+  onSelect,
+}: {
+  place: Place
+  names?: Record<string, string>
+  onSelect: (place: Place) => void
+}) {
   const average = placeAverage(place)
   return (
     <button
@@ -45,6 +53,15 @@ export function PlaceCard({ place, onSelect }: { place: Place; onSelect: (place:
         </span>
         <RatingStars value={Math.round(average)} />
       </div>
+      {place.place_ratings.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          {place.place_ratings.map((rating) => (
+            <span className="surface-soft !px-3 !py-1" key={rating.user_id}>
+              <strong>{(names[rating.user_id] ?? 'Partner').split(' ')[0]}</strong> {rating.score}★
+            </span>
+          ))}
+        </div>
+      )}
       {place.tags?.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {place.tags.map((tag) => (

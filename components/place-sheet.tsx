@@ -274,6 +274,21 @@ export function PlaceSheet({
     const { error } = await supabase.from('dishes').delete().eq('id', dishId)
     if (error) toast.error(error.message)
   }
+  async function sharePlace() {
+    const url =
+      place.google_maps_url ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.formatted_address || ''}`)}`
+    const text = `${place.name}${place.formatted_address ? `, ${place.formatted_address}` : ''}`
+    try {
+      if (navigator.share) await navigator.share({ title: place.name, text, url })
+      else {
+        await navigator.clipboard.writeText(`${text}\n${url}`)
+        toast.success('Link copied')
+      }
+    } catch {
+      // share sheet cancelled
+    }
+  }
   async function removePlace() {
     if (!window.confirm(`Delete ${place.name}?`)) return
     if (!demo) {
@@ -398,6 +413,7 @@ export function PlaceSheet({
           <div className="flex gap-2">
             <input
               aria-label="Add a dish"
+              onKeyDown={(event) => event.key === 'Enter' && addDish()}
               className="field"
               placeholder="Add a dish"
               value={dishName}
@@ -419,6 +435,9 @@ export function PlaceSheet({
           >
             Directions
           </a>
+          <button className="secondary" onClick={sharePlace}>
+            Share
+          </button>
           <button className="secondary text-destructive" onClick={removePlace}>
             Delete
           </button>

@@ -23,7 +23,14 @@ export function CrumbsApp() {
 
 function CrumbsShell() {
   const data = useCrumbsData()
-  const [tab, setTab] = useState('Places')
+  const [tab, setTabState] = useState(() =>
+    typeof window === 'undefined' ? 'Places' : (sessionStorage.getItem('crumbs-tab') ?? 'Places'),
+  )
+  function setTab(next: string) {
+    setTabState(next)
+    sessionStorage.setItem('crumbs-tab', next)
+    window.scrollTo({ top: 0 })
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = data.places.find((place) => place.id === selectedId) ?? null
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
@@ -36,6 +43,10 @@ function CrumbsShell() {
   const [groupName, setGroupName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [busy, setBusy] = useState(false)
+  const names = useMemo(
+    () => Object.fromEntries(data.members.map((m) => [m.id, m.display_name])),
+    [data.members],
+  )
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const list = data.places.filter((place) => {
@@ -121,7 +132,8 @@ function CrumbsShell() {
           ) : (
             <>
               <input
-                aria-label="you@example.com"
+                aria-label="Email address"
+                onKeyDown={(event) => event.key === 'Enter' && email && !busy && magic()}
                 className="field mt-7"
                 type="email"
                 placeholder="you@example.com"
@@ -161,7 +173,8 @@ function CrumbsShell() {
           <section className="surface">
             <h2 className="font-serif text-2xl font-bold">Create a group</h2>
             <input
-              aria-label="Maya & Jordan"
+              aria-label="Group name"
+              onKeyDown={(event) => event.key === 'Enter' && createGroup()}
               className="field mt-4"
               placeholder="Maya & Jordan"
               value={groupName}
@@ -174,7 +187,8 @@ function CrumbsShell() {
           <section className="surface">
             <h2 className="font-serif text-2xl font-bold">Join with a code</h2>
             <input
-              aria-label="ABC123"
+              aria-label="Join code"
+              onKeyDown={(event) => event.key === 'Enter' && joinGroup()}
               className="field mt-4 uppercase tracking-widest"
               maxLength={6}
               placeholder="ABC123"
@@ -285,10 +299,18 @@ function CrumbsShell() {
               </button>
             </div>
             {data.loading ? (
-              <div className="surface">Loading your places…</div>
+              <div
+                className="flex flex-col gap-4"
+                aria-busy="true"
+                aria-label="Loading your places"
+              >
+                <div className="skeleton h-28" />
+                <div className="skeleton h-28" />
+                <div className="skeleton h-28" />
+              </div>
             ) : filtered.length ? (
               filtered.map((place) => (
-                <PlaceCard key={place.id} place={place} onSelect={setSelected} />
+                <PlaceCard key={place.id} place={place} names={names} onSelect={setSelected} />
               ))
             ) : (
               <div className="empty">
@@ -319,16 +341,13 @@ function CrumbsShell() {
           />
         )}
         {tab === 'For you' && (
-          <ForYouTab
-            places={data.places}
-            names={Object.fromEntries(data.members.map((m) => [m.id, m.display_name]))}
-            onSelect={setSelected}
-          />
+          <ForYouTab places={data.places} names={names} onSelect={setSelected} />
         )}
         {tab === 'Group' && (
           <GroupTab
             group={data.group}
             groups={data.groups}
+            places={data.places}
             members={data.members}
             profile={data.members.find((m) => m.id === data.user?.id) ?? null}
             userId={data.user?.id}
@@ -369,7 +388,7 @@ function CrumbsShell() {
         <PlaceSheet
           place={selected}
           userId={data.user.id}
-          names={Object.fromEntries(data.members.map((m) => [m.id, m.display_name]))}
+          names={names}
           lists={data.lists}
           onLists={data.setLists}
           demo={data.demo}

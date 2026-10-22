@@ -312,6 +312,19 @@ textarea.field {
   border-color: #7b2d5b;
 }
 
+/* Loading skeleton */
+.skeleton {
+  border-radius: 24px;
+  background: linear-gradient(90deg, var(--muted) 25%, var(--card) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
 /* Autocomplete results */
 .suggestions {
   display: flex;

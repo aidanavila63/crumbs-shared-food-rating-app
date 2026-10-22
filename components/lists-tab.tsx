@@ -42,6 +42,15 @@ export function ListsTab({
     setName('')
     toast.success('List created')
   }
+  async function rename(list: List) {
+    const next = window.prompt('Rename list', list.name)?.trim()
+    if (!next || next === list.name) return
+    if (!demo) {
+      const { error } = await supabase.from('lists').update({ name: next }).eq('id', list.id)
+      if (error) return toast.error(error.message)
+    }
+    onLists(lists.map((item) => (item.id === list.id ? { ...item, name: next } : item)))
+  }
   async function remove(list: List) {
     if (!window.confirm(`Delete ${list.name}?`)) return
     if (!demo) {
@@ -81,7 +90,8 @@ export function ListsTab({
         <h2 className="font-serif text-2xl font-bold">Your lists</h2>
         <div className="mt-4 flex gap-2">
           <input
-            aria-label="Date night"
+            aria-label="New list name"
+            onKeyDown={(event) => event.key === 'Enter' && create()}
             className="field"
             placeholder="Date night"
             value={name}
@@ -108,22 +118,35 @@ export function ListsTab({
             {active.emoji} {active.name}
           </h2>
           <div className="mt-4 flex flex-col gap-2">
-            {places.map((place) => (
-              <button
-                className="surface-soft flex min-h-11 items-center justify-between text-left"
-                key={place.id}
-                onClick={() => toggle(active, place)}
-              >
-                <span>{place.name}</span>
-                <span>
-                  {active.list_places?.some((item) => item.place_id === place.id) ? 'Added' : 'Add'}
-                </span>
-              </button>
-            ))}
+            {[...places]
+              .sort(
+                (a, b) =>
+                  Number(!!active.list_places?.some((item) => item.place_id === b.id)) -
+                  Number(!!active.list_places?.some((item) => item.place_id === a.id)),
+              )
+              .map((place) => (
+                <button
+                  className="surface-soft flex min-h-11 items-center justify-between text-left"
+                  key={place.id}
+                  onClick={() => toggle(active, place)}
+                >
+                  <span>{place.name}</span>
+                  <span>
+                    {active.list_places?.some((item) => item.place_id === place.id)
+                      ? 'Added'
+                      : 'Add'}
+                  </span>
+                </button>
+              ))}
           </div>
-          <button className="mt-5 text-sm text-destructive" onClick={() => remove(active)}>
-            Delete list
-          </button>
+          <div className="mt-5 flex gap-6 text-sm">
+            <button className="text-primary" onClick={() => rename(active)}>
+              Rename list
+            </button>
+            <button className="text-destructive" onClick={() => remove(active)}>
+              Delete list
+            </button>
+          </div>
         </div>
       ) : (
         lists.map((list) => (
