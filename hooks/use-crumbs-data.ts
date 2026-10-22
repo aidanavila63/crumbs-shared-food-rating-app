@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { pendingDeletes } from '@/lib/undoable'
 import { createClient } from '@/lib/supabase'
 
 export type Status = 'Been' | 'Want to try'
@@ -109,15 +110,17 @@ export function useCrumbsData() {
       .select('user_id')
       .eq('group_id', group.id)
     const ids = (memberRows ?? []).map((row: any) => row.user_id)
+    let profileRows: Profile[] = []
     if (ids.length) {
-      const { data: profileRows } = await supabase
+      const { data: rows } = await supabase
         .from('profiles')
         .select('id,display_name,avatar_url')
         .in('id', ids)
-      setMembers((profileRows ?? []) as Profile[])
+      profileRows = (rows ?? []) as Profile[]
     }
-    setPlaces((placeRows ?? []) as Place[])
-    setLists((listRows ?? []) as List[])
+    setMembers(profileRows)
+    setPlaces(((placeRows ?? []) as Place[]).filter((place) => !pendingDeletes.has(place.id)))
+    setLists(((listRows ?? []) as List[]).filter((list) => !pendingDeletes.has(list.id)))
     loadedOnce.current = true
     setLoading(false)
   }, [demo, group, supabase, user])
@@ -127,12 +130,15 @@ export function useCrumbsData() {
     supabase.auth
       .getUser()
       .then(({ data }) => {
-        setUser(data.user)
+        setUser((prev: any) => (prev?.id === data.user?.id ? prev : data.user))
         setLoading(false)
       })
       .catch(() => setLoading(false))
+    // Token refreshes fire this too; only react when the person actually changes.
     const auth = supabase.auth.onAuthStateChange((_event, session) =>
-      setUser(session?.user ?? null),
+      setUser((prev: any) =>
+        prev?.id === (session?.user?.id ?? undefined) ? prev : (session?.user ?? null),
+      ),
     )
     return () => auth.data.subscription.unsubscribe()
   }, [demo, supabase])
@@ -140,7 +146,13 @@ export function useCrumbsData() {
   useEffect(() => {
     if (demo) return
     if (!user) {
+      // Signed out: forget everything so the next person never sees stale data.
       setGroupsLoaded(false)
+      setGroups([])
+      setGroup(null)
+      setPlaces([])
+      setLists([])
+      setMembers([])
       return
     }
     supabase
@@ -167,6 +179,19 @@ export function useCrumbsData() {
       setLoading(false)
     })
   }, [load])
+  // Many realtime events can arrive at once (one rating = several rows); reload once.
+  const loadRef = useRef(load)
+  useEffect(() => {
+    loadRef.current = load
+  }, [load])
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const scheduleLoad = useCallback(() => {
+    clearTimeout(reloadTimer.current)
+    reloadTimer.current = setTimeout(() => {
+      loadRef.current().catch((error) => console.error(error))
+    }, 250)
+  }, [])
+  useEffect(() => () => clearTimeout(reloadTimer.current), [])
   useEffect(() => {
     if (demo || !group) return
     const channel = supabase
@@ -174,20 +199,22 @@ export function useCrumbsData() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'places', filter: `group_id=eq.${group.id}` },
-        () => load(),
+        scheduleLoad,
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_ratings' }, () =>
-        load(),
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'place_ratings' },
+        scheduleLoad,
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, scheduleLoad)
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [demo, group, load, supabase])
+  }, [demo, group, scheduleLoad, supabase])
 
   const mutate = useCallback(
     async (work: () => Promise<any>) => {

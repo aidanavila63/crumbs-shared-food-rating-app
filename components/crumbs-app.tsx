@@ -127,9 +127,14 @@ function CrumbsShell() {
             Collect the places and dishes you love together.
           </p>
           {sent ? (
-            <p className="mt-7 rounded-2xl bg-muted p-4 text-sm">
-              Magic link sent to <strong>{email}</strong>.
-            </p>
+            <div className="mt-7 rounded-2xl bg-muted p-4 text-sm">
+              <p>
+                Magic link sent to <strong>{email}</strong>. Check your inbox (and spam).
+              </p>
+              <button className="mt-2 underline" onClick={() => setSent(false)}>
+                Use a different email
+              </button>
+            </div>
           ) : (
             <>
               <input
@@ -146,12 +151,13 @@ function CrumbsShell() {
               </button>
               <button
                 className="secondary mt-3 w-full"
-                onClick={() =>
-                  data.supabase.auth.signInWithOAuth({
+                onClick={async () => {
+                  const { error } = await data.supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: { redirectTo: `${location.origin}/auth/callback` },
                   })
-                }
+                  if (error) toast.error(error.message)
+                }}
               >
                 Continue with Google
               </button>
@@ -170,7 +176,15 @@ function CrumbsShell() {
     return (
       <main className="min-h-screen bg-background p-5">
         <div className="mx-auto flex max-w-xl flex-col gap-4 pt-8">
-          <h1 className="font-serif text-4xl font-bold">Start your food map</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="font-serif text-4xl font-bold">Start your food map</h1>
+            <button
+              className="secondary !min-h-10 !px-3 text-xs"
+              onClick={() => data.supabase.auth.signOut()}
+            >
+              Sign out
+            </button>
+          </div>
           <section className="surface">
             <h2 className="font-serif text-2xl font-bold">Create a group</h2>
             <input
@@ -234,6 +248,7 @@ function CrumbsShell() {
             <h1 className="font-serif text-4xl font-bold">{data.group.name}</h1>
           </div>
           <select
+            aria-label="Switch group"
             className="field !w-auto !py-2"
             value={data.group.id}
             onChange={(event) =>
@@ -402,7 +417,11 @@ function CrumbsShell() {
             data.setPlaces((current) => current.filter((item) => item.id !== selected.id))
             setSelected(null)
           }}
-          onRestore={(restored) => data.setPlaces((current) => [restored, ...current])}
+          onRestore={(restored) =>
+            data.setPlaces((current) =>
+              current.some((item) => item.id === restored.id) ? current : [restored, ...current],
+            )
+          }
         />
       )}
     </main>

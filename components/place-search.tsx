@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
 
@@ -84,13 +85,12 @@ export function PlaceSearch({
   const [results, setResults] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
-  const skip = useRef(false)
+  // Text we just filled in from a pick: don't search for it again.
+  const skipValue = useRef<string | null>(null)
 
   useEffect(() => {
-    if (skip.current) {
-      skip.current = false
-      return
-    }
+    if (skipValue.current !== null && skipValue.current === value) return
+    skipValue.current = null
     if (!places || value.trim().length < 3) {
       setResults([])
       return
@@ -134,11 +134,13 @@ export function PlaceSearch({
       const place = item.prediction.toPlace()
       await place.fetchFields({ fields: FIELDS })
       token.current = null // a pick ends the billing session
-      skip.current = true
       setResults([])
       const found = toFoundPlace(place)
+      skipValue.current = found.name
       onChange(found.name)
       onPick(found)
+    } catch {
+      toast.error('Could not load that place. Try another result.')
     } finally {
       setLoading(false)
     }

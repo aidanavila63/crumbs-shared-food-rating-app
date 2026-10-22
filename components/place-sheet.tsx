@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { undoableDelete } from '@/lib/undoable'
+import { pendingDeletes, undoableDelete } from '@/lib/undoable'
 import type { Dish, List, Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { Sheet } from './sheet'
@@ -95,14 +95,17 @@ export function PlaceSheet({
   onRestore: (place: Place) => void
 }) {
   const mine = place.place_ratings.find((rating) => rating.user_id === userId)
-  const [score, setScore] = useState(mine?.score ?? 0)
   const [notes, setNotes] = useState(mine?.notes ?? '')
-  const [status, setStatus] = useState<Status>(place.status)
   const [saving, setSaving] = useState(false)
   const [dishName, setDishName] = useState('')
+  const score = mine?.score ?? 0
+  const status = place.status
   const [dishes, setDishes] = useState(place.dishes ?? [])
+  // Pick up a partner's dishes/ratings when the data reloads (skipping ones mid-undo).
+  useEffect(() => {
+    setDishes((place.dishes ?? []).filter((dish) => !pendingDeletes.has(dish.id)))
+  }, [place.dishes])
   async function rate(next: number) {
-    setScore(next)
     const optimistic = {
       ...place,
       place_ratings: [
@@ -119,7 +122,6 @@ export function PlaceSheet({
     }
   }
   async function updateStatus(next: Status) {
-    setStatus(next)
     const optimistic = { ...place, status: next }
     onUpdate(optimistic)
     if (!demo) {
@@ -171,6 +173,11 @@ export function PlaceSheet({
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error)
+      const have = new Set(dishes.map((dish) => dish.name.trim().toLowerCase()))
+      result.dishes = result.dishes.filter(
+        (dish: any) => !have.has(String(dish.name).trim().toLowerCase()),
+      )
+      if (!result.dishes.length) return toast('No new dishes to add')
       if (demo)
         setDishes((current) => [
           ...current,
@@ -236,7 +243,11 @@ export function PlaceSheet({
               ...dish,
               dish_ratings: [
                 ...dish.dish_ratings.filter((rating) => rating.user_id !== userId),
-                { user_id: userId!, score: next, notes: null },
+                {
+                  user_id: userId!,
+                  score: next,
+                  notes: dish.dish_ratings.find((r) => r.user_id === userId)?.notes ?? null,
+                },
               ],
             }
           : dish,
@@ -275,6 +286,7 @@ export function PlaceSheet({
     const before = dishes
     const dish = dishes.find((item) => item.id === dishId)
     undoableDelete({
+      id: dishId,
       message: `Removed ${dish?.name ?? 'dish'}`,
       hide: () => setDishes((current) => current.filter((item) => item.id !== dishId)),
       restore: () => setDishes(before),
@@ -317,6 +329,7 @@ export function PlaceSheet({
   function removePlace() {
     const removed = place
     undoableDelete({
+      id: removed.id,
       message: `Deleted ${removed.name}`,
       hide: onDelete,
       restore: () => onRestore(removed),
@@ -474,6 +487,7 @@ export function PlaceSheet({
               `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.formatted_address || ''}`)}`
             }
             target="_blank"
+            rel="noopener noreferrer"
           >
             Directions
           </a>

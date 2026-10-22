@@ -66,6 +66,7 @@ export function ForYouTab({
               .join(', ')}`,
         )
         .join('\n')
+        .slice(0, 3900)
       const response = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

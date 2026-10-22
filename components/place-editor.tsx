@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pin } from 'lucide-react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { toast } from 'sonner'
@@ -27,6 +27,15 @@ export function PlaceEditor({
   const [price, setPrice] = useState<number | null>(place.price_level)
   const [tags, setTags] = useState((place.tags ?? []).join(', '))
   const [busy, setBusy] = useState(false)
+  // Keep the form in step with the place (partner edits, "Find on Google") while it's closed.
+  useEffect(() => {
+    if (open) return
+    setName(place.name)
+    setAddress(place.formatted_address ?? '')
+    setCuisine(place.cuisine ?? '')
+    setPrice(place.price_level)
+    setTags((place.tags ?? []).join(', '))
+  }, [open, place.name, place.formatted_address, place.cuisine, place.price_level, place.tags])
 
   async function patch(changes: Partial<Place>) {
     const next = { ...place, ...changes }

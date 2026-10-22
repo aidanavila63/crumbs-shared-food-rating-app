@@ -55,6 +55,7 @@ export function ListsTab({
   function remove(list: List) {
     const before = lists
     undoableDelete({
+      id: list.id,
       message: `Deleted ${list.name}`,
       hide: () => {
         onLists(lists.filter((item) => item.id !== list.id))

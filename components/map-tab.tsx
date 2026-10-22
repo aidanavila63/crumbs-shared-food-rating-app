@@ -6,13 +6,24 @@ import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
+  const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
+  // Only re-fit when the pins themselves change, not on every data reload (which would
+  // yank the view back while someone is panning or zooming).
+  const key = located.map((place) => `${place.id}:${place.latitude},${place.longitude}`).join('|')
   useEffect(() => {
-    const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
     if (!map || !located.length) return
     const bounds = new (globalThis as any).google.maps.LatLngBounds()
     located.forEach((place) => bounds.extend({ lat: place.latitude!, lng: place.longitude! }))
     map.fitBounds(bounds, 64)
-  }, [map, places])
+    if (located.length === 1) {
+      // fitBounds on one point zooms to rooftop level; back off to a neighbourhood view
+      const listener = map.addListener('idle', () => {
+        if ((map.getZoom() ?? 0) > 15) map.setZoom(15)
+        listener.remove()
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key])
   return null
 }
 function Recenter({ target }: { target: { lat: number; lng: number } | null }) {

@@ -43,10 +43,14 @@ export function GroupTab({
   }
   async function share() {
     const text = `Join our Crumbs group ${group.name} with code ${group.join_code}`
-    if (navigator.share) await navigator.share({ title: 'Join Crumbs', text })
-    else {
-      await navigator.clipboard.writeText(text)
-      toast.success('Invite copied')
+    try {
+      if (navigator.share) await navigator.share({ title: 'Join Crumbs', text })
+      else {
+        await navigator.clipboard.writeText(text)
+        toast.success('Invite copied')
+      }
+    } catch {
+      // share sheet cancelled
     }
   }
   return (
