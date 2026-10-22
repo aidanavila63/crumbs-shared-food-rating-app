@@ -6,6 +6,7 @@ import { useCrumbsData, type Group, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
 import { PlaceSheet } from './place-sheet'
 import { AddPlaceSheet } from './add-place-sheet'
+import { WelcomeCard } from './welcome-card'
 import { MapTab } from './map-tab'
 import { ListsTab } from './lists-tab'
 import { ForYouTab } from './for-you-tab'
@@ -313,12 +314,11 @@ function CrumbsShell() {
                 <PlaceCard key={place.id} place={place} names={names} onSelect={setSelected} />
               ))
             ) : (
-              <div className="empty">
-                <p className="font-serif text-xl font-bold">Your food map is empty</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Add the first restaurant you want to remember.
-                </p>
-              </div>
+              <WelcomeCard
+                group={data.group}
+                hasPlaces={data.places.length > 0}
+                onAdd={() => setAdding(true)}
+              />
             )}
           </section>
         )}
@@ -399,9 +399,10 @@ function CrumbsShell() {
             setSelected(place)
           }}
           onDelete={() => {
-            data.setPlaces(data.places.filter((item) => item.id !== selected.id))
+            data.setPlaces((current) => current.filter((item) => item.id !== selected.id))
             setSelected(null)
           }}
+          onRestore={(restored) => data.setPlaces((current) => [restored, ...current])}
         />
       )}
     </main>

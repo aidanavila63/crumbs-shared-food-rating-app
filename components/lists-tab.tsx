@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { undoableDelete } from '@/lib/undoable'
 import type { List, Place } from '@/hooks/use-crumbs-data'
 export function ListsTab({
   lists,
@@ -51,14 +52,21 @@ export function ListsTab({
     }
     onLists(lists.map((item) => (item.id === list.id ? { ...item, name: next } : item)))
   }
-  async function remove(list: List) {
-    if (!window.confirm(`Delete ${list.name}?`)) return
-    if (!demo) {
-      const { error } = await supabase.from('lists').delete().eq('id', list.id)
-      if (error) return toast.error(error.message)
-    }
-    onLists(lists.filter((item) => item.id !== list.id))
-    setActiveId(null)
+  function remove(list: List) {
+    const before = lists
+    undoableDelete({
+      message: `Deleted ${list.name}`,
+      hide: () => {
+        onLists(lists.filter((item) => item.id !== list.id))
+        setActiveId(null)
+      },
+      restore: () => onLists(before),
+      commit: async () => {
+        if (demo) return null
+        const { error } = await supabase.from('lists').delete().eq('id', list.id)
+        return error
+      },
+    })
   }
   async function toggle(list: List, place: Place) {
     const has = list.list_places?.some((item) => item.place_id === place.id)

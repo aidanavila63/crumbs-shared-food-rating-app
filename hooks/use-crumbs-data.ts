@@ -29,6 +29,7 @@ export type Place = {
   google_maps_url: string | null
   status: Status
   pinned: boolean
+  visited_on?: string | null
   tags: string[]
   created_at: string
   place_ratings: Rating[]

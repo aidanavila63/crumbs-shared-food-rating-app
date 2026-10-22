@@ -49,7 +49,9 @@ export function PlaceCard({
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className={`chip ${place.status === 'Been' ? 'chip-active' : ''}`}>
-          {place.status}
+          {place.status === 'Been' && place.visited_on
+            ? `Been · ${new Date(`${place.visited_on}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`
+            : place.status}
         </span>
         <RatingStars value={Math.round(average)} />
       </div>

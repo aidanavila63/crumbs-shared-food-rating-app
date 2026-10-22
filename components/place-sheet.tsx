@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { undoableDelete } from '@/lib/undoable'
 import type { Dish, List, Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { Sheet } from './sheet'
@@ -79,6 +80,7 @@ export function PlaceSheet({
   onClose,
   onUpdate,
   onDelete,
+  onRestore,
 }: {
   place: Place
   userId?: string
@@ -90,6 +92,7 @@ export function PlaceSheet({
   onClose: () => void
   onUpdate: (place: Place) => void
   onDelete: () => void
+  onRestore: (place: Place) => void
 }) {
   const mine = place.place_ratings.find((rating) => rating.user_id === userId)
   const [score, setScore] = useState(mine?.score ?? 0)
@@ -268,11 +271,33 @@ export function PlaceSheet({
       .upsert({ dish_id: dishId, user_id: userId, score: mineRating.score, notes: note || null })
     if (error) toast.error(error.message)
   }
-  async function removeDish(dishId: string) {
-    setDishes((current) => current.filter((dish) => dish.id !== dishId))
+  function removeDish(dishId: string) {
+    const before = dishes
+    const dish = dishes.find((item) => item.id === dishId)
+    undoableDelete({
+      message: `Removed ${dish?.name ?? 'dish'}`,
+      hide: () => setDishes((current) => current.filter((item) => item.id !== dishId)),
+      restore: () => setDishes(before),
+      commit: async () => {
+        if (demo) return null
+        const { error } = await supabase.from('dishes').delete().eq('id', dishId)
+        return error
+      },
+    })
+  }
+  async function saveVisited(value: string) {
+    const next = value || null
+    onUpdate({ ...place, visited_on: next })
     if (demo) return
-    const { error } = await supabase.from('dishes').delete().eq('id', dishId)
-    if (error) toast.error(error.message)
+    const { error } = await supabase.from('places').update({ visited_on: next }).eq('id', place.id)
+    if (error) {
+      onUpdate(place)
+      toast.error(
+        error.message.includes('visited_on')
+          ? 'Run the one-line database update for visit dates first (see DEVLOG).'
+          : error.message,
+      )
+    }
   }
   async function sharePlace() {
     const url =
@@ -289,14 +314,18 @@ export function PlaceSheet({
       // share sheet cancelled
     }
   }
-  async function removePlace() {
-    if (!window.confirm(`Delete ${place.name}?`)) return
-    if (!demo) {
-      const { error } = await supabase.from('places').delete().eq('id', place.id)
-      if (error) return toast.error(error.message)
-    }
-    onDelete()
-    toast.success('Place deleted')
+  function removePlace() {
+    const removed = place
+    undoableDelete({
+      message: `Deleted ${removed.name}`,
+      hide: onDelete,
+      restore: () => onRestore(removed),
+      commit: async () => {
+        if (demo) return null
+        const { error } = await supabase.from('places').delete().eq('id', removed.id)
+        return error
+      },
+    })
   }
   return (
     <Sheet label={place.name} onClose={onClose}>
@@ -333,6 +362,19 @@ export function PlaceSheet({
             </button>
           ))}
         </div>
+        {status === 'Been' && (
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-semibold">We went on</span>
+            <input
+              aria-label="Date you visited"
+              className="field !w-auto"
+              type="date"
+              max={new Date().toISOString().slice(0, 10)}
+              value={place.visited_on ?? ''}
+              onChange={(event) => saveVisited(event.target.value)}
+            />
+          </label>
+        )}
         {lists.length > 0 && (
           <div className="flex flex-col gap-2">
             <h3 className="font-serif text-xl font-bold">Lists</h3>
