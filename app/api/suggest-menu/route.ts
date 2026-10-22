@@ -9,10 +9,9 @@ const schema = z.object({
       z.object({
         name: z.string(),
         description: z.string(),
-        price: z.number().nullable(),
       }),
     )
-    .max(12),
+    .max(8),
 })
 
 export async function POST(request: Request) {
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
       { status: 429 },
     )
 
-  const { name, address } = await request.json()
+  const { name, address, cuisine, website } = await request.json()
   if (!name || typeof name !== 'string' || name.length > 120) {
     return Response.json({ error: 'Restaurant name is required' }, { status: 400 })
   }
@@ -33,7 +32,18 @@ export async function POST(request: Request) {
     const result = await generateObject({
       model: 'openai/gpt-4o-mini',
       schema,
-      prompt: `Suggest a concise menu for ${name}${address ? ` at ${String(address).slice(0, 200)}` : ''}. Only include dishes this restaurant is plausibly known for. These are suggestions, not a verified menu.`,
+      prompt: [
+        `Restaurant: ${name}`,
+        address ? `Address: ${String(address).slice(0, 200)}` : null,
+        cuisine ? `Cuisine type: ${String(cuisine).slice(0, 60)}` : null,
+        website ? `Website: ${String(website).slice(0, 200)}` : null,
+        '',
+        'You cannot see this restaurant\'s real menu. Only list dishes you are genuinely confident this specific restaurant serves, or classic dishes of its cuisine type when the cuisine is known.',
+        'Do not invent signature dishes, specials, or prices. Keep each description to one short, generic sentence.',
+        'If you do not recognise the restaurant and the cuisine is unknown, return an empty list.',
+      ]
+        .filter((line) => line !== null)
+        .join('\n'),
     })
     return Response.json(result.object)
   } catch (error: any) {

@@ -31,7 +31,7 @@ function DishRow({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-semibold">
-            {dish.name} {dish.is_ai_suggestion && <span className="tag">AI suggestion</span>}
+            {dish.name} {dish.is_ai_suggestion && <span className="tag">AI guess</span>}
           </p>
           {dish.description && <p className="text-sm text-muted-foreground">{dish.description}</p>}
           {dish.price !== null && dish.price !== undefined && (
@@ -169,7 +169,12 @@ export function PlaceSheet({
       const response = await fetch('/api/suggest-menu', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: place.name, address: place.formatted_address }),
+        body: JSON.stringify({
+          name: place.name,
+          address: place.formatted_address,
+          cuisine: place.cuisine,
+          website: place.website,
+        }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error)
@@ -177,7 +182,8 @@ export function PlaceSheet({
       result.dishes = result.dishes.filter(
         (dish: any) => !have.has(String(dish.name).trim().toLowerCase()),
       )
-      if (!result.dishes.length) return toast('No new dishes to add')
+      if (!result.dishes.length)
+        return toast("Not sure what's on the menu here. Add dishes yourself as you try them.")
       if (demo)
         setDishes((current) => [
           ...current,
@@ -204,7 +210,7 @@ export function PlaceSheet({
         if (error) throw error
         setDishes((current) => [...current, ...(data ?? [])])
       }
-      toast.success('Menu suggestions added')
+      toast.success('Added a few guesses. They may not be on the real menu.')
     } catch (error: any) {
       toast.error(error.message || 'Could not suggest a menu')
     } finally {
