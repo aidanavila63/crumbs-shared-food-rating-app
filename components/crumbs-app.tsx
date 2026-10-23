@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
@@ -32,6 +32,34 @@ function CrumbsShell() {
     sessionStorage.setItem('crumbs-tab', next)
     window.scrollTo({ top: 0 })
   }
+
+  // Hide the tab bar while the keyboard is up so it can't float over the form you're typing in.
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const isText = (el: EventTarget | null) =>
+      el instanceof HTMLElement &&
+      (el.tagName === 'TEXTAREA' ||
+        (el.tagName === 'INPUT' &&
+          !['checkbox', 'radio', 'button', 'submit'].includes((el as HTMLInputElement).type)))
+    const onIn = (event: FocusEvent) => {
+      if (isText(event.target)) {
+        clearTimeout(timer)
+        setTyping(true)
+      }
+    }
+    const onOut = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => setTyping(false), 80)
+    }
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('focusin', onIn)
+      document.removeEventListener('focusout', onOut)
+    }
+  }, [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = data.places.find((place) => place.id === selectedId) ?? null
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
@@ -243,35 +271,40 @@ function CrumbsShell() {
           </button>
         </header>
         <div className="mb-5 flex items-end justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-sm text-muted-foreground">Your shared food map</p>
-            <h1 className="font-serif text-4xl font-bold">{data.group.name}</h1>
+            <h1 className="truncate font-serif text-3xl font-bold">{data.group.name}</h1>
           </div>
-          <select
-            aria-label="Switch group"
-            className="field !w-auto !py-2"
-            value={data.group.id}
-            onChange={(event) =>
-              data.setGroup(
-                data.groups.find((group) => group.id === event.target.value) || data.group,
-              )
-            }
-          >
-            {data.groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
+          {data.groups.length > 1 && (
+            <select
+              aria-label="Switch group"
+              className="field shrink-0 !w-auto !max-w-[45%] !py-2"
+              value={data.group.id}
+              onChange={(event) =>
+                data.setGroup(
+                  data.groups.find((group) => group.id === event.target.value) || data.group,
+                )
+              }
+            >
+              {data.groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         {tab === 'Places' && (
           <section className="flex flex-col gap-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-4 top-3.5 text-muted-foreground" size={18} />
+                <Search
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  size={18}
+                />
                 <input
                   aria-label="Search places"
-                  className="field pl-11"
+                  className="field field-icon"
                   placeholder="Search places"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -298,12 +331,12 @@ function CrumbsShell() {
               ))}
             </div>
             <div className="flex items-center justify-between gap-2">
-              <div className="chip-row">
+              <div className="chip-row min-w-0">
                 {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
                   <button
                     key={item}
                     aria-pressed={sort === item}
-                    className={`chip ${sort === item ? 'chip-active' : ''}`}
+                    className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
                     onClick={() => setSort(item)}
                   >
                     {item}
@@ -377,7 +410,7 @@ function CrumbsShell() {
           />
         )}
       </div>
-      <nav className="tab-bar" aria-label="Main">
+      <nav className={`tab-bar ${typing ? 'tab-bar-hidden' : ''}`} aria-label="Main">
         {tabs.map((item) => (
           <button
             className={tab === item ? 'tab-active' : ''}

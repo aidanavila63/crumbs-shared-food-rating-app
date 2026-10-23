@@ -107,7 +107,7 @@ export function ListsTab({
             onChange={(event) => setName(event.target.value)}
           />
           <input
-            className="field w-16 text-center"
+            className="field field-emoji"
             aria-label="List emoji"
             value={emoji}
             maxLength={2}

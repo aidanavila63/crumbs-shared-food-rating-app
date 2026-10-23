@@ -121,14 +121,25 @@
 }
 textarea.field {
   padding: 12px 16px;
+  min-height: 80px;
   resize: vertical;
+}
+/* These sit after .field on purpose: Tailwind utilities lose to this unlayered sheet. */
+.field-icon {
+  padding-left: 44px;
+}
+.field-emoji {
+  width: 64px;
+  flex: none;
+  padding: 0;
+  text-align: center;
 }
 .field::placeholder {
   color: var(--muted-foreground);
 }
 .field:focus {
   outline: 2px solid var(--primary);
-  outline-offset: 0;
+  outline-offset: -2px;
   border-color: transparent;
 }
 
@@ -201,6 +212,10 @@ textarea.field {
   color: var(--muted-foreground);
   font-size: 14px;
   font-weight: 600;
+}
+.chip-sm {
+  padding: 0 12px;
+  font-size: 13px;
 }
 .chip-active {
   background: var(--primary);
@@ -275,6 +290,9 @@ textarea.field {
   background: color-mix(in srgb, var(--background) 88%, transparent);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--border);
+}
+.tab-bar-hidden {
+  display: none;
 }
 .tab-bar button {
   flex: 1;

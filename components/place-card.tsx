@@ -43,7 +43,7 @@ export function PlaceCard({
             </p>
           )}
         </div>
-        <strong className="font-serif text-3xl text-primary">
+        <strong className="font-serif text-3xl leading-8 text-primary">
           {average ? average.toFixed(1) : '—'}
         </strong>
       </div>
