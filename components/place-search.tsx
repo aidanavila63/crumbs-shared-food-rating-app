@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
+import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 
 export type FoundPlace = {
   google_place_id: string
@@ -64,9 +65,48 @@ export function toFoundPlace(place: any): FoundPlace {
   }
 }
 
-type Suggestion = { id: string; main: string; secondary: string; prediction: any }
+type Suggestion = {
+  id: string
+  main: string
+  secondary: string
+  prediction?: any
+  osm?: FoundPlace
+}
 
-/** Text input with Google Places (New) autocomplete. Falls back to a plain input without Maps. */
+async function searchOsm(
+  query: string,
+  location: { lat: number; lng: number } | null,
+): Promise<FoundPlace[]> {
+  const url = new URL('/api/osm/search', window.location.origin)
+  url.searchParams.set('q', query)
+  if (location) {
+    url.searchParams.set('lat', String(location.lat))
+    url.searchParams.set('lon', String(location.lng))
+  }
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('OpenStreetMap search failed')
+  return (await response.json()).results ?? []
+}
+
+/** Adds website/cuisine from OpenStreetMap when available; never fails the pick. */
+async function enrichOsm(found: FoundPlace): Promise<FoundPlace> {
+  const match = /^osm:([NWR])(\d+)$/.exec(found.google_place_id)
+  if (!match) return found
+  try {
+    const response = await fetch(`/api/osm/place?type=${match[1]}&id=${match[2]}`)
+    if (!response.ok) return found
+    const extra = await response.json()
+    return {
+      ...found,
+      website: extra.website ?? found.website,
+      cuisine: extra.cuisine ?? found.cuisine,
+    }
+  } catch {
+    return found
+  }
+}
+
+/** Text input with Google Places (New) autocomplete. Switches to OpenStreetMap if Google fails. */
 export function PlaceSearch({
   value,
   onChange,
@@ -82,60 +122,96 @@ export function PlaceSearch({
 }) {
   const places = useMapsLibrary('places')
   const location = useUserLocation(true)
+  const googleDown = useGoogleDown()
+  const [waited, setWaited] = useState(false)
   const [results, setResults] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
   // Text we just filled in from a pick: don't search for it again.
   const skipValue = useRef<string | null>(null)
+  // Google never loaded (quota, bad key, blocked): give it a few seconds, then use OpenStreetMap.
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), 5000)
+    return () => clearTimeout(timer)
+  }, [])
+  const useOsm = googleDown || (!places && waited)
 
   useEffect(() => {
     if (skipValue.current !== null && skipValue.current === value) return
     skipValue.current = null
-    if (!places || value.trim().length < 3) {
+    if ((!places && !useOsm) || value.trim().length < 3) {
       setResults([])
       return
     }
     let cancelled = false
-    const timer = setTimeout(async () => {
-      try {
-        token.current ??= new places.AutocompleteSessionToken()
-        const request: any = { input: value.trim(), sessionToken: token.current }
-        if (location) {
-          request.origin = location
-          request.locationBias = { center: location, radius: 30000 }
+    const timer = setTimeout(
+      async () => {
+        if (useOsm) {
+          try {
+            const found = await searchOsm(value.trim(), location)
+            if (cancelled) return
+            setResults(
+              found.map((item) => ({
+                id: item.google_place_id,
+                main: item.name,
+                secondary: item.formatted_address ?? '',
+                osm: item,
+              })),
+            )
+          } catch {
+            if (!cancelled) setResults([])
+          }
+          return
         }
-        const { suggestions } =
-          await places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
-        if (cancelled) return
-        setResults(
-          suggestions
-            .filter((item: any) => item.placePrediction)
-            .slice(0, 5)
-            .map((item: any) => ({
-              id: item.placePrediction.placeId,
-              main: item.placePrediction.mainText?.text ?? item.placePrediction.text.text,
-              secondary: item.placePrediction.secondaryText?.text ?? '',
-              prediction: item.placePrediction,
-            })),
-        )
-      } catch {
-        if (!cancelled) setResults([])
-      }
-    }, 300)
+        try {
+          token.current ??= new places!.AutocompleteSessionToken()
+          const request: any = { input: value.trim(), sessionToken: token.current }
+          if (location) {
+            request.origin = location
+            request.locationBias = { center: location, radius: 30000 }
+          }
+          const { suggestions } =
+            await places!.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
+          if (cancelled) return
+          setResults(
+            suggestions
+              .filter((item: any) => item.placePrediction)
+              .slice(0, 5)
+              .map((item: any) => ({
+                id: item.placePrediction.placeId,
+                main: item.placePrediction.mainText?.text ?? item.placePrediction.text.text,
+                secondary: item.placePrediction.secondaryText?.text ?? '',
+                prediction: item.placePrediction,
+              })),
+          )
+        } catch {
+          if (cancelled) return
+          setResults([])
+          // Offline is not Google's fault; anything else (quota, key) switches to OpenStreetMap.
+          if (navigator.onLine) markGoogleDown()
+        }
+      },
+      useOsm ? 450 : 300,
+    )
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [places, value, location])
+  }, [places, value, location, useOsm])
 
   async function pick(item: Suggestion) {
     setLoading(true)
     try {
-      const place = item.prediction.toPlace()
-      await place.fetchFields({ fields: FIELDS })
-      token.current = null // a pick ends the billing session
+      let found: FoundPlace
+      if (item.osm) {
+        found = await enrichOsm(item.osm)
+      } else {
+        const place = item.prediction.toPlace()
+        await place.fetchFields({ fields: FIELDS })
+        token.current = null // a pick ends the billing session
+        found = toFoundPlace(place)
+      }
       setResults([])
-      const found = toFoundPlace(place)
       skipValue.current = found.name
       onChange(found.name)
       onPick(found)
@@ -158,6 +234,12 @@ export function PlaceSearch({
         autoCorrect="off"
         onChange={(event) => onChange(event.target.value)}
       />
+      {useOsm && (
+        <p className="text-xs text-muted-foreground">
+          Google search is unavailable right now, so this is using OpenStreetMap. It may be missing
+          prices and some details.
+        </p>
+      )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}
       {results.length > 0 && (
         <div className="suggestions" role="listbox">
@@ -181,4 +263,13 @@ export async function findOnGoogle(places: any, query: string): Promise<FoundPla
     maxResultCount: 1,
   })
   return found?.[0] ? toFoundPlace(found[0]) : null
+}
+
+/** Same job as findOnGoogle, but through OpenStreetMap (used when Google is unavailable). */
+export async function findOnOsm(
+  query: string,
+  location: { lat: number; lng: number } | null,
+): Promise<FoundPlace | null> {
+  const [first] = await searchOsm(query, location)
+  return first ? enrichOsm(first) : null
 }

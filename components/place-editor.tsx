@@ -4,7 +4,8 @@ import { Pin } from 'lucide-react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { toast } from 'sonner'
 import type { Place } from '@/hooks/use-crumbs-data'
-import { findOnGoogle } from './place-search'
+import { findOnGoogle, findOnOsm } from './place-search'
+import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 
 const PRICES = [1, 2, 3, 4]
 
@@ -20,6 +21,7 @@ export function PlaceEditor({
   onUpdate: (place: Place) => void
 }) {
   const places = useMapsLibrary('places')
+  const googleDown = useGoogleDown()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(place.name)
   const [address, setAddress] = useState(place.formatted_address ?? '')
@@ -71,14 +73,21 @@ export function PlaceEditor({
   }
 
   async function locate() {
-    if (!places) return toast.error('Google Maps is not loaded yet')
     setBusy(true)
     try {
-      const found = await findOnGoogle(
-        places,
-        `${place.name} ${place.formatted_address ?? ''}`.trim(),
-      )
-      if (!found) return toast.error('Could not find that place on Google')
+      const query = `${place.name} ${place.formatted_address ?? ''}`.trim()
+      let found = null
+      if (places && !googleDown) {
+        try {
+          found = await findOnGoogle(places, query)
+        } catch (error) {
+          if (navigator.onLine) markGoogleDown()
+          found = await findOnOsm(query, null)
+        }
+      } else {
+        found = await findOnOsm(query, null)
+      }
+      if (!found) return toast.error('Could not find that place')
       const changes: Partial<Place> = {
         formatted_address: found.formatted_address,
         latitude: found.latitude,
@@ -113,7 +122,7 @@ export function PlaceEditor({
         </button>
         {place.latitude === null && (
           <button className="chip chip-active" disabled={busy} onClick={locate}>
-            📍 Find on Google
+            📍 Find on map
           </button>
         )}
       </div>

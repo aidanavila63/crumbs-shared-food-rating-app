@@ -39,9 +39,7 @@ async function assertPublicUrl(url: URL) {
 
 const MAX_BYTES = 1_500_000
 
-export async function fetchPage(
-  start: string,
-): Promise<{ url: string; html: string } | null> {
+export async function fetchPage(start: string): Promise<{ url: string; html: string } | null> {
   let url = new URL(start)
   for (let hop = 0; hop < 4; hop++) {
     await assertPublicUrl(url)
