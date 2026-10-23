@@ -6,7 +6,8 @@ import { pendingDeletes } from '@/lib/undoable'
 import { createClient } from '@/lib/supabase'
 
 export type Status = 'Been' | 'Want to try'
-export type Rating = { user_id: string; score: number; notes: string | null }
+export type Rating = { user_id: string; score: number; notes: string | null; points?: number | null }
+export type PlaceVisit = { id: string; place_id: string; visited_on: string; spend: number | null }
 export type Dish = {
   id: string
   place_id: string
@@ -15,6 +16,7 @@ export type Dish = {
   description: string | null
   is_ai_suggestion: boolean
   created_at?: string
+  photo_path?: string | null
   dish_ratings: Rating[]
 }
 export type Place = {
@@ -32,6 +34,8 @@ export type Place = {
   status: Status
   pinned: boolean
   visited_on?: string | null
+  photo_path?: string | null
+  place_visits?: PlaceVisit[]
   tags: string[]
   created_at: string
   place_ratings: Rating[]
@@ -97,7 +101,7 @@ export function useCrumbsData() {
         supabase
           .from('places')
           .select(
-            '*,place_ratings(score,user_id,notes),dishes(*,dish_ratings(score,user_id,notes))',
+            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),dishes(*,dish_ratings(score,points,user_id,notes))',
           )
           .eq('group_id', group.id)
           .order('pinned', { ascending: false })
@@ -207,6 +211,7 @@ export function useCrumbsData() {
         { event: '*', schema: 'public', table: 'place_ratings' },
         scheduleLoad,
       )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_visits' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)

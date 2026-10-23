@@ -82,3 +82,14 @@ Production (`main`) is still the old simple version. Nothing below is live until
 
 ## Tips
 - iPhone: magic-link emails open in Safari, not the installed home-screen app. Sign in once in Safari, or use Google sign-in inside the app.
+
+## Round 8 - v2 features
+- OpenStreetMap fallback for search and the map when Google fails (Photon + Nominatim + Leaflet).
+- Dishes scored 0-100 (`dish_ratings.points`); old stars count as 20 points each. Best dishes leaderboard.
+- Visits table (date + optional spend), "On this day", year in review, spend by month.
+- Taste match %, who rates harder, cuisine bingo.
+- Surprise us with filters (cuisine, price, pinned, within 10 km).
+- Photos for places and dishes (public `crumbs-photos` bucket, shrunk on the phone first).
+- Paste a Google Maps link to fill a place. Read-only shared lists (`/share/<token>`).
+- Push notifications (needs VAPID keys; hidden until `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is set).
+- **Database:** run `supabase/migrations/20261023_v2_features.sql` BEFORE deploying this code.

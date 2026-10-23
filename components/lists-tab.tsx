@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { undoableDelete } from '@/lib/undoable'
 import type { List, Place } from '@/hooks/use-crumbs-data'
+import { ShareList } from './share-list'
 export function ListsTab({
   lists,
   places,
@@ -148,6 +149,7 @@ export function ListsTab({
                 </button>
               ))}
           </div>
+          <ShareList listId={active.id} userId={userId} supabase={supabase} demo={demo} />
           <div className="mt-5 flex gap-6 text-sm">
             <button className="text-primary" onClick={() => rename(active)}>
               Rename list

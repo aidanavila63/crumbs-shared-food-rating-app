@@ -39,8 +39,7 @@ export async function POST(request: Request) {
     .eq('id', placeId)
     .maybeSingle()
   if (!place) return Response.json({ error: 'Place not found' }, { status: 404 })
-  if (!place.website)
-    return Response.json({ dishes: [], reason: 'no-website' })
+  if (!place.website) return Response.json({ dishes: [], reason: 'no-website' })
 
   try {
     const text = await readMenuText(place.website)

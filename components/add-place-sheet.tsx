@@ -5,6 +5,7 @@ import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { Sheet } from './sheet'
 import { PlaceSearch, type FoundPlace } from './place-search'
+import { MapsLinkImport } from './maps-link-import'
 export function AddPlaceSheet({
   userId,
   groupId,
@@ -71,7 +72,7 @@ export function AddPlaceSheet({
             tags: [],
           })
           .select(
-            '*,place_ratings(score,user_id,notes),dishes(*,dish_ratings(score,user_id,notes))',
+            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),dishes(*,dish_ratings(score,points,user_id,notes))',
           )
           .single()
         if (error) throw error
@@ -116,6 +117,13 @@ export function AddPlaceSheet({
             setAddress(place.formatted_address ?? '')
           }}
           placeholder="Search for a restaurant"
+        />
+        <MapsLinkImport
+          onFound={(place) => {
+            setFound(place)
+            setName(place.name)
+            setAddress(place.formatted_address ?? '')
+          }}
         />
         {found ? (
           <p className="surface-soft text-sm">

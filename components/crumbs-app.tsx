@@ -12,6 +12,8 @@ import { ListsTab } from './lists-tab'
 import { ForYouTab } from './for-you-tab'
 import { GroupTab } from './group-tab'
 import { MapsProvider } from './maps-provider'
+import { SurpriseSheet } from './surprise-sheet'
+import { notifyMates } from '@/lib/push'
 
 const tabs = ['Places', 'Map', 'Lists', 'For you', 'Group']
 export function CrumbsApp() {
@@ -65,6 +67,7 @@ function CrumbsShell() {
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'A–Z'>('Newest')
   const [adding, setAdding] = useState(false)
+  const [surprising, setSurprising] = useState(false)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [query, setQuery] = useState('')
@@ -89,12 +92,6 @@ function CrumbsShell() {
     if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
     return list
   }, [data.places, filter, query, sort])
-  function surprise() {
-    const pool = data.places.filter((place) => place.status === 'Want to try')
-    if (!pool.length) return toast('Nothing on your want-to-try list yet')
-    const pick = pool[Math.floor(Math.random() * pool.length)]
-    setSelected(pick)
-  }
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -343,7 +340,10 @@ function CrumbsShell() {
                   </button>
                 ))}
               </div>
-              <button className="secondary !min-h-10 shrink-0 !px-3 text-sm" onClick={surprise}>
+              <button
+                className="secondary !min-h-10 shrink-0 !px-3 text-sm"
+                onClick={() => setSurprising(true)}
+              >
                 🎲 Surprise us
               </button>
             </div>
@@ -389,7 +389,13 @@ function CrumbsShell() {
           />
         )}
         {tab === 'For you' && (
-          <ForYouTab places={data.places} names={names} onSelect={setSelected} />
+          <ForYouTab
+            places={data.places}
+            members={data.members}
+            userId={data.user?.id}
+            names={names}
+            onSelect={setSelected}
+          />
         )}
         {tab === 'Group' && (
           <GroupTab
@@ -422,6 +428,16 @@ function CrumbsShell() {
           </button>
         ))}
       </nav>
+      {surprising && (
+        <SurpriseSheet
+          places={data.places}
+          onClose={() => setSurprising(false)}
+          onOpen={(place) => {
+            setSurprising(false)
+            setSelected(place)
+          }}
+        />
+      )}
       {adding && (
         <AddPlaceSheet
           userId={data.user.id}
@@ -429,7 +445,10 @@ function CrumbsShell() {
           demo={data.demo}
           supabase={data.supabase}
           onClose={() => setAdding(false)}
-          onSaved={(place) => data.setPlaces([place, ...data.places])}
+          onSaved={(place) => {
+            data.setPlaces([place, ...data.places])
+            notifyMates({ type: 'place_added', placeId: place.id })
+          }}
         />
       )}
       {selected && (

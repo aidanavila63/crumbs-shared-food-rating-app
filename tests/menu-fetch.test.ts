@@ -3,7 +3,15 @@ import assert from 'node:assert/strict'
 import { isPrivateAddress, findMenuLinks, htmlToText } from '../lib/menu-fetch.ts'
 
 test('blocks private and local addresses', () => {
-  for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.16.0.1', '169.254.169.254', '::1', 'fd00::1'])
+  for (const ip of [
+    '127.0.0.1',
+    '10.0.0.5',
+    '192.168.1.1',
+    '172.16.0.1',
+    '169.254.169.254',
+    '::1',
+    'fd00::1',
+  ])
     assert.equal(isPrivateAddress(ip), true, ip)
   for (const ip of ['8.8.8.8', '151.101.1.1']) assert.equal(isPrivateAddress(ip), false, ip)
 })

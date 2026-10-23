@@ -380,3 +380,10 @@ textarea.field {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 0-100 dish score slider */
+.points-slider {
+  accent-color: var(--primary, #7b2d5b);
+  height: 44px;
+  touch-action: pan-y;
+}

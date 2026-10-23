@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Copy, LogOut, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
+import { NotificationsToggle } from './notifications-toggle'
 export function GroupTab({
   group,
   groups,
@@ -154,6 +155,7 @@ export function GroupTab({
           ))}
         </div>
       </div>
+      <NotificationsToggle userId={userId} supabase={supabase} />
       <button
         className="secondary text-destructive"
         onClick={async () => {

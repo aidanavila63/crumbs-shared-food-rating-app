@@ -2,17 +2,22 @@
 import { useMemo, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Place } from '@/hooks/use-crumbs-data'
+import type { Place, Profile } from '@/hooks/use-crumbs-data'
+import { StatsPanel } from './stats-panel'
 import { placeAverage } from './place-card'
 
 type Idea = { title: string; why: string }
 
 export function ForYouTab({
   places,
+  members = [],
+  userId,
   names = {},
   onSelect,
 }: {
   places: Place[]
+  members?: Profile[]
+  userId?: string
   names?: Record<string, string>
   onSelect?: (place: Place) => void
 }) {
@@ -157,6 +162,14 @@ export function ForYouTab({
           </p>
         </div>
       )}
+
+      <StatsPanel
+        places={places}
+        members={members}
+        userId={userId}
+        names={names}
+        onSelect={onSelect}
+      />
 
       <div className="surface flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

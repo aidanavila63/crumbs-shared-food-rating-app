@@ -256,12 +256,14 @@ export function PlaceSearch({
 }
 
 /** Look up an existing manually-typed place on Google so it gets coordinates. */
-export async function findOnGoogle(places: any, query: string): Promise<FoundPlace | null> {
-  const { places: found } = await places.Place.searchByText({
-    textQuery: query,
-    fields: FIELDS,
-    maxResultCount: 1,
-  })
+export async function findOnGoogle(
+  places: any,
+  query: string,
+  bias?: { lat: number; lng: number } | null,
+): Promise<FoundPlace | null> {
+  const request: any = { textQuery: query, fields: FIELDS, maxResultCount: 1 }
+  if (bias) request.locationBias = { center: bias, radius: 500 }
+  const { places: found } = await places.Place.searchByText(request)
   return found?.[0] ? toFoundPlace(found[0]) : null
 }
 
