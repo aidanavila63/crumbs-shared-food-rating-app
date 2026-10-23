@@ -15,16 +15,389 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
-  --font-serif: 'Young Serif', Georgia, serif;
-  --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-young-serif), Georgia, serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --color-accent-gold: #d9931c;
 }
 
-:root { color-scheme: light; --background: #EEF3EE; --foreground: #1C2A23; --card: #FFFFFF; --card-foreground: #1C2A23; --muted: #E5ECE4; --muted-foreground: #657269; --border: #D8E2D7; --primary: #1C2A23; --primary-foreground: #FFFFFF; --destructive: #A53F48; }
-.dark { color-scheme: dark; --background: #152019; --foreground: #F2F5F0; --card: #203027; --card-foreground: #F2F5F0; --muted: #2B4034; --muted-foreground: #AABBAE; --border: #385043; --primary: #DCEADB; --primary-foreground: #1C2A23; --destructive: #F29A9A; }
+:root {
+  color-scheme: light;
+  --background: #eef3ee;
+  --foreground: #1c2a23;
+  --card: #ffffff;
+  --card-foreground: #1c2a23;
+  --muted: #e4ebe3;
+  --muted-foreground: #5f6e65;
+  --border: #d6e0d5;
+  --primary: #7b2d5b;
+  --primary-foreground: #ffffff;
+  --destructive: #a53f48;
+  --star: #d9931c;
+  --shadow: 0 1px 2px rgb(28 42 35 / 6%), 0 6px 20px rgb(28 42 35 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #111a15;
+    --foreground: #f1f5ef;
+    --card: #1b2820;
+    --card-foreground: #f1f5ef;
+    --muted: #26382d;
+    --muted-foreground: #a6b8ac;
+    --border: #34493c;
+    --primary: #d08ab4;
+    --primary-foreground: #2a0f1f;
+    --destructive: #f29a9a;
+    --star: #f0b03a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 20px rgb(0 0 0 / 25%);
+  }
+}
 
 @layer base {
-  * { @apply border-border; }
-  html { font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif; }
-  body { @apply bg-background text-foreground; }
-  button, input { font: inherit; }
+  * {
+    @apply border-border;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+    padding-top: env(safe-area-inset-top);
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+/* Surfaces */
+.surface {
+  background: var(--card);
+  color: var(--card-foreground);
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+.surface-soft {
+  background: var(--muted);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+.empty {
+  border: 1.5px dashed var(--border);
+  border-radius: 24px;
+  padding: 36px 20px;
+  text-align: center;
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+}
+
+/* Form controls (16px text prevents iOS zoom-on-focus) */
+.field {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 16px;
+  font-size: 16px;
+}
+textarea.field {
+  padding: 12px 16px;
+  min-height: 80px;
+  resize: vertical;
+}
+/* These sit after .field on purpose: Tailwind utilities lose to this unlayered sheet. */
+.field-icon {
+  padding-left: 44px;
+}
+.field-emoji {
+  width: 64px;
+  flex: none;
+  padding: 0;
+  text-align: center;
+}
+.field::placeholder {
+  color: var(--muted-foreground);
+}
+.field:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-color: transparent;
+}
+
+/* Buttons */
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 16px;
+  font-weight: 700;
+  font-size: 15px;
+  transition:
+    transform 0.12s ease,
+    opacity 0.12s ease;
+  text-decoration: none;
+}
+.primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 0;
+}
+.secondary {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: var(--shadow);
+}
+
+/* Chips & tags */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 600;
+}
+.chip-sm {
+  padding: 0 12px;
+  font-size: 13px;
+}
+.chip-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Bottom sheet */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(10 18 14 / 48%);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.18s ease;
+}
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--background);
+  border-radius: 28px 28px 0 0;
+  padding: 10px 18px calc(24px + env(safe-area-inset-bottom));
+  animation: sheet-up 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.sheet-handle {
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 0 auto 14px;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Tab bar */
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+}
+.tab-bar-hidden {
+  display: none;
+}
+.tab-bar button {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  border-radius: 14px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding-inline: 2px;
+}
+.tab-bar .tab-active {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* Map markers */
+.marker {
+  min-width: 38px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 13px;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+}
+.marker-been {
+  background: #7b2d5b;
+  color: #fff;
+}
+.marker-want {
+  background: #fff;
+  color: #7b2d5b;
+  border-color: #7b2d5b;
+}
+/* Pins you've been to are coloured by how much you liked them. */
+.marker-great {
+  background: #2f7d4f;
+  color: #fff;
+}
+.marker-ok {
+  background: #d9931c;
+  color: #1c2a23;
+}
+.marker-low {
+  background: #8a8f8c;
+  color: #fff;
+}
+
+/* Loading skeleton */
+.skeleton {
+  border-radius: 24px;
+  background: linear-gradient(90deg, var(--muted) 25%, var(--card) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Autocomplete results */
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.suggestions button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  color: var(--foreground);
+}
+.suggestions button:last-child {
+  border-bottom: 0;
+}
+.suggestions button:active {
+  background: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 0-100 dish score slider */
+.points-slider {
+  accent-color: var(--primary, #7b2d5b);
+  height: 44px;
+  touch-action: pan-y;
 }
