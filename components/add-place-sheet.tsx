@@ -72,7 +72,7 @@ export function AddPlaceSheet({
             tags: [],
           })
           .select(
-            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),dishes(*,dish_ratings(score,points,user_id,notes))',
+            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))',
           )
           .single()
         if (error) throw error

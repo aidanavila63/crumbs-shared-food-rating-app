@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes } from '@/lib/undoable'
 import { createClient } from '@/lib/supabase'
+import type { Facts, Hours } from '@/lib/place-info'
 
 export type Status = 'Been' | 'Want to try'
 export type Rating = { user_id: string; score: number; notes: string | null; points?: number | null }
 export type PlaceVisit = { id: string; place_id: string; visited_on: string; spend: number | null }
 export type Dish = {
+  verdict?: 'again' | 'never' | null
+  tags?: string[]
   id: string
   place_id: string
   name: string
@@ -35,6 +38,10 @@ export type Place = {
   pinned: boolean
   visited_on?: string | null
   photo_path?: string | null
+  opening_hours?: Hours | null
+  business_status?: string | null
+  hours_checked_at?: string | null
+  place_facts?: Facts | Facts[] | null
   place_visits?: PlaceVisit[]
   tags: string[]
   created_at: string
@@ -42,13 +49,22 @@ export type Place = {
   dishes?: Dish[]
 }
 export type Group = { id: string; name: string; join_code: string; created_by: string }
-export type Profile = { id: string; display_name: string; avatar_url: string | null }
+export type Profile = {
+  id: string
+  display_name: string
+  avatar_url: string | null
+  avoid?: string[] | null
+  blind_ratings?: boolean | null
+}
 export type List = {
   id: string
   group_id: string
   name: string
   emoji: string
   list_places?: { place_id: string }[]
+  trip_city?: string | null
+  starts_on?: string | null
+  ends_on?: string | null
 }
 
 const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
@@ -101,7 +117,7 @@ export function useCrumbsData() {
         supabase
           .from('places')
           .select(
-            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),dishes(*,dish_ratings(score,points,user_id,notes))',
+            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))',
           )
           .eq('group_id', group.id)
           .order('pinned', { ascending: false })
@@ -119,7 +135,7 @@ export function useCrumbsData() {
     if (ids.length) {
       const { data: rows } = await supabase
         .from('profiles')
-        .select('id,display_name,avatar_url')
+        .select('id,display_name,avatar_url,avoid,blind_ratings')
         .in('id', ids)
       profileRows = (rows ?? []) as Profile[]
     }
@@ -212,6 +228,7 @@ export function useCrumbsData() {
         scheduleLoad,
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'place_visits' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_facts' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)
@@ -246,6 +263,7 @@ export function useCrumbsData() {
     lists,
     setLists,
     members,
+    setMembers,
     groupsLoaded,
     loading,
     demo,

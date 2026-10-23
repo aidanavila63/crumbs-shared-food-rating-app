@@ -2,12 +2,15 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes, undoableDelete } from '@/lib/undoable'
-import type { Dish, List, Place, Status } from '@/hooks/use-crumbs-data'
+import type { Dish, List, Place, Profile, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
-import { dishPoints } from '@/lib/stats'
+import { dishAverage, dishPoints } from '@/lib/stats'
+import { ALLERGENS, dishWarnings, normaliseFacts, placeWarnings } from '@/lib/place-info'
+import { PlaceHours } from './place-hours'
+import { FactsEditor } from './facts-editor'
 import { notifyMates } from '@/lib/push'
 import { Sheet } from './sheet'
 import { placeAverage } from './place-card'
@@ -19,9 +22,11 @@ function DishRow({
   groupId,
   supabase,
   demo,
+  members,
   onRate,
   onNote,
   onPhoto,
+  onMeta,
   onRemove,
 }: {
   dish: Dish
@@ -32,12 +37,23 @@ function DishRow({
   demo: boolean
   onRate: (points: number) => void
   onNote: (note: string) => void
+  members: Profile[]
   onPhoto: (path: string | null) => Promise<boolean>
+  onMeta: (changes: { verdict?: 'again' | 'never' | null; tags?: string[] }) => void
   onRemove: () => void
 }) {
   const mine = dish.dish_ratings.find((rating) => rating.user_id === userId)
   const [note, setNote] = useState(mine?.notes ?? '')
   const [open, setOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const [tag, setTag] = useState('')
+  const warnings = dishWarnings(dish, members)
+  const tags = dish.tags ?? []
+  function addTag(value: string) {
+    const clean = value.trim().toLowerCase().slice(0, 20)
+    if (clean && !tags.includes(clean)) onMeta({ tags: [...tags, clean] })
+    setTag('')
+  }
   const others = dish.dish_ratings.filter((rating) => rating.user_id !== userId)
   return (
     <div className="surface-soft flex flex-col gap-2">
@@ -53,6 +69,55 @@ function DishRow({
         </div>
       </div>
       <PointsSlider label={dish.name} value={mine ? dishPoints(mine) : null} onCommit={onRate} />
+      <div className="flex flex-wrap items-center gap-2">
+        {(['again', 'never'] as const).map((kind) => (
+          <button
+            key={kind}
+            aria-pressed={dish.verdict === kind}
+            className={`chip chip-sm ${dish.verdict === kind ? 'chip-active' : ''}`}
+            onClick={() => onMeta({ verdict: dish.verdict === kind ? null : kind })}
+          >
+            {kind === 'again' ? '👍 Order again' : '👎 Never again'}
+          </button>
+        ))}
+        {tags.map((item) => (
+          <button
+            key={item}
+            className="tag"
+            aria-label={`Remove tag ${item}`}
+            onClick={() => onMeta({ tags: tags.filter((t) => t !== item) })}
+          >
+            {item} ×
+          </button>
+        ))}
+        {warnings.map((warning) => (
+          <span className="tag text-destructive" key={warning.label}>
+            ⚠ {warning.label} · {warning.who.join(', ')} avoids
+          </span>
+        ))}
+      </div>
+      {tagsOpen && (
+        <div className="flex flex-col gap-2">
+          <input
+            aria-label="Add a tag"
+            className="field"
+            placeholder="Tag (spicy, pizza, shareable…)"
+            value={tag}
+            onChange={(event) => setTag(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && addTag(tag)}
+            onBlur={() => addTag(tag)}
+          />
+          <div className="chip-row">
+            {['spicy', 'shareable', 'vegetarian', 'dessert', 'drink', ...ALLERGENS.map((a) => a.toLowerCase())]
+              .filter((item) => !tags.includes(item))
+              .map((item) => (
+                <button key={item} className="chip chip-sm" onClick={() => addTag(item)}>
+                  + {item}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
       {others.map((rating) => (
         <p className="text-sm" key={rating.user_id}>
           <strong>{names[rating.user_id] ?? 'Partner'}</strong>: {dishPoints(rating)}/100
@@ -83,6 +148,9 @@ function DishRow({
         <button className="underline" onClick={() => setOpen(!open)}>
           {open ? 'Hide note' : mine?.notes ? 'Edit note' : 'Add note'}
         </button>
+        <button className="underline" onClick={() => setTagsOpen(!tagsOpen)}>
+          {tagsOpen ? 'Done with tags' : 'Tags'}
+        </button>
         <button className="underline" onClick={onRemove}>
           Remove
         </button>
@@ -95,6 +163,7 @@ export function PlaceSheet({
   place,
   userId,
   names = {},
+  members = [],
   lists = [],
   onLists,
   demo,
@@ -107,6 +176,7 @@ export function PlaceSheet({
   place: Place
   userId?: string
   names?: Record<string, string>
+  members?: Profile[]
   lists?: List[]
   onLists?: (lists: List[]) => void
   demo: boolean
@@ -319,6 +389,16 @@ export function PlaceSheet({
     }
     return true
   }
+  async function setDishMeta(dishId: string, changes: { verdict?: 'again' | 'never' | null; tags?: string[] }) {
+    const before = dishes
+    setDishes((current) => current.map((item) => (item.id === dishId ? { ...item, ...changes } : item)))
+    if (demo) return
+    const { error } = await supabase.from('dishes').update(changes).eq('id', dishId)
+    if (error) {
+      setDishes(before)
+      toast.error(error.message)
+    }
+  }
   async function setPlacePhoto(path: string | null) {
     const { error } = await supabase.from('places').update({ photo_path: path }).eq('id', place.id)
     if (error) {
@@ -399,6 +479,11 @@ export function PlaceSheet({
       },
     })
   }
+  const warnings = placeWarnings(normaliseFacts(place.place_facts), members)
+  const order = dishes.filter(
+    (dish) => dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
+  )
+  const skip = dishes.filter((dish) => dish.verdict === 'never')
   return (
     <Sheet label={place.name} onClose={onClose}>
       <div className="flex items-start justify-between gap-3">
@@ -407,6 +492,7 @@ export function PlaceSheet({
           <p className="mt-1 text-sm text-muted-foreground">
             {place.formatted_address || 'Address not added'}
           </p>
+          <PlaceHours place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×
@@ -421,6 +507,31 @@ export function PlaceSheet({
           demo={demo}
           onChange={setPlacePhoto}
         />
+        {warnings.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {warnings.map((warning) => (
+              <span className="tag text-destructive" key={warning.label}>
+                ⚠ {warning.label} · {warning.who.join(', ')} avoids
+              </span>
+            ))}
+          </div>
+        )}
+        {(order.length > 0 || skip.length > 0) && (
+          <div className="surface-soft flex flex-col gap-1">
+            <h3 className="font-serif text-xl font-bold">What to order</h3>
+            {order.map((dish) => (
+              <p key={dish.id} className="text-sm">
+                👍 <strong>{dish.name}</strong>
+                {dishAverage(dish) !== null ? ` · ${dishAverage(dish)}/100` : ''}
+              </p>
+            ))}
+            {skip.map((dish) => (
+              <p key={dish.id} className="text-sm text-muted-foreground">
+                👎 Skip the {dish.name}
+              </p>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Group average</p>
@@ -471,6 +582,7 @@ export function PlaceSheet({
             </div>
           </div>
         )}
+        <FactsEditor place={place} supabase={supabase} demo={demo} userId={userId} onUpdate={onUpdate} />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         <div className="flex flex-col gap-2">
           <h3 className="font-serif text-xl font-bold">Ratings</h3>
@@ -543,7 +655,9 @@ export function PlaceSheet({
                 supabase={supabase}
                 demo={demo}
                 onRate={(next) => rateDish(dish.id, next)}
+                members={members}
                 onPhoto={(path) => setDishPhoto(dish.id, path)}
+                onMeta={(changes) => setDishMeta(dish.id, changes)}
                 onNote={(note) => saveDishNote(dish.id, note)}
                 onRemove={() => removeDish(dish.id)}
               />

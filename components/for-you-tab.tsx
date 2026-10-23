@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import { StatsPanel } from './stats-panel'
+import { PhotoTimeline } from './photo-timeline'
 import { placeAverage } from './place-card'
 
 type Idea = { title: string; why: string }
@@ -170,6 +171,8 @@ export function ForYouTab({
         names={names}
         onSelect={onSelect}
       />
+
+      <PhotoTimeline places={places} onSelect={onSelect} />
 
       <div className="surface flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

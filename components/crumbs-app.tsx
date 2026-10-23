@@ -14,8 +14,13 @@ import { GroupTab } from './group-tab'
 import { MapsProvider } from './maps-provider'
 import { SurpriseSheet } from './surprise-sheet'
 import { notifyMates } from '@/lib/push'
+import { GoalsTab } from './goals-tab'
+import { TonightCard } from './tonight-card'
+import { CravingButton } from './craving-button'
+import { HoursRefresher } from './place-hours'
+import { maskRatings, mergeMasked } from '@/lib/place-info'
 
-const tabs = ['Places', 'Map', 'Lists', 'For you', 'Group']
+const tabs = ['Places', 'Map', 'Lists', 'Goals', 'For you', 'Group']
 export function CrumbsApp() {
   return (
     <MapsProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
@@ -63,7 +68,33 @@ function CrumbsShell() {
     }
   }, [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selected = data.places.find((place) => place.id === selectedId) ?? null
+  const userId = data.user?.id
+  const me = data.members.find((member) => member.id === userId) ?? null
+  const blind = !!me?.blind_ratings
+  // With blind ratings on, everything you look at is a copy with your partner's scores hidden
+  // for places and dishes you haven't rated. The real ratings stay in data.places.
+  const view = useMemo(() => (blind ? maskRatings(data.places, userId) : data.places), [blind, data.places, userId])
+  const selected = view.find((place) => place.id === selectedId) ?? null
+  const [home, setHomeState] = useState<{ lat: number; lng: number } | null>(null)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('crumbs-home') ?? 'null')
+      if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) setHomeState(saved)
+    } catch {}
+  }, [])
+  function setHome(next: { lat: number; lng: number } | null) {
+    setHomeState(next)
+    try {
+      next ? localStorage.setItem('crumbs-home', JSON.stringify(next)) : localStorage.removeItem('crumbs-home')
+    } catch {}
+  }
+  const [tripMapId, setTripMapId] = useState<string | null>(null)
+  const tripList = data.lists.find((list) => list.id === tripMapId) ?? null
+  const mapPlaces = useMemo(() => {
+    if (!tripList) return view
+    const ids = new Set((tripList.list_places ?? []).map((item) => item.place_id))
+    return view.filter((place) => ids.has(place.id))
+  }, [view, tripList])
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'A–Z'>('Newest')
   const [adding, setAdding] = useState(false)
@@ -81,7 +112,7 @@ function CrumbsShell() {
   )
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const list = data.places.filter((place) => {
+    const list = view.filter((place) => {
       const inFilter =
         filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
       const haystack =
@@ -91,7 +122,7 @@ function CrumbsShell() {
     if (sort === 'Top rated') return [...list].sort((a, b) => placeAverage(b) - placeAverage(a))
     if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
     return list
-  }, [data.places, filter, query, sort])
+  }, [view, filter, query, sort])
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -327,6 +358,7 @@ function CrumbsShell() {
                 </button>
               ))}
             </div>
+            {!data.loading && <TonightCard places={view} members={data.members} onOpen={setSelected} />}
             <div className="flex items-center justify-between gap-2">
               <div className="chip-row min-w-0">
                 {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
@@ -347,6 +379,7 @@ function CrumbsShell() {
                 🎲 Surprise us
               </button>
             </div>
+            <CravingButton groupId={data.group.id} />
             {data.loading ? (
               <div
                 className="flex flex-col gap-4"
@@ -359,7 +392,15 @@ function CrumbsShell() {
               </div>
             ) : filtered.length ? (
               filtered.map((place) => (
-                <PlaceCard key={place.id} place={place} names={names} onSelect={setSelected} />
+                <PlaceCard
+                  key={place.id}
+                  place={place}
+                  names={names}
+                  members={data.members}
+                  home={home}
+                  hidden={blind && !place.place_ratings.some((rating) => rating.user_id === userId) && data.places.find((real) => real.id === place.id)!.place_ratings.some((rating) => rating.user_id !== userId)}
+                  onSelect={setSelected}
+                />
               ))
             ) : (
               <WelcomeCard
@@ -371,11 +412,23 @@ function CrumbsShell() {
           </section>
         )}
         {tab === 'Map' && (
+          <>
+            {tripList && (
+              <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
+                <span>
+                  ✈️ Showing <strong>{tripList.trip_city || tripList.name}</strong> only
+                </span>
+                <button className="text-primary underline" onClick={() => setTripMapId(null)}>
+                  Show everything
+                </button>
+              </div>
+            )}
           <MapTab
-            places={data.places}
+            places={mapPlaces}
             apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
             onSelect={setSelected}
           />
+          </>
         )}
         {tab === 'Lists' && (
           <ListsTab
@@ -386,11 +439,16 @@ function CrumbsShell() {
             demo={data.demo}
             supabase={data.supabase}
             onLists={data.setLists}
+            onShowOnMap={(id) => {
+              setTripMapId(id)
+              setTab('Map')
+            }}
           />
         )}
+        {tab === 'Goals' && <GoalsTab places={data.places} />}
         {tab === 'For you' && (
           <ForYouTab
-            places={data.places}
+            places={view}
             members={data.members}
             userId={data.user?.id}
             names={names}
@@ -406,6 +464,14 @@ function CrumbsShell() {
             profile={data.members.find((m) => m.id === data.user?.id) ?? null}
             userId={data.user?.id}
             supabase={data.supabase}
+            demo={data.demo}
+            home={home}
+            onHome={setHome}
+            onProfile={(changes) =>
+              data.setMembers((current) =>
+                current.map((member) => (member.id === userId ? { ...member, ...changes } : member)),
+              )
+            }
             onGroup={data.setGroup}
             onLeft={(id) => {
               const rest = data.groups.filter((g) => g.id !== id)
@@ -430,7 +496,8 @@ function CrumbsShell() {
       </nav>
       {surprising && (
         <SurpriseSheet
-          places={data.places}
+          places={view}
+          members={data.members}
           onClose={() => setSurprising(false)}
           onOpen={(place) => {
             setSurprising(false)
@@ -456,14 +523,16 @@ function CrumbsShell() {
           place={selected}
           userId={data.user.id}
           names={names}
+          members={data.members}
           lists={data.lists}
           onLists={data.setLists}
           demo={data.demo}
           supabase={data.supabase}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
-            data.setPlaces(data.places.map((item) => (item.id === place.id ? place : item)))
-            setSelected(place)
+            data.setPlaces(
+              data.places.map((item) => (item.id === place.id ? (blind ? mergeMasked(item, place, userId) : place) : item)),
+            )
           }}
           onDelete={() => {
             data.setPlaces((current) => current.filter((item) => item.id !== selected.id))
@@ -473,6 +542,16 @@ function CrumbsShell() {
             data.setPlaces((current) =>
               current.some((item) => item.id === restored.id) ? current : [restored, ...current],
             )
+          }
+        />
+      )}
+      {!data.loading && (
+        <HoursRefresher
+          places={data.places}
+          supabase={data.supabase}
+          demo={data.demo}
+          onPlace={(id, changes) =>
+            data.setPlaces((current) => current.map((item) => (item.id === id ? { ...item, ...changes } : item)))
           }
         />
       )}

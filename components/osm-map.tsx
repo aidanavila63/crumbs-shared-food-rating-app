@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
+import { markerClass } from '@/lib/place-info'
 import 'leaflet/dist/leaflet.css'
 
 type Target = { lat: number; lng: number } | null
@@ -60,7 +61,7 @@ export function OsmMap({
       const average = placeAverage(place)
       const icon = L.divIcon({
         className: '',
-        html: `<div class="marker ${place.status === 'Been' ? 'marker-been' : 'marker-want'}">${
+        html: `<div class="marker ${markerClass(place, average)}">${
           average ? average.toFixed(1) : '+'
         }</div>`,
         iconSize: [44, 30],

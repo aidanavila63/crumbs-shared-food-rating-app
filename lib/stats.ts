@@ -182,6 +182,7 @@ export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; ln
 export function surprisePool(places: Place[], filters: SurpriseFilters) {
   return places.filter((place) => {
     if (place.status !== 'Want to try') return false
+    if (place.business_status === 'CLOSED_PERMANENTLY') return false
     if (filters.cuisine && place.cuisine !== filters.cuisine) return false
     if (filters.maxPrice && place.price_level && place.price_level > filters.maxPrice) return false
     if (filters.pinnedOnly && !place.pinned) return false

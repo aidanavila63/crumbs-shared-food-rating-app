@@ -1,6 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
-import type { Place } from '@/hooks/use-crumbs-data'
+import type { Place, Profile } from '@/hooks/use-crumbs-data'
+import { normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
 import { surprisePool } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { Sheet } from './sheet'
@@ -8,10 +9,12 @@ import { Sheet } from './sheet'
 /** Pick a want-to-try place at random, from only the ones that fit what you feel like. */
 export function SurpriseSheet({
   places,
+  members = [],
   onOpen,
   onClose,
 }: {
   places: Place[]
+  members?: Profile[]
   onOpen: (place: Place) => void
   onClose: () => void
 }) {
@@ -19,6 +22,8 @@ export function SurpriseSheet({
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [pinnedOnly, setPinnedOnly] = useState(false)
   const [near, setNear] = useState(false)
+  const [openNow, setOpenNow] = useState(false)
+  const [skipWarned, setSkipWarned] = useState(true)
   const [picked, setPicked] = useState<Place | null>(null)
   const location = useUserLocation(near)
   const wishlist = useMemo(() => places.filter((place) => place.status === 'Want to try'), [places])
@@ -31,7 +36,12 @@ export function SurpriseSheet({
     maxPrice,
     pinnedOnly,
     nearMe: near ? location : null,
-  })
+  }).filter(
+    (place) =>
+      // Hours we haven't looked up yet count as "maybe open".
+      (!openNow || openStatus(place.opening_hours)?.open !== false) &&
+      (!skipWarned || !placeWarnings(normaliseFacts(place.place_facts), members).length),
+  )
   const waiting = near && !location
 
   function spin() {
@@ -98,6 +108,12 @@ export function SurpriseSheet({
           </button>
           <button aria-pressed={near} className={chip(near)} onClick={() => setNear(!near)}>
             📍 Within 10 km
+          </button>
+          <button aria-pressed={openNow} className={chip(openNow)} onClick={() => setOpenNow(!openNow)}>
+            🕒 Open now
+          </button>
+          <button aria-pressed={skipWarned} className={chip(skipWarned)} onClick={() => setSkipWarned(!skipWarned)}>
+            ⚠ Skip dealbreakers
           </button>
         </div>
         <p className="text-xs text-muted-foreground">

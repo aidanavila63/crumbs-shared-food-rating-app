@@ -2,6 +2,9 @@
 import { MapPin, Pin } from 'lucide-react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
+import { isClosedForever, normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
+import { distanceKm } from '@/lib/stats'
+import type { Profile } from '@/hooks/use-crumbs-data'
 export function placeAverage(place: Place) {
   return place.place_ratings.length
     ? place.place_ratings.reduce((sum, rating) => sum + rating.score, 0) /
@@ -11,13 +14,25 @@ export function placeAverage(place: Place) {
 export function PlaceCard({
   place,
   names = {},
+  members = [],
+  home = null,
+  hidden = false,
   onSelect,
 }: {
   place: Place
   names?: Record<string, string>
+  members?: Profile[]
+  home?: { lat: number; lng: number } | null
+  hidden?: boolean
   onSelect: (place: Place) => void
 }) {
   const average = placeAverage(place)
+  const warnings = placeWarnings(normaliseFacts(place.place_facts), members)
+  const hours = openStatus(place.opening_hours)
+  const away =
+    home && place.latitude !== null && place.longitude !== null
+      ? distanceKm(home, { lat: place.latitude, lng: place.longitude })
+      : null
   return (
     <button
       type="button"
@@ -35,6 +50,21 @@ export function PlaceCard({
             <MapPin size={14} />
             {place.formatted_address || 'Address not added'}
           </p>
+          {(isClosedForever(place) || hours || away !== null) && (
+            <p className="mt-1 text-sm font-semibold">
+              {isClosedForever(place) ? (
+                <span className="text-destructive">⚠ Permanently closed</span>
+              ) : (
+                hours && <span className={hours.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}>{hours.open ? '●' : '○'} {hours.text}</span>
+              )}
+              {away !== null && (
+                <span className="font-normal text-muted-foreground">
+                  {!isClosedForever(place) && hours ? ' · ' : ''}
+                  {away < 1 ? `${Math.round(away * 1000)} m` : `${away.toFixed(1)} km`} from home
+                </span>
+              )}
+            </p>
+          )}
           {(place.cuisine || place.price_level) && (
             <p className="mt-1 text-sm text-muted-foreground">
               {[place.cuisine, place.price_level ? '$'.repeat(place.price_level) : null]
@@ -55,6 +85,18 @@ export function PlaceCard({
         </span>
         <RatingStars value={Math.round(average)} />
       </div>
+      {hidden && (
+        <p className="text-sm text-muted-foreground">🙈 Blind ratings on. Rate it to see each other’s scores.</p>
+      )}
+      {warnings.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {warnings.map((warning) => (
+            <span className="tag text-destructive" key={warning.label}>
+              ⚠ {warning.label} · {warning.who.join(', ')} avoids
+            </span>
+          ))}
+        </div>
+      )}
       {place.place_ratings.length > 0 && (
         <div className="flex flex-wrap gap-2 text-sm">
           {place.place_ratings.map((rating) => (

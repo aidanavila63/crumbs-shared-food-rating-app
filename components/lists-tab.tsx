@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { undoableDelete } from '@/lib/undoable'
 import type { List, Place } from '@/hooks/use-crumbs-data'
 import { ShareList } from './share-list'
+import { TripPanel } from './trip-panel'
 export function ListsTab({
   lists,
   places,
@@ -12,6 +13,7 @@ export function ListsTab({
   demo,
   supabase,
   onLists,
+  onShowOnMap,
 }: {
   lists: List[]
   places: Place[]
@@ -20,6 +22,7 @@ export function ListsTab({
   demo: boolean
   supabase: any
   onLists: (lists: List[]) => void
+  onShowOnMap?: (listId: string) => void
 }) {
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('♡')
@@ -127,6 +130,7 @@ export function ListsTab({
           <h2 className="mt-3 font-serif text-2xl font-bold">
             {active.emoji} {active.name}
           </h2>
+          <TripPanel list={active} lists={lists} places={places} supabase={supabase} demo={demo} onLists={onLists} onShowOnMap={onShowOnMap ?? (() => {})} />
           <div className="mt-4 flex flex-col gap-2">
             {[...places]
               .sort(

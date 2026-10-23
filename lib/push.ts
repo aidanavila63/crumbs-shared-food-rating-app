@@ -6,11 +6,12 @@ export type NotifyPayload =
   | { type: 'place_added'; placeId: string }
   | { type: 'place_rating'; placeId: string; value: number }
   | { type: 'dish_rating'; placeId: string; dishName: string; value: number }
+  | { type: 'craving'; groupId: string; text: string }
 
 export function notifyMates(payload: NotifyPayload) {
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_DEMO_MODE === 'true')
     return
-  const key = JSON.stringify([payload.type, payload.placeId, (payload as any).dishName])
+  const key = JSON.stringify([payload.type, (payload as any).placeId, (payload as any).dishName, (payload as any).text])
   if (Date.now() - (recent.get(key) ?? 0) < 60_000) return
   recent.set(key, Date.now())
   fetch('/api/notify', {

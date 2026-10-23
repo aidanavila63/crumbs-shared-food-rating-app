@@ -301,8 +301,9 @@ textarea.field {
   background: transparent;
   border-radius: 14px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
+  padding-inline: 2px;
 }
 .tab-bar .tab-active {
   color: var(--primary);
@@ -328,6 +329,19 @@ textarea.field {
   background: #fff;
   color: #7b2d5b;
   border-color: #7b2d5b;
+}
+/* Pins you've been to are coloured by how much you liked them. */
+.marker-great {
+  background: #2f7d4f;
+  color: #fff;
+}
+.marker-ok {
+  background: #d9931c;
+  color: #1c2a23;
+}
+.marker-low {
+  background: #8a8f8c;
+  color: #fff;
 }
 
 /* Loading skeleton */

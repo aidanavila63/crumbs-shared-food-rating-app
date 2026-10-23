@@ -141,3 +141,85 @@ test('reads names and pins out of Google Maps links', () => {
   assert.equal(isMapsHost('evil.com', '/maps/place/x'), false)
   assert.equal(isMapsHost('google.com.evil.com', '/maps'), false)
 })
+
+import { dishWarnings, hoursFromGoogle, maskRatings, mergeMasked, openStatus, placeWarnings, tonightPick } from '../lib/place-info.ts'
+import { monthlyChallenges, tripSummary, visitStreak } from '../lib/goals.ts'
+
+const mon9to5 = { utc: 0, periods: [1, 2, 3, 4, 5].map((d) => ({ o: [d, 9, 0] as [number, number, number], c: [d, 17, 0] as [number, number, number] })) }
+
+test('open now: inside, outside, and across midnight', () => {
+  assert.equal(openStatus(mon9to5, new Date('2026-10-26T12:00:00Z'))?.open, true) // Monday noon
+  assert.equal(openStatus(mon9to5, new Date('2026-10-26T12:00:00Z'))?.text, 'Open · closes 5 PM')
+  assert.equal(openStatus(mon9to5, new Date('2026-10-24T12:00:00Z'))?.text, 'Closed · opens Mon 9 AM') // Saturday
+  const late = { utc: 0, periods: [{ o: [5, 18, 0] as [number, number, number], c: [6, 2, 0] as [number, number, number] }] }
+  assert.equal(openStatus(late, new Date('2026-10-24T01:00:00Z'))?.open, true) // Saturday 1am, bar open from Friday
+  assert.equal(openStatus(late, new Date('2026-10-24T05:00:00Z'))?.open, false)
+  assert.equal(openStatus(null), null)
+})
+
+test('opening hours use the place’s own time zone', () => {
+  const tokyo = { ...mon9to5, utc: 540 }
+  assert.equal(openStatus(tokyo, new Date('2026-10-26T01:00:00Z'))?.open, true) // 10:00 in Tokyo
+})
+
+test('google hours are shrunk to the cached shape', () => {
+  const hours = hoursFromGoogle({ utcOffsetMinutes: -240, regularOpeningHours: { periods: [{ open: { day: 1, hour: 9, minute: 0 }, close: { day: 1, hour: 17, minute: 0 } }] } })
+  assert.deepEqual(hours, { utc: -240, periods: [{ o: [1, 9, 0], c: [1, 17, 0] }] })
+  assert.equal(hoursFromGoogle({}), null)
+})
+
+test('dealbreaker warnings name who they bother', () => {
+  const people = [{ display_name: 'Maya Lee', avoid: ['loud', 'a:shellfish'] }, { display_name: 'Jo', avoid: [] }]
+  const facts: any = { noise: 'loud', parking: 'easy', accessible: null, wait: null, cash_only: false, allergens: ['Shellfish'] }
+  assert.deepEqual(placeWarnings(facts, people), [{ label: 'Loud', who: ['Maya'] }, { label: 'Shellfish', who: ['Maya'] }])
+  assert.deepEqual(placeWarnings(null, people), [])
+  assert.deepEqual(dishWarnings({ tags: ['Shellfish', 'spicy'] }, people), [{ label: 'Shellfish', who: ['Maya'] }])
+})
+
+test('blind ratings hide partner scores until you rate, and merge back safely', () => {
+  const rated = (id: string, ...users: string[]): any =>
+    place({ id, place_ratings: users.map((u) => ({ user_id: u, score: 4, notes: null })), dishes: [{ id: 'd' + id, dish_ratings: users.map((u) => ({ user_id: u, score: 4 })) }] })
+  const masked = maskRatings([rated('1', 'them'), rated('2', 'me', 'them')], 'me')
+  assert.equal(masked[0].place_ratings.length, 0)
+  assert.equal(masked[0].dishes![0].dish_ratings.length, 0)
+  assert.equal(masked[1].place_ratings.length, 2)
+  const real = rated('1', 'them')
+  const merged = mergeMasked(real, { ...masked[0], place_ratings: [{ user_id: 'me', score: 5, notes: null }] }, 'me')
+  assert.equal(merged.place_ratings.length, 2)
+  assert.equal(merged.dishes![0].dish_ratings.length, 1)
+})
+
+test('tonight skips closed, dealbreaker and visited places', () => {
+  const people = [{ display_name: 'Maya', avoid: ['loud'] }]
+  const avg = () => 0
+  const places = [
+    place({ id: 'a', name: 'Loud', status: 'Want to try', place_facts: { noise: 'loud', allergens: [], cash_only: false } }),
+    place({ id: 'b', name: 'Gone', status: 'Want to try', business_status: 'CLOSED_PERMANENTLY' }),
+    place({ id: 'c', name: 'Shut', status: 'Want to try', opening_hours: mon9to5 }),
+    place({ id: 'd', name: 'Fine', status: 'Want to try' }),
+  ]
+  assert.equal(tonightPick(places, people, avg, new Date('2026-10-24T22:00:00Z'))?.place.name, 'Fine')
+  assert.equal(tonightPick([places[0]], people, avg), null)
+})
+
+test('streak counts weeks in a row and challenges count this month', () => {
+  const v = (d: string) => ({ id: d, place_id: 'x', visited_on: d, spend: null })
+  const places = [place({ cuisine: 'Thai', created_at: '2026-01-01', place_visits: [v('2026-10-05'), v('2026-10-14'), v('2026-10-21')] })]
+  const streak = visitStreak(places, new Date(2026, 9, 22))
+  assert.equal(streak.current, 3)
+  assert.equal(streak.best, 3)
+  const done = Object.fromEntries(monthlyChallenges(places, new Date(2026, 9, 22)).map((c) => [c.id, c.done]))
+  assert.equal(done.visits, 3)
+  assert.equal(done.places, 1) // first visit was 5 Oct
+  assert.equal(done.wishlist, 1) // added in January, first visited in October
+})
+
+test('trip summary counts only visits inside the trip dates', () => {
+  const v = (d: string, spend: number) => ({ id: d, place_id: 'x', visited_on: d, spend })
+  const inTrip = place({ id: 'x', status: 'Been', place_visits: [v('2026-11-02', 40), v('2026-09-01', 99)] })
+  const list: any = { id: 'l', group_id: 'g', name: 'Lisbon', emoji: '✈️', starts_on: '2026-11-01', ends_on: '2026-11-05', list_places: [{ place_id: 'x' }, { place_id: 'y' }] }
+  const summary = tripSummary(list, [inTrip, place({ id: 'y' })], new Date(2026, 10, 3))
+  assert.deepEqual({ ...summary }, { total: 2, visited: 1, spend: 40, when: 'Day 3 of 5' })
+  assert.equal(tripSummary(list, [], new Date(2026, 9, 29)).when, '3 days to go')
+  assert.equal(tripSummary(list, [], new Date(2026, 11, 1)).when, 'Trip finished')
+})

@@ -4,6 +4,7 @@ import { Copy, LogOut, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 import { NotificationsToggle } from './notifications-toggle'
+import { PreferencesCard } from './preferences-card'
 export function GroupTab({
   group,
   groups,
@@ -15,6 +16,10 @@ export function GroupTab({
   onGroup,
   onLeft,
   onSignOut,
+  demo = false,
+  home = null,
+  onHome = () => {},
+  onProfile = () => {},
 }: {
   group: Group
   groups: Group[]
@@ -26,6 +31,10 @@ export function GroupTab({
   supabase: any
   onGroup: (group: Group) => void
   onSignOut: () => void
+  demo?: boolean
+  home?: { lat: number; lng: number } | null
+  onHome?: (home: { lat: number; lng: number } | null) => void
+  onProfile?: (changes: Partial<Profile>) => void
 }) {
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
   useEffect(() => {
@@ -90,6 +99,7 @@ export function GroupTab({
           {saving ? 'Saving…' : 'Save name'}
         </button>
       </div>
+      <PreferencesCard profile={profile} userId={userId} supabase={supabase} demo={demo} home={home} onHome={onHome} onProfile={onProfile} />
       <div className="surface">
         <h2 className="font-serif text-2xl font-bold">Together so far</h2>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">

@@ -6,6 +6,7 @@ import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { OsmMap } from './osm-map'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
+import { markerClass } from '@/lib/place-info'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -138,7 +139,7 @@ export function MapTab({
                     onClick={() => setPreviewId(place.id)}
                   >
                     <div
-                      className={`marker ${place.status === 'Been' ? 'marker-been' : 'marker-want'}`}
+                      className={`marker ${markerClass(place, placeAverage(place))}`}
                     >
                       {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
                     </div>
