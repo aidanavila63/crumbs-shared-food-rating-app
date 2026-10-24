@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import { haptic } from '@/lib/motion'
 import { timeAgo } from './social'
+import { analyticsOn } from '@/lib/analytics'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -109,14 +110,12 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       : [...flags, { key, state, note: note ?? null }]
     setFlags(next)
     if (demo) return
-    const { error } = await supabase
-      .from('feature_flags')
-      .upsert({
-        key,
-        state,
-        note: note ?? next.find((f) => f.key === key)?.note ?? null,
-        updated_at: new Date().toISOString(),
-      })
+    const { error } = await supabase.from('feature_flags').upsert({
+      key,
+      state,
+      note: note ?? next.find((f) => f.key === key)?.note ?? null,
+      updated_at: new Date().toISOString(),
+    })
     if (error) {
       setFlags(before)
       toast.error(error.message)
@@ -154,6 +153,24 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         )}
         <p className="text-xs text-muted-foreground">
           Counts only — no personal data. Supabase and Vercel dashboards show storage and bandwidth.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {analyticsOn ? (
+            <>
+              Detailed usage (screens, features used, active days) is in{' '}
+              <a
+                className="underline"
+                href="https://app.posthog.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                PostHog
+              </a>
+              .
+            </>
+          ) : (
+            'PostHog analytics is off — add NEXT_PUBLIC_POSTHOG_KEY in Vercel to turn it on.'
+          )}
         </p>
       </section>
 

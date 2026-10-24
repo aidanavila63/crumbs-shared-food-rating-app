@@ -1,4 +1,5 @@
 'use client'
+import { track } from '@/lib/analytics'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes, undoableDelete } from '@/lib/undoable'
@@ -20,6 +21,9 @@ import {
   type CategoryKey,
 } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
+import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
+import { ReadPhotoButton } from './photo-reader'
+import { MenuReview } from './menu-review'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
@@ -306,6 +310,33 @@ export function PlaceSheet({
   const scale = v4 ? s.scale : '5'
   const status = place.status
   const [dishes, setDishes] = useState(place.dishes ?? [])
+  const [menuDraft, setMenuDraft] = useState<MenuLine[] | null>(null)
+  async function addMenuDishes(lines: MenuLine[]) {
+    setMenuDraft(null)
+    const rows = lines.map((line) => ({
+      place_id: place.id,
+      name: line.name.trim().slice(0, 120),
+      price: line.price,
+      description: line.description,
+      is_ai_suggestion: false,
+      created_by: userId,
+    }))
+    if (demo)
+      setDishes((current) => [
+        ...current,
+        ...rows.map((row) => ({ ...row, id: crypto.randomUUID(), dish_ratings: [] })),
+      ])
+    else {
+      const { data, error } = await supabase
+        .from('dishes')
+        .insert(rows)
+        .select('*,dish_ratings(score,points,user_id,notes)')
+      if (error) return toast.error(error.message)
+      setDishes((current) => [...current, ...(data ?? [])])
+    }
+    haptic('success')
+    toast.success(`Added ${rows.length} dish${rows.length === 1 ? '' : 'es'} from the menu photo`)
+  }
   // Pick up a partner's dishes/ratings when the data reloads (skipping ones mid-undo).
   useEffect(() => {
     setDishes((place.dishes ?? []).filter((dish) => !pendingDeletes.has(dish.id)))
@@ -335,8 +366,10 @@ export function PlaceSheet({
       })
     const { error } = await supabase.from('place_ratings').upsert(row)
     if (error) toast.error(error.message)
-    else if (next.score !== mine?.score)
+    else if (next.score !== mine?.score) {
+      track('rated', { scale, categories: CATEGORIES.some(({ key }) => next[key] != null) })
       notifyMates({ type: 'place_rating', placeId: place.id, value: next.score })
+    }
   }
   const rate = (value: number) => saveMine(scale === '5' ? { score: value, points: null } : fromInput(value, scale))
   async function toggleVibe(tag: string) {
@@ -857,6 +890,23 @@ export function PlaceSheet({
             </button>
             )}
           </div>
+          <ReadPhotoButton
+            label="Menu photo"
+            className="secondary self-start !min-h-10 !px-3 text-sm"
+            onText={(text) => {
+              const found = menuDishes(text)
+              if (!found.length) return toast('Couldn’t spot dishes with prices — try a closer photo')
+              setMenuDraft(found)
+            }}
+          />
+          {menuDraft && (
+            <MenuReview
+              lines={menuDraft}
+              existing={dishes.map((dish) => dish.name)}
+              onCancel={() => setMenuDraft(null)}
+              onSave={addMenuDishes}
+            />
+          )}
           {place.website && (
             <a
               className="text-sm font-semibold text-primary underline"

@@ -3,7 +3,7 @@ import { useShowScore } from './score-input'
 import { useEffect, useRef } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
-import { markerClass, type PinMode } from '@/lib/place-info'
+import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import 'leaflet/dist/leaflet.css'
 
 type Target = { lat: number; lng: number } | null
@@ -17,7 +17,16 @@ export function OsmMap({
   onBackgroundClick,
   pinMode = 'rating',
   selectedId = null,
+  route = [],
+  labels = {},
+  heat = false,
 }: {
+  /** #24 show warm spots instead of pins */
+  heat?: boolean
+  /** Pin text override (crawl stop numbers) */
+  labels?: Record<string, string>
+  /** #26 crawl: dashed walking line through the stops, in order */
+  route?: { lat: number; lng: number }[]
   places: Place[]
   center: { lat: number; lng: number }
   locateTarget: Target
@@ -68,12 +77,33 @@ export function OsmMap({
     const still = current.drawn ? ' marker-still' : ''
     current.drawn = true
     const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
+    if (route.length > 1)
+      L.polyline(
+        route.map((p) => [p.lat, p.lng]),
+        { color: '#7b2d5b', weight: 4, opacity: 0.8, dashArray: '8 10' },
+      ).addTo(layer)
+    if (heat) {
+      heatSpots(places).forEach((spot) =>
+        L.circle([spot.lat, spot.lng], {
+          radius: spot.radius,
+          stroke: false,
+          fillColor: '#d9541c',
+          fillOpacity: spot.opacity,
+        })
+          .on('click', (event: any) => {
+            L.DomEvent.stopPropagation(event)
+            callbacks.current.onPick(spot.id)
+          })
+          .addTo(layer),
+      )
+    }
     located.forEach((place) => {
+      if (heat) return
       const average = placeAverage(place)
       const icon = L.divIcon({
         className: '',
         html: `<div class="marker ${markerClass(place, average, pinMode)}${place.id === selectedId ? ' marker-selected' : ''}${still}">${
-          average ? show(average) : '+'
+          labels[place.id] ?? (average ? show(average) : '+')
         }</div>`,
         iconSize: [44, 30],
         iconAnchor: [22, 15],
@@ -96,7 +126,7 @@ export function OsmMap({
     }
   }
 
-  useEffect(draw, [places, pinMode, selectedId])
+  useEffect(draw, [places, pinMode, selectedId, route, labels, heat])
 
   useEffect(() => {
     if (locateTarget) state.current?.map.setView([locateTarget.lat, locateTarget.lng], 14)

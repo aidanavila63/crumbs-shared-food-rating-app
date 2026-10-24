@@ -528,6 +528,91 @@ begin
 end $$;
 
 -- ============================================================================================
+-- 13b. Your data (#88 delete account, #89 backups)
+-- ============================================================================================
+-- Deletes the signed-in account. Groups you own pass to the next member (admins first, then
+-- longest-standing); a group with nobody else in it is deleted. Things you added to a shared
+-- group (places, lists, visits, meals, plans…) stay for the group and are credited to its owner.
+-- Your own ratings, notes, reactions, comments and votes are deleted.
+create or replace function public.delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  g record;
+  heir uuid;
+begin
+  if me is null then raise exception 'Please sign in first'; end if;
+  for g in select id from public.groups where created_by = me loop
+    select user_id into heir from public.group_members
+     where group_id = g.id and user_id <> me
+     order by (role = 'admin') desc, joined_at
+     limit 1;
+    if heir is null then
+      delete from public.groups where id = g.id;
+    else
+      update public.groups set created_by = heir where id = g.id;
+      update public.group_members set role = 'owner' where group_id = g.id and user_id = heir;
+    end if;
+  end loop;
+  -- Hand over what you added to the (new) owner of each group.
+  update public.places p set created_by = gr.created_by from public.groups gr
+   where p.created_by = me and gr.id = p.group_id;
+  update public.lists l set created_by = gr.created_by from public.groups gr
+   where l.created_by = me and gr.id = l.group_id;
+  update public.list_places lp set added_by = gr.created_by from public.lists l join public.groups gr on gr.id = l.group_id
+   where lp.added_by = me and l.id = lp.list_id;
+  update public.list_shares ls set created_by = gr.created_by from public.lists l join public.groups gr on gr.id = l.group_id
+   where ls.created_by = me and l.id = ls.list_id;
+  update public.place_visits v set created_by = gr.created_by from public.places p join public.groups gr on gr.id = p.group_id
+   where v.created_by = me and p.id = v.place_id;
+  update public.home_meals m set created_by = gr.created_by from public.groups gr
+   where m.created_by = me and gr.id = m.group_id;
+  update public.home_meal_cooks c set created_by = gr.created_by from public.home_meals m join public.groups gr on gr.id = m.group_id
+   where c.created_by = me and m.id = c.meal_id;
+  update public.swipe_sessions s set created_by = gr.created_by from public.groups gr
+   where s.created_by = me and gr.id = s.group_id;
+  update public.plans pl set created_by = gr.created_by from public.groups gr
+   where pl.created_by = me and gr.id = pl.group_id;
+  update public.dishes set created_by = null where created_by = me;
+  update public.place_facts set updated_by = null where updated_by = me;
+  delete from auth.users where id = me;
+end $$;
+revoke execute on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+
+-- Everything a group has saved, as one JSON file (members only). Photos stay in storage.
+create or replace function public.export_group(target_group uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_group_member(target_group) then raise exception 'Not your group'; end if;
+  return jsonb_build_object(
+    'exported_at', now(),
+    'group', (select to_jsonb(g) - 'join_code' from public.groups g where id = target_group),
+    'members', (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'name', p.display_name, 'role', m.role)), '[]')
+                  from public.group_members m join public.profiles p on p.id = m.user_id where m.group_id = target_group),
+    'places', (select coalesce(jsonb_agg(to_jsonb(p) || jsonb_build_object(
+                  'ratings', (select coalesce(jsonb_agg(to_jsonb(r)), '[]') from public.place_ratings r where r.place_id = p.id),
+                  'visits', (select coalesce(jsonb_agg(to_jsonb(v)), '[]') from public.place_visits v where v.place_id = p.id),
+                  'facts', (select to_jsonb(f) from public.place_facts f where f.place_id = p.id),
+                  'dishes', (select coalesce(jsonb_agg(to_jsonb(d) || jsonb_build_object(
+                     'ratings', (select coalesce(jsonb_agg(to_jsonb(dr)), '[]') from public.dish_ratings dr where dr.dish_id = d.id))), '[]')
+                     from public.dishes d where d.place_id = p.id))), '[]')
+               from public.places p where p.group_id = target_group),
+    'lists', (select coalesce(jsonb_agg(to_jsonb(l) || jsonb_build_object(
+                 'places', (select coalesce(jsonb_agg(to_jsonb(lp)), '[]') from public.list_places lp where lp.list_id = l.id))), '[]')
+              from public.lists l where l.group_id = target_group),
+    'home_meals', (select coalesce(jsonb_agg(to_jsonb(m) || jsonb_build_object(
+                 'ratings', (select coalesce(jsonb_agg(to_jsonb(r)), '[]') from public.home_meal_ratings r where r.meal_id = m.id),
+                 'cooks', (select coalesce(jsonb_agg(to_jsonb(c)), '[]') from public.home_meal_cooks c where c.meal_id = m.id))), '[]')
+              from public.home_meals m where m.group_id = target_group),
+    'plans', (select coalesce(jsonb_agg(to_jsonb(pl)), '[]') from public.plans pl where pl.group_id = target_group),
+    'comments', (select coalesce(jsonb_agg(to_jsonb(c)), '[]') from public.comments c where c.group_id = target_group)
+  );
+end $$;
+revoke execute on function public.export_group(uuid) from public, anon;
+grant execute on function public.export_group(uuid) to authenticated;
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

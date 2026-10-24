@@ -1,5 +1,6 @@
 'use client'
 // #77 Home cooking: meals you make yourselves, kept apart from restaurants.
+import { track } from '@/lib/analytics'
 import { useMemo, useState } from 'react'
 import { ChefHat, Dices, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -120,6 +121,7 @@ export function HomeTab({
         if (cook) meal = { ...meal, home_meal_cooks: [cook] }
       }
       setMeals((current) => [meal, ...current])
+      track('home_meal_added', { status })
       haptic('success')
       setName('')
       setAdding(false)

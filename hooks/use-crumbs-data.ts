@@ -312,7 +312,7 @@ export function useCrumbsData() {
           .eq('group_id', group.id)
           .order('pinned', { ascending: false })
           .order('created_at', { ascending: false }),
-        supabase.from('lists').select('*,list_places(place_id)').eq('group_id', group.id),
+        supabase.from('lists').select('*,list_places(*)').eq('group_id', group.id),
       ])
     if (placesError) throw placesError
     if (listsError) throw listsError

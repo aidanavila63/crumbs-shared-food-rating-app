@@ -7,7 +7,7 @@ import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { OsmMap } from './osm-map'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
-import { markerClass, type PinMode } from '@/lib/place-info'
+import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
@@ -31,6 +31,51 @@ function FitBounds({ places }: { places: Place[] }) {
   }, [map, key])
   return null
 }
+/** #26 dashed walking line for a food crawl (Google map). */
+function RouteLine({ route }: { route: { lat: number; lng: number }[] }) {
+  const map = useMap()
+  useEffect(() => {
+    const g = (globalThis as any).google
+    if (!map || !g || route.length < 2) return
+    const line = new g.maps.Polyline({
+      path: route,
+      map,
+      strokeOpacity: 0,
+      icons: [
+        {
+          icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.85, strokeColor: '#7b2d5b', scale: 4 },
+          offset: '0',
+          repeat: '16px',
+        },
+      ],
+    })
+    return () => line.setMap(null)
+  }, [map, route])
+  return null
+}
+/** #24 heatmap on the Google map: warm circles (Google's own heatmap layer is retired). */
+function HeatCircles({ places, onPick }: { places: Place[]; onPick: (id: string) => void }) {
+  const map = useMap()
+  useEffect(() => {
+    const g = (globalThis as any).google
+    if (!map || !g) return
+    const circles = heatSpots(places).map((spot) => {
+      const circle = new g.maps.Circle({
+        map,
+        center: { lat: spot.lat, lng: spot.lng },
+        radius: spot.radius,
+        strokeWeight: 0,
+        fillColor: '#d9541c',
+        fillOpacity: spot.opacity,
+        clickable: true,
+      })
+      circle.addListener('click', () => onPick(spot.id))
+      return circle
+    })
+    return () => circles.forEach((circle: any) => circle.setMap(null))
+  }, [map, places, onPick])
+  return null
+}
 function Recenter({ target }: { target: { lat: number; lng: number } | null }) {
   const map = useMap()
   useEffect(() => {
@@ -45,7 +90,11 @@ export function MapTab({
   places,
   apiKey,
   onSelect,
+  route = [],
+  labels = {},
 }: {
+  route?: { lat: number; lng: number }[]
+  labels?: Record<string, string>
   places: Place[]
   apiKey?: string
   onSelect: (place: Place) => void
@@ -55,6 +104,7 @@ export function MapTab({
   const [filter, setFilter] = useState<'All' | Status | 'Pinned'>('All')
   // #22 extra filters + #21 pin colours (pin colours are remembered on this phone).
   const [showFilters, setShowFilters] = useState(false)
+  const [heat, setHeat] = useState(false)
   const [minRating, setMinRating] = useState(0)
   const [prices, setPrices] = useState<number[]>([])
   const [cuisine, setCuisine] = useState<string | null>(null)
@@ -75,7 +125,7 @@ export function MapTab({
     () => [...new Set(places.map((place) => place.cuisine).filter((c): c is string => !!c))].sort(),
     [places],
   )
-  const extraCount = (minRating ? 1 : 0) + (prices.length ? 1 : 0) + (cuisine ? 1 : 0)
+  const extraCount = (minRating ? 1 : 0) + (prices.length ? 1 : 0) + (cuisine ? 1 : 0) + (heat ? 1 : 0)
   const [location, setLocation] = useState({ lat: 20, lng: 0 })
   const [locateTarget, setLocateTarget] = useState<{ lat: number; lng: number } | null>(null)
   const filtered = useMemo(
@@ -149,8 +199,32 @@ export function MapTab({
             {extraCount ? <span className="ml-1">{extraCount}</span> : null}
           </button>
         </div>
+        {heat && !showFilters && (
+          <p className="heat-legend absolute bottom-3 left-3 z-10">🔥 Bigger, darker = more visits</p>
+        )}
         {showFilters && (
           <div className="surface map-filters absolute left-3 right-3 top-16 z-20 flex flex-col gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Show</p>
+              <div className="chip-row mt-1">
+                {[
+                  [false, '📍 Pins'],
+                  [true, '🔥 Where we eat most'],
+                ].map(([value, label]) => (
+                  <button
+                    key={String(value)}
+                    aria-pressed={heat === value}
+                    className={`chip chip-sm ${heat === value ? 'chip-active' : ''}`}
+                    onClick={() => {
+                      haptic('select')
+                      setHeat(value as boolean)
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                 Rating
@@ -268,6 +342,9 @@ export function MapTab({
             onBackgroundClick={() => setPreviewId(null)}
             pinMode={pinMode}
             selectedId={previewId}
+            route={route}
+            labels={labels}
+            heat={heat}
           />
         ) : (
           <>
@@ -283,7 +360,10 @@ export function MapTab({
             >
               <FitBounds places={filtered} />
               <Recenter target={locateTarget} />
-              {filtered
+              <RouteLine route={route} />
+              {heat && <HeatCircles places={filtered} onPick={setPreviewId} />}
+              {!heat &&
+                filtered
                 .filter((place) => place.latitude !== null && place.longitude !== null)
                 .map((place) => (
                   <AdvancedMarker
@@ -294,7 +374,7 @@ export function MapTab({
                     <div
                       className={`marker ${markerClass(place, placeAverage(place), pinMode)} ${previewId === place.id ? 'marker-selected' : ''}`}
                     >
-                      {placeAverage(place) ? show(placeAverage(place)) : '+'}
+                      {labels[place.id] ?? (placeAverage(place) ? show(placeAverage(place)) : '+')}
                     </div>
                   </AdvancedMarker>
                 ))}

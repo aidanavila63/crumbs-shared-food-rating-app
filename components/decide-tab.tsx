@@ -10,7 +10,15 @@ import { CravingButton } from './craving-button'
 import { ChallengesCard } from './goals-cards'
 import { WeatherNudge } from './weather-nudge'
 import { TurnCard } from './turn-card'
-import type { HomeMeal } from '@/hooks/use-crumbs-data'
+import type { Group, HomeMeal, List } from '@/hooks/use-crumbs-data'
+import type { DecideStore, Plan, SwipeSession } from '@/hooks/use-decide'
+import { settingsOf } from '@/lib/ratings'
+import { haptic } from '@/lib/motion'
+import { Overlay } from './overlay'
+import { DecideTogether } from './decide-together'
+import { PlansCard, PlansPage, type PlanDraft } from './plans'
+import { CrawlPlanner } from './crawl-planner'
+import { NearbyRecs } from './nearby-recs'
 
 type Idea = { title: string; why: string }
 
@@ -30,7 +38,24 @@ export function DecideTab({
   turns = false,
   weather = true,
   aiIdeas = true,
+  decide,
+  lists = [],
+  onLists = () => {},
+  group = null,
+  supabase,
+  demo = false,
+  onShowOnMap = () => {},
+  onPlaceAdded = () => {},
 }: {
+  onPlaceAdded?: (place: Place) => void
+  /** #30/#40/#48 store (null until the v4 database update has run) */
+  decide?: DecideStore | null
+  lists?: List[]
+  onLists?: (lists: List[]) => void
+  group?: Group | null
+  supabase?: any
+  demo?: boolean
+  onShowOnMap?: (listId: string) => void
   /** #109 admin switch */
   aiIdeas?: boolean
   meals?: HomeMeal[]
@@ -51,6 +76,46 @@ export function DecideTab({
   home?: { lat: number; lng: number } | null
 }) {
   const show = useShowScore()
+  const [page, setPage] = useState<'together' | 'plans' | 'crawl' | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<PlanDraft | null>(null)
+  const openPlace = (place: Place) => {
+    setPage(null)
+    onSelect(place)
+  }
+  async function planFromVote(placeId: string, session: SwipeSession) {
+    if (!decide) return
+    const linked = decide.plans.find((p) => p.session_id === session.id)
+    if (linked) {
+      await decide.savePlan({ ...linked, place_id: placeId })
+      decide.closeSession(session.id)
+      toast.success('Place added to the plan')
+    } else setDraft({ title: session.title ?? '', place_id: placeId, session_id: session.id })
+    setPage('plans')
+  }
+  async function voteForPlan(plan: Plan) {
+    if (!decide) return
+    const existing = plan.session_id && decide.sessions.find((s) => s.id === plan.session_id)
+    if (existing) {
+      setSessionId(existing.id)
+      return setPage('together')
+    }
+    const pool = places.filter(
+      (p) => p.status === 'Want to try' && p.business_status !== 'CLOSED_PERMANENTLY',
+    )
+    const from = pool.length >= 2 ? pool : places
+    if (from.length < 2) return toast('Add a few places first')
+    const ids = [...from]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 15)
+      .map((p) => p.id)
+    const session = await decide.startSession(plan.title, ids)
+    if (!session) return
+    await decide.savePlan({ ...plan, session_id: session.id })
+    setSessionId(session.id)
+    setPage('together')
+  }
+  const openVotes = decide?.sessions.filter((s) => s.status === 'open').length ?? 0
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
 
@@ -133,7 +198,62 @@ export function DecideTab({
 
       {!loading && weather && <WeatherNudge places={places} home={home} onSelect={onSelect} />}
 
-      {!loading && <TonightCard places={places} members={members} onOpen={onSelect} />}
+      {!loading && <TonightCard places={places} members={members} onOpen={onSelect} home={home} />}
+      {decide?.enabled && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="category-card category-together col-span-2"
+            onClick={() => {
+              haptic('select')
+              setSessionId(null)
+              setPage('together')
+            }}
+          >
+            <span className="category-emoji" aria-hidden="true">
+              💘
+            </span>
+            <span className="min-w-0">
+              <span className="block font-serif text-2xl font-bold">Decide together</span>
+              <span className="block text-sm opacity-85">
+                Swipe to match, vote on a list, pick by occasion
+              </span>
+            </span>
+            {openVotes > 0 && <span className="category-badge">{openVotes}</span>}
+          </button>
+          <button
+            className="category-card"
+            onClick={() => {
+              haptic('select')
+              setPage('crawl')
+            }}
+          >
+            <span className="category-emoji" aria-hidden="true">
+              🚶
+            </span>
+            <span className="block font-bold">Food crawl</span>
+          </button>
+          <button
+            className="category-card"
+            onClick={() => {
+              haptic('select')
+              setPage('plans')
+            }}
+          >
+            <span className="category-emoji" aria-hidden="true">
+              📅
+            </span>
+            <span className="block font-bold">Plans</span>
+          </button>
+        </div>
+      )}
+      {decide?.enabled && (
+        <PlansCard
+          store={decide}
+          places={allPlaces}
+          userId={userId}
+          onOpen={() => setPage('plans')}
+        />
+      )}
       {!loading && turns && (
         <TurnCard
           places={allPlaces}
@@ -172,6 +292,18 @@ export function DecideTab({
             </button>
           ))}
         </div>
+      )}
+
+      {!loading && (
+        <NearbyRecs
+          places={places}
+          groupId={groupId}
+          userId={userId}
+          supabase={supabase}
+          demo={demo}
+          onSelect={onSelect}
+          onAdded={onPlaceAdded}
+        />
       )}
 
       {insights.favourites.length > 0 && (
@@ -239,6 +371,62 @@ export function DecideTab({
             </div>
           ))}
         </div>
+      )}
+      {page === 'together' && decide && (
+        <Overlay label="Decide together" title="Decide together" onClose={() => setPage(null)}>
+          <DecideTogether
+            store={decide}
+            places={places}
+            members={members}
+            userId={userId}
+            names={names}
+            lists={lists}
+            tags={settingsOf(group).tags}
+            initialSessionId={sessionId}
+            onOpenPlace={openPlace}
+            onPlan={planFromVote}
+          />
+        </Overlay>
+      )}
+      {page === 'plans' && decide && (
+        <Overlay
+          label="Plans"
+          title="Plans"
+          onClose={() => {
+            setDraft(null)
+            setPage(null)
+          }}
+        >
+          <PlansPage
+            store={decide}
+            places={allPlaces}
+            members={members}
+            userId={userId}
+            names={names}
+            draft={draft}
+            onDraft={setDraft}
+            onOpenPlace={openPlace}
+            onVoteForPlace={voteForPlan}
+          />
+        </Overlay>
+      )}
+      {page === 'crawl' && (
+        <Overlay label="Food crawls" title="Food crawls" onClose={() => setPage(null)}>
+          <CrawlPlanner
+            lists={lists}
+            places={allPlaces}
+            groupId={groupId}
+            userId={userId}
+            supabase={supabase}
+            demo={demo}
+            onLists={onLists}
+            onOpenPlace={openPlace}
+            onShowOnMap={(id) => {
+              setPage(null)
+              onShowOnMap(id)
+            }}
+          />
+        </Overlay>
       )}
     </section>
   )

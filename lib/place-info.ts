@@ -162,6 +162,24 @@ export function mergeMasked(real: Place, next: Place, userId?: string): Place {
   }
 }
 
+// ---------- #24 heatmap ----------
+/** Where you eat most: one warm spot per visited place, bigger and darker with more visits. */
+export function heatSpots(places: Place[]) {
+  return places
+    .filter((p) => p.latitude !== null && p.longitude !== null && p.status === 'Been')
+    .map((p) => {
+      const visits = Math.max(1, p.place_visits?.length ?? 0)
+      return {
+        id: p.id,
+        lat: p.latitude as number,
+        lng: p.longitude as number,
+        visits,
+        radius: Math.round(140 + 90 * Math.sqrt(visits - 1)),
+        opacity: Math.min(0.75, 0.28 + 0.09 * (visits - 1)),
+      }
+    })
+}
+
 // ---------- map pins ----------
 export type PinMode = 'rating' | 'status'
 /** Pin colour: by how much you liked it (default) or just Been vs Want to try (#21). */

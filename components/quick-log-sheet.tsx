@@ -1,4 +1,5 @@
 'use client'
+import { track } from '@/lib/analytics'
 import { useMemo, useState } from 'react'
 import { MapPin, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,6 +11,9 @@ import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { haptic } from '@/lib/motion'
 import { Sheet } from './sheet'
+import { ReadPhotoButton } from './photo-reader'
+import { receiptTotal } from '@/lib/ocr-parse'
+import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
 
 const todayIso = () => {
   const d = new Date()
@@ -119,45 +123,40 @@ export function QuickLogSheet({
           score: saved ? (saved.points ?? saved.score * 20) / 20 : null,
         }
       : {}
+    const job: QuickLogJob = {
+      id: crypto.randomUUID(),
+      userId,
+      placeId: picked.id,
+      placeName: picked.name,
+      date,
+      spend: amount,
+      extra,
+      rating: saved
+        ? { score: saved.score, points: saved.points, notes: mine?.notes ?? null }
+        : null,
+      v4,
+    }
+    const visit: PlaceVisit = {
+      id: job.id,
+      place_id: picked.id,
+      visited_on: date,
+      spend: amount,
+      created_by: userId,
+      ...extra,
+    }
+    let offline = false
     try {
-      let visit: PlaceVisit = {
-        id: crypto.randomUUID(),
-        place_id: picked.id,
-        visited_on: date,
-        spend: amount,
-        created_by: userId,
-        ...extra,
-      }
       if (!demo) {
-        const { data, error } = await supabase
-          .from('place_visits')
-          .insert({
-            place_id: picked.id,
-            visited_on: date,
-            spend: amount,
-            created_by: userId,
-            ...extra,
-          })
-          .select('*')
-          .single()
-        if (error) throw error
-        visit = data
-        const placeChanges = { status: 'Been', visited_on: date }
-        const { error: placeError } = await supabase
-          .from('places')
-          .update(placeChanges)
-          .eq('id', picked.id)
-        if (placeError) throw placeError
-        if (saved) {
-          const { error: ratingError } = await supabase.from('place_ratings').upsert({
-            place_id: picked.id,
-            user_id: userId,
-            score: saved.score,
-            notes: mine?.notes ?? null,
-            ...(v4 ? { points: saved.points } : {}),
-          })
-          if (ratingError) throw ratingError
-        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) offline = true
+        else
+          try {
+            await runQuickLog(supabase, job)
+          } catch (error) {
+            if (!isNetworkError(error)) throw error
+            offline = true
+          }
+        // #75 No signal: keep it on the phone and send it when you're back online.
+        if (offline) enqueue(job)
       }
       onUpdate({
         ...picked,
@@ -178,7 +177,9 @@ export function QuickLogSheet({
           : picked.place_ratings,
       })
       haptic('success')
-      toast.success(`Logged ${picked.name}`)
+      track('quick_log', { offline, rated: !!saved, kind: (extra as any).kind ?? null })
+      if (offline) toast(`Saved on your phone — ${picked.name} will sync when you’re back online`)
+      else toast.success(`Logged ${picked.name}`)
       onClose()
     } catch (error: any) {
       toast.error(error?.message || 'Could not log that visit')
@@ -253,16 +254,30 @@ export function QuickLogSheet({
             </div>
             <p className="text-xs text-muted-foreground">Optional — you can rate later.</p>
           </div>
-          <label className="flex flex-col gap-1 text-sm font-semibold">
-            Spent (optional)
-            <input
-              className="field"
-              inputMode="decimal"
-              placeholder="$"
-              value={spend}
-              onChange={(event) => setSpend(event.target.value)}
-            />
-          </label>
+          <div className="flex flex-col gap-1 text-sm font-semibold">
+            <label htmlFor="quick-spend">Spent (optional)</label>
+            <div className="flex gap-2">
+              <input
+                id="quick-spend"
+                className="field"
+                inputMode="decimal"
+                placeholder="$"
+                value={spend}
+                onChange={(event) => setSpend(event.target.value)}
+              />
+              {/* #74 read the total off the receipt (on the phone, free) */}
+              <ReadPhotoButton
+                label="Receipt"
+                className="secondary shrink-0 !min-h-12 !px-3 text-sm"
+                onText={(text) => {
+                  const total = receiptTotal(text)
+                  if (total === null) return toast('Couldn’t find a total — type it in')
+                  setSpend(total.toFixed(2))
+                  toast(`Read $${total.toFixed(2)} from the receipt — check it’s right`)
+                }}
+              />
+            </div>
+          </div>
           {v4 && (
             <div className="flex flex-col gap-3">
               <div className="chip-row" role="radiogroup" aria-label="How you ate">

@@ -1,4 +1,5 @@
 'use client'
+import { identify, resetAnalytics, track } from '@/lib/analytics'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCheck,
@@ -35,7 +36,9 @@ import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
 import { HomeTab } from './home-tab'
 import { useFlags } from '@/hooks/use-flags'
+import { useDecide } from '@/hooks/use-decide'
 import { installErrorReporter } from '@/lib/report-errors'
+import { flushQueue } from '@/lib/offline-queue'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -65,8 +68,37 @@ function CrumbsShell() {
     demo: data.demo,
     v4: data.v4,
   })
+  const decide = useDecide({
+    groupId: data.group?.id,
+    userId: data.user?.id,
+    supabase: data.supabase,
+    demo: data.demo,
+    v4: data.v4,
+  })
   const isAdmin = !!data.members.find((member) => member.id === data.user?.id)?.is_admin
   const flag = useFlags({ supabase: data.supabase, demo: data.demo, v4: data.v4, isAdmin })
+  // #107 Anonymous usage counts (only when a PostHog key is set).
+  useEffect(() => {
+    if (data.demo || !data.user?.id || !data.group) return
+    identify(data.user.id, { group_size: data.members.length, v4: data.v4 })
+    track('app_open')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user?.id, data.group?.id])
+  // #75 Send Quick logs that were saved offline, now and whenever the signal comes back.
+  useEffect(() => {
+    const uid = data.user?.id
+    if (data.demo || !uid) return
+    const sync = async () => {
+      const sent = await flushQueue(data.supabase, uid)
+      if (!sent) return
+      toast.success(`Synced ${sent} saved log${sent === 1 ? '' : 's'}`)
+      data.load().catch(() => {})
+    }
+    sync()
+    window.addEventListener('online', sync)
+    return () => window.removeEventListener('online', sync)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.demo, data.user?.id, data.supabase])
   // #110 Send a few browser errors to the admin error log (only once the table exists).
   useEffect(() => {
     if (data.demo || !data.v4 || !data.user?.id) return
@@ -90,10 +122,12 @@ function CrumbsShell() {
     haptic('tap')
     setDirection(tabIndex(next) > tabIndex(tab) ? 'right' : 'left')
     setTabState(next)
+    track('tab', { tab: next })
     sessionStorage.setItem('crumbs-tab', next)
     window.scrollTo({ top: 0 })
   }
   function signOut() {
+    resetAnalytics()
     setHub([])
     if (data.demo) {
       data.setUser(null)
@@ -161,6 +195,20 @@ function CrumbsShell() {
     const ids = new Set((tripList.list_places ?? []).map((item) => item.place_id))
     return view.filter((place) => ids.has(place.id))
   }, [view, tripList])
+  // #26 A crawl shown on the map gets a walking line through its stops, in order.
+  const crawl = useMemo(() => {
+    if (tripList?.kind !== 'crawl') return { route: [], labels: {} }
+    const stops = [...(tripList.list_places ?? [])]
+      .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
+      .map((item) => data.places.find((p) => p.id === item.place_id))
+      .filter((p): p is Place => !!p)
+    return {
+      route: stops
+        .filter((p) => p.latitude !== null && p.longitude !== null)
+        .map((p) => ({ lat: p.latitude!, lng: p.longitude! })),
+      labels: Object.fromEntries(stops.map((p, i) => [p.id, `${i + 1}`])) as Record<string, string>,
+    }
+  }, [tripList, data.places])
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
   const [quickLog, setQuickLog] = useState(false)
@@ -300,7 +348,12 @@ function CrumbsShell() {
           )}
           <h1 className="mt-8 font-serif text-4xl font-bold">Your shared food map</h1>
           <p className="mt-3 leading-6 text-muted-foreground">
-            Collect the places and dishes you love together.
+            Collect the places and dishes you love together.{' '}
+            {!invite && (
+              <a href="/welcome" className="font-semibold text-primary underline">
+                What is Crumbs?
+              </a>
+            )}
           </p>
           {sent ? (
             <div className="mt-7 rounded-2xl bg-muted p-4 text-sm">
@@ -397,6 +450,10 @@ function CrumbsShell() {
         </div>
       </main>
     )
+  // Food crawls (#26) live in Decide & Plan, not in the Lists view.
+  const plainLists = data.lists.filter((list) => list.kind !== 'crawl')
+  const setPlainLists = (next: typeof data.lists) =>
+    data.setLists([...next, ...data.lists.filter((list) => list.kind === 'crawl')])
   // #77 Home cooking sits next to Places and Lists (a group can switch it off).
   const views = (
     settingsOf(data.group).home ? ['places', 'lists', 'home'] : ['places', 'lists']
@@ -496,13 +553,13 @@ function CrumbsShell() {
               ) : placesView === 'lists' ? (
                 <div className="tab-pane tab-from-right">
                   <ListsTab
-                    lists={data.lists}
+                    lists={plainLists}
                     places={view}
                     userId={data.user?.id}
                     groupId={data.group.id}
                     demo={data.demo}
                     supabase={data.supabase}
-                    onLists={data.setLists}
+                    onLists={setPlainLists}
                     onShowOnMap={(id) => {
                       setTripMapId(id)
                       setTab('Map')
@@ -616,7 +673,7 @@ function CrumbsShell() {
               {tripList && (
                 <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
                   <span>
-                    ✈️ Showing <strong>{tripList.trip_city || tripList.name}</strong> only
+                    {tripList.kind === 'crawl' ? '🚶' : '✈️'} Showing <strong>{tripList.trip_city || tripList.name}</strong> only
                   </span>
                   <button className="text-primary underline" onClick={() => setTripMapId(null)}>
                     Show everything
@@ -627,6 +684,8 @@ function CrumbsShell() {
                 places={mapPlaces}
                 apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
                 onSelect={setSelected}
+                route={crawl.route}
+                labels={crawl.labels}
               />
             </>
           )}
@@ -646,6 +705,17 @@ function CrumbsShell() {
               turns={data.v4 && settingsOf(data.group).turns}
               weather={settingsOf(data.group).weather}
               aiIdeas={flag('ai_ideas')}
+              decide={decide}
+              lists={data.lists}
+              onLists={data.setLists}
+              group={data.group}
+              supabase={data.supabase}
+              demo={data.demo}
+              onShowOnMap={(id) => {
+                setTripMapId(id)
+                setTab('Map')
+              }}
+              onPlaceAdded={(place) => data.setPlaces((current) => [place, ...current])}
             />
           )}
           {tab === 'Group' && (
@@ -778,6 +848,7 @@ function CrumbsShell() {
           supabase={data.supabase}
           onClose={() => setAdding(false)}
           onSaved={(place) => {
+            track('place_added', { status: place.status, source: place.google_place_id.split(':')[0] })
             data.setPlaces([place, ...data.places])
             notifyMates({ type: 'place_added', placeId: place.id })
           }}
@@ -789,8 +860,8 @@ function CrumbsShell() {
           userId={data.user.id}
           names={names}
           members={data.members}
-          lists={data.lists}
-          onLists={data.setLists}
+          lists={plainLists}
+          onLists={setPlainLists}
           demo={data.demo}
           supabase={data.supabase}
           group={data.group}

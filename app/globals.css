@@ -1229,3 +1229,216 @@ body,
 .memories-card {
   background: linear-gradient(160deg, color-mix(in srgb, var(--primary) 10%, var(--card)), var(--card) 60%);
 }
+
+/* ================= Batch 4: Decide together, plans, crawls ================= */
+.category-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  text-align: left;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease;
+}
+.category-card:active {
+  transform: scale(0.97);
+}
+.category-together {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  color: var(--primary-foreground);
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 60%, #d9931c));
+}
+.category-emoji {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  font-size: 26px;
+}
+.category-together .category-emoji {
+  width: 56px;
+  height: 56px;
+  background: rgb(255 255 255 / 22%);
+  font-size: 30px;
+  animation: float 3s ease-in-out infinite;
+}
+.category-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 24px;
+  text-align: center;
+  animation: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
+}
+
+/* #30 swipe deck */
+.swipe-stack {
+  position: relative;
+  min-height: 300px;
+}
+.swipe-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 300px;
+  padding: 24px;
+  touch-action: pan-y;
+  user-select: none;
+  cursor: grab;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 10%, var(--card)), var(--card) 55%);
+  animation: pop-in 0.28s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+.swipe-settle {
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.swipe-peek {
+  transform: scale(0.94) translateY(12px);
+  opacity: 0.6;
+  pointer-events: none;
+  animation: none;
+}
+.swipe-stamp {
+  position: absolute;
+  top: 22px;
+  padding: 4px 12px;
+  border: 3px solid currentColor;
+  border-radius: 10px;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.swipe-stamp-yes {
+  left: 20px;
+  color: #2f7d4f;
+  transform: rotate(-12deg);
+}
+.swipe-stamp-no {
+  right: 20px;
+  color: #b23a26;
+  transform: rotate(12deg);
+}
+.swipe-btn {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  transition: transform 0.15s ease;
+}
+.swipe-btn:active {
+  transform: scale(0.88);
+}
+.swipe-btn-no {
+  color: #b23a26;
+}
+.swipe-btn-yes {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* #40 list voting */
+.vote-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+.vote-btn:active {
+  transform: scale(0.88);
+}
+.vote-yes.vote-on {
+  background: #2f7d4f;
+  border-color: #2f7d4f;
+  color: #fff;
+}
+.vote-no.vote-on {
+  background: #b23a26;
+  border-color: #b23a26;
+  color: #fff;
+}
+.match-card {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--primary) 16%, var(--card)), var(--card));
+}
+.match-burst {
+  font-size: 48px;
+  animation: pop 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) backwards, float 3s ease-in-out 0.6s infinite;
+}
+
+/* #26 crawl stops */
+.crawl-stop {
+  display: flex;
+  flex-direction: column;
+  animation: rise-in 0.3s ease backwards;
+}
+.crawl-leg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 2px 26px;
+  padding: 6px 0 6px 14px;
+  border-left: 3px dashed color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+}
+.crawl-num {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 14px;
+  font-weight: 800;
+}
+.heat-legend {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 700;
+  animation: pop-in 0.25s ease backwards;
+}
+.welcome-hero {
+  animation: rise-in 0.5s ease backwards;
+}
+.welcome {
+  background:
+    radial-gradient(60rem 30rem at 110% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%),
+    var(--background);
+}

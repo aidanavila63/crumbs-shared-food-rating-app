@@ -10,6 +10,7 @@ import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
 import { GroupSettingsCard } from './group-settings'
+import { YourDataCard } from './your-data-card'
 
 // #73: which notifications you get. Missing = on.
 const NOTIFY_TYPES = [
@@ -275,6 +276,17 @@ export function SettingsPanel({
             {saving === 'feedback' ? 'Sending…' : 'Send'}
           </button>
         </section>
+      )}
+
+      {v4 && group && (
+        <YourDataCard
+          group={group}
+          supabase={supabase}
+          demo={demo}
+          isOwner={group.created_by === userId}
+          memberCount={members.length}
+          onDeleted={onSignOut}
+        />
       )}
 
       <button className="secondary" onClick={onSignOut}>
