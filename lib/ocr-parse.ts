@@ -32,7 +32,12 @@ export function receiptTip(text: string): number | null {
   return amount ?? null
 }
 
-export type MenuLine = { name: string; price: number | null; description: string | null }
+export type MenuLine = {
+  name: string
+  price: number | null
+  description: string | null
+  course?: 'starter' | 'main' | 'side' | 'dessert' | 'drink' | null
+}
 
 /** Lines that look like "Dish name ..... 14.50" become dishes. */
 export function menuDishes(text: string): MenuLine[] {

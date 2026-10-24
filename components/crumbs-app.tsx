@@ -891,6 +891,7 @@ function CrumbsShell() {
           v4={data.v4}
           allPlaces={data.places}
           menuImport={flag('menu_import')}
+          menuAi={(data.v4 || data.demo) && flag('menu_ai', isAdmin || data.demo)}
           claims={data.v4 && flag('restaurant_claims')}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {

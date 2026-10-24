@@ -3,7 +3,8 @@
 // The reading engine (~5 MB) downloads the first time it's used, then the browser caches it.
 import { track } from '@/lib/analytics'
 import { useRef, useState } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Sparkles } from 'lucide-react'
+import type { MenuLine } from '@/lib/ocr-parse'
 import { toast } from 'sonner'
 
 async function shrink(file: File, max = 1800): Promise<Blob | File> {
@@ -82,6 +83,88 @@ export function ReadPhotoButton({
       >
         <Camera size={16} />
         {progress === null ? label : `Reading… ${progress}%`}
+      </button>
+    </>
+  )
+}
+
+async function toDataUrl(file: File, max = 1600) {
+  const blob = await shrink(file, max)
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Couldn’t open that photo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+const DEMO_AI_MENU: MenuLine[] = [
+  { name: 'Shoyu Ramen', price: 15.5, description: 'Soy broth, bamboo, nori', course: 'main' },
+  { name: 'Black Garlic Tonkotsu', price: 18, description: null, course: 'main' },
+  { name: 'Chicken Karaage', price: 11, description: 'Yuzu mayo', course: 'starter' },
+  { name: 'Yuzu Sorbet', price: 6.5, description: null, course: 'dessert' },
+]
+
+/**
+ * #19 AI menu reading (admin switch "menu_ai"): the photo goes to the AI once and comes back as
+ * dishes with prices and courses — far better than on-phone reading for real menus.
+ */
+export function AiMenuPhotoButton({
+  placeName,
+  demo,
+  onDishes,
+  className = 'secondary !min-h-10 !px-3 text-sm',
+}: {
+  placeName: string
+  demo: boolean
+  onDishes: (dishes: MenuLine[]) => void
+  className?: string
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  async function pick(file?: File) {
+    if (!file) return
+    setBusy(true)
+    try {
+      if (demo) {
+        await new Promise((r) => setTimeout(r, 600))
+        return onDishes(DEMO_AI_MENU)
+      }
+      const response = await fetch('/api/read-menu-photo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ image: await toDataUrl(file), placeName }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'AI reading failed')
+      track('menu_ai', { dishes: body.dishes?.length ?? 0 })
+      if (!body.dishes?.length) toast('No dishes found — try a straighter, closer photo')
+      else onDishes(body.dishes)
+    } catch (error: any) {
+      toast.error(error?.message || 'AI reading failed')
+    } finally {
+      setBusy(false)
+      if (input.current) input.current.value = ''
+    }
+  }
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => pick(event.target.files?.[0])}
+      />
+      <button
+        type="button"
+        className={className}
+        disabled={busy}
+        onClick={() => input.current?.click()}
+      >
+        <Sparkles size={16} />
+        {busy ? 'Reading the menu…' : 'Menu photo (AI)'}
       </button>
     </>
   )

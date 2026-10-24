@@ -22,7 +22,7 @@ import {
 } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
-import { ReadPhotoButton } from './photo-reader'
+import { ReadPhotoButton, AiMenuPhotoButton } from './photo-reader'
 import { MenuReview } from './menu-review'
 import { CommunityMenu } from './community-menu'
 import { RestaurantInfoEditor, VerifiedBadge } from './restaurant-profile'
@@ -308,8 +308,11 @@ export function PlaceSheet({
   v4 = false,
   allPlaces = [],
   menuImport = true,
+  menuAi = false,
   claims = false,
 }: {
+  /** #19 AI menu photo reading (admin switch "menu_ai", admins only until switched on) */
+  menuAi?: boolean
   /** #100 admin switch "restaurant_claims" */
   claims?: boolean
   /** #109 admin switch */
@@ -1059,16 +1062,26 @@ export function PlaceSheet({
               </button>
             )}
           </div>
-          <ReadPhotoButton
-            label="Menu photo"
-            className="secondary self-start !min-h-10 !px-3 text-sm"
-            onText={(text) => {
-              const found = menuDishes(text)
-              if (!found.length)
-                return toast('Couldn’t spot dishes with prices — try a closer photo')
-              setMenuDraft(found)
-            }}
-          />
+          <div className="flex flex-wrap gap-2">
+            <ReadPhotoButton
+              label="Menu photo"
+              className="secondary self-start !min-h-10 !px-3 text-sm"
+              onText={(text) => {
+                const found = menuDishes(text)
+                if (!found.length)
+                  return toast('Couldn’t spot dishes with prices — try a closer photo')
+                setMenuDraft(found)
+              }}
+            />
+            {menuAi && (
+              <AiMenuPhotoButton
+                placeName={place.name}
+                demo={demo}
+                className="secondary self-start !min-h-10 !px-3 text-sm"
+                onDishes={setMenuDraft}
+              />
+            )}
+          </div>
           {menuDraft && (
             <MenuReview
               lines={menuDraft}

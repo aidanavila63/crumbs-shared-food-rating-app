@@ -263,3 +263,9 @@ Aidan: keep making features.
 - **#14 MUST TRY on the map preview card** (best must-try dish), shared `mustTry()` helper (best first).
 - Map: removed the map library's badge (kept only the required map-data credit).
 - Tests 70/70; SQL: share_ratings column + check tested; build passes; demo clean.
+
+## Round 21 - AI menu photo reading for the admin (#19 AI version) (Oct 24, Claude in Cowork)
+- **"Menu photo (AI)"** next to Menu photo on the place page (`components/photo-reader.tsx` AiMenuPhotoButton → `app/api/read-menu-photo`). The photo (shrunk to ~1600 px JPEG, never stored) is read by the AI into dishes with prices, descriptions and course, then goes through the same tick-and-fix review, into your dishes and the shared menu (counts for menu points like any menu photo).
+- Admin switch **`menu_ai`** seeded **Admin** (a missing switch also means admins only); new budget **`menu_photo_ai`**: 20/day, 300/month overall, 0 per person by tier — so only admins (exempt from personal limits) until you raise those numbers in the Spending guard. Server checks switch + budget, so it can't be called around.
+- `useFlags` switches can now default to off (`flag(key, fallback)`).
+- Tests 71/71 (image check); build passes; demo clean.

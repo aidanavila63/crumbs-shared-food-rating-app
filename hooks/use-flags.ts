@@ -29,9 +29,11 @@ export function useFlags({
       cancelled = true
     }
   }, [demo, supabase, v4])
-  return (key: string) => {
+  /** `fallback` = what a switch nobody has added yet means (on, unless said otherwise). */
+  return (key: string, fallback = true) => {
     const state = states[key]
-    if (!state || state === 'everyone') return true
+    if (!state) return fallback
+    if (state === 'everyone') return true
     return state === 'admin' && isAdmin
   }
 }

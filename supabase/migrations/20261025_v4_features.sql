@@ -462,7 +462,8 @@ create policy flags_write on public.feature_flags for all to authenticated
 insert into public.feature_flags (key, state, note) values
   ('ai_ideas', 'everyone', 'AI dinner ideas on Decide & Plan'),
   ('menu_import', 'everyone', 'Import menu from website (AI)'),
-  ('restaurant_claims', 'admin', 'Restaurants can claim their page (#100) — switch to Everyone when public')
+  ('restaurant_claims', 'admin', 'Restaurants can claim their page (#100) — switch to Everyone when public'),
+  ('menu_ai', 'admin', 'Menu photo read by AI (#19) — admin while free AI credit lasts, paid later')
 on conflict (key) do nothing;
 
 create table if not exists public.client_errors (
@@ -1335,7 +1336,8 @@ insert into public.usage_budgets (kind, daily_total, monthly_total, per_tier, no
   ('ai', 150, 3000, '{3,4,5,6,8}', 'AI ideas (Vercel AI Gateway credit)'),
   ('menu_import', 60, 1200, '{2,2,3,3,4}', 'Import menu from website (AI)'),
   ('explore', 1500, null, '{15,20,25,30,40}', 'OpenStreetMap Explore / nearby (free, fair use)'),
-  ('google', 40, 900, '{10,12,15,18,20}', 'Google place details + hours (1,000 Enterprise free a month)')
+  ('google', 40, 900, '{10,12,15,18,20}', 'Google place details + hours (1,000 Enterprise free a month)'),
+  ('menu_photo_ai', 20, 300, '{0,0,0,0,0}', 'Menu photo read by AI (admins only until per-person numbers are raised)')
 on conflict (kind) do nothing;
 create table if not exists public.usage_counts (
   kind text not null,
