@@ -69,3 +69,32 @@ function tidyName(name: string) {
     ? clean.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
     : clean
 }
+
+const NOT_FOOD =
+  /\b(sub\s*-?\s*total|total|tax|hst|gst|pst|vat|tip|gratuity|service|delivery|fee|discount|promo|visa|mastercard|amex|debit|credit|cash|change|balance|amount|paid|card|order|table|server|guest|check|auth|approved|thank)\b/i
+
+/**
+ * #74 What you ordered, from a receipt or a delivery-app order screenshot (your own data):
+ * "2 Pork Gyoza 19.00" → Pork Gyoza at 9.50 each. Skips totals, taxes, tips, fees and payment lines.
+ */
+export function receiptItems(text: string): MenuLine[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l && !NOT_FOOD.test(l))
+    .map((line) => {
+      const qty = /^(\d{1,2})\s*[x×]?\s+(?=[A-Za-zÀ-ÿ])/.exec(line)
+      return { line: qty ? line.slice(qty[0].length) : line, qty: qty ? Number(qty[1]) : 1 }
+    })
+  const items = menuDishes(lines.map((l) => l.line).join('\n'))
+  return items.map((item) => {
+    const q =
+      lines.find((l) => l.line.toLowerCase().startsWith(item.name.toLowerCase().slice(0, 6)))
+        ?.qty ?? 1
+    return {
+      ...item,
+      description: null,
+      price: item.price !== null && q > 1 ? Math.round((item.price / q) * 100) / 100 : item.price,
+    }
+  })
+}

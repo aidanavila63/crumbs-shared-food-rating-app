@@ -25,7 +25,10 @@ import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
 import { ReadPhotoButton } from './photo-reader'
 import { MenuReview } from './menu-review'
 import { CommunityMenu } from './community-menu'
-import { RestaurantProfile } from './restaurant-profile'
+import { RestaurantInfoEditor } from './restaurant-profile'
+import { QuickCheck } from './quick-check'
+import { Overlay } from './overlay'
+import type { Hours } from '@/lib/place-info'
 import { useRestaurant } from '@/hooks/use-restaurant'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
@@ -328,6 +331,13 @@ export function PlaceSheet({
     v4,
     onLinked: (id) => onUpdate({ ...latest.current, restaurant_id: id }),
   })
+  const [editInfo, setEditInfo] = useState(false)
+  // Hours a member entered also update this group's copy, so "Open now" uses them straight away.
+  async function saveHours(hours: Hours) {
+    const changes = { opening_hours: hours, hours_checked_at: new Date().toISOString() }
+    onUpdate({ ...latest.current, ...changes })
+    if (!demo) await supabase.from('places').update(changes).eq('id', place.id)
+  }
   /** Copies dishes into this group's own list (to rate them). Returns how many were added. */
   async function addOurDishes(
     lines: { name: string; price: number | null; description: string | null; course?: Dish['course'] }[],
@@ -726,6 +736,11 @@ export function PlaceSheet({
             {place.formatted_address || 'Address not added'}
           </p>
           <PlaceHours place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
+          {restaurant.insights?.per_head ? (
+            <p className="text-sm text-muted-foreground">
+              About ${restaurant.insights.per_head} a person · from Crumbs visits
+            </p>
+          ) : null}
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×
@@ -883,14 +898,7 @@ export function PlaceSheet({
             </div>
           </div>
         )}
-        <RestaurantProfile
-          store={restaurant}
-          onHours={async (hours) => {
-            const changes = { opening_hours: hours, hours_checked_at: new Date().toISOString() }
-            onUpdate({ ...latest.current, ...changes })
-            if (!demo) await supabase.from('places').update(changes).eq('id', place.id)
-          }}
-        />
+        <QuickCheck place={place} store={restaurant} onHours={saveHours} />
         <FactsEditor place={place} supabase={supabase} demo={demo} userId={userId} onUpdate={onUpdate} />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         <div className="flex flex-col gap-2">
@@ -1039,7 +1047,20 @@ export function PlaceSheet({
             Delete
           </button>
         </div>
+        {restaurant.enabled && restaurant.restaurant && (
+          <button
+            className="self-center text-xs text-muted-foreground underline"
+            onClick={() => setEditInfo(true)}
+          >
+            Something wrong or missing? Suggest an edit
+          </button>
+        )}
       </div>
+      {editInfo && (
+        <Overlay label="Suggest an edit" title="Suggest an edit" onClose={() => setEditInfo(false)}>
+          <RestaurantInfoEditor store={restaurant} onHours={saveHours} />
+        </Overlay>
+      )}
     </Sheet>
   )
 }

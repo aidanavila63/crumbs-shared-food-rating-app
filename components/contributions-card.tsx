@@ -1,22 +1,33 @@
 'use client'
-// "Building Crumbs": what you've added to the shared restaurant profiles, with badges.
-// Every fact and menu dish here is data Crumbs owns — the long-term asset behind the app.
+// "Building Crumbs": your contributor tier, points and badges. Facts, menus and receipts you add
+// become Crumbs' own restaurant data; higher tiers get bigger daily allowances (AI ideas, Explore,
+// menu imports) — and later, perks when Crumbs has paid plans.
 import { useEffect, useState } from 'react'
 import { myContributions } from '@/lib/restaurants'
+import { TIERS, nextTier, pointsFor, tierFor } from '@/lib/tiers'
+
+type C = {
+  facts: number
+  dishes: number
+  checks: number
+  restaurants: number
+  verified?: number
+  points?: number
+}
 
 const BADGES = [
   {
     id: 'scout',
     emoji: '🔎',
     title: 'Scout',
-    how: 'Add your first restaurant fact',
+    how: 'Add your first restaurant detail',
     test: (c: C) => c.facts >= 1,
   },
   {
     id: 'mapmaker',
     emoji: '🗺️',
     title: 'Map maker',
-    how: 'Add 10 facts',
+    how: 'Add 10 details',
     test: (c: C) => c.facts >= 10,
   },
   {
@@ -34,6 +45,13 @@ const BADGES = [
     test: (c: C) => c.checks >= 25,
   },
   {
+    id: 'trusted',
+    emoji: '🤝',
+    title: 'Trusted',
+    how: 'Have 5 of your details backed up by others',
+    test: (c: C) => (c.verified ?? 0) >= 5,
+  },
+  {
     id: 'local',
     emoji: '🏙️',
     title: 'Local legend',
@@ -41,7 +59,6 @@ const BADGES = [
     test: (c: C) => c.restaurants >= 10,
   },
 ]
-type C = { facts: number; dishes: number; checks: number; restaurants: number }
 
 export function ContributionsCard({
   supabase,
@@ -53,7 +70,7 @@ export function ContributionsCard({
   v4: boolean
 }) {
   const [c, setC] = useState<C | null>(
-    demo ? { facts: 3, dishes: 12, checks: 6, restaurants: 2 } : null,
+    demo ? { facts: 3, dishes: 12, checks: 6, restaurants: 2, verified: 1, points: 32 } : null,
   )
   useEffect(() => {
     if (demo || !v4) return
@@ -64,23 +81,44 @@ export function ContributionsCard({
     }
   }, [demo, v4, supabase])
   if (!c) return null
+  const points = c.points ?? pointsFor(c)
+  const tier = tierFor(points)
+  const next = nextTier(points)
   const earned = BADGES.filter((b) => b.test(c)).length
   return (
     <div className="surface flex flex-col gap-3">
-      <div className="flex items-baseline justify-between">
-        <h3 className="font-serif text-2xl font-bold">Building Crumbs</h3>
-        <span className="text-sm text-muted-foreground">
-          {earned}/{BADGES.length}
+      <div className="flex items-center gap-3">
+        <span className="tier-badge" aria-hidden="true">
+          {tier.emoji}
         </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Building Crumbs
+          </p>
+          <p className="font-serif text-2xl font-bold">{tier.name}</p>
+          <p className="text-sm text-muted-foreground">
+            {points} points
+            {next.next ? ` · ${next.need} to ${next.next.name}` : ' · top tier'}
+          </p>
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Menus, hours and details you add help every group — and make Crumbs’ restaurant info its
-        own.
+      {next.next && (
+        <span className="owned-bar" aria-label={`${next.pct}% of the way to ${next.next.name}`}>
+          <span className="bar-fill" style={{ width: `${Math.max(3, next.pct)}%` }} />
+        </span>
+      )}
+      <p className="text-sm">
+        <strong>Your perks:</strong> {tier.perk} — {tier.limits.ai} AI ideas, {tier.limits.explore}{' '}
+        Explore searches and {tier.limits.menuImport} menu imports a day.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Earn points by answering quick questions, snapping menus, hours signs and receipts, and
+        checking dishes: 3 a detail, 1 a dish or check, +5 when others back you up.
       </p>
       <div className="grid grid-cols-4 gap-2 text-center">
         {(
           [
-            ['facts', 'facts'],
+            ['facts', 'details'],
             ['dishes', 'dishes'],
             ['checks', 'checks'],
             ['restaurants', 'places'],
@@ -92,6 +130,22 @@ export function ContributionsCard({
           </div>
         ))}
       </div>
+      <details className="tier-ladder">
+        <summary className="cursor-pointer text-sm font-semibold text-primary">All tiers</summary>
+        <div className="mt-2 flex flex-col gap-1">
+          {TIERS.map((t) => (
+            <p
+              key={t.level}
+              className={`text-sm ${t.level === tier.level ? 'font-bold' : 'text-muted-foreground'}`}
+            >
+              {t.emoji} {t.name} · {t.min}+ points · {t.perk}
+            </p>
+          ))}
+        </div>
+      </details>
+      <p className="text-sm font-semibold">
+        Badges {earned}/{BADGES.length}
+      </p>
       <div className="badge-grid">
         {BADGES.map((b) => {
           const done = b.test(c)

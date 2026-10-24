@@ -194,3 +194,19 @@ Aidan: "do what we can to build up our own data as much as possible — everythi
 2. Show Google-only details live (fetched when opened, not stored), with Google attribution; never on the OSM map.
 3. Consider importing Overture Maps places (CDLA-Permissive-2.0, keep forever) for cities as they're needed, as the base layer under member facts.
 4. OSM data in a publicly shared database triggers ODbL share-alike — keep OSM-sourced fields marked (already done via `sources`).
+
+## Round 15 - quieter data building, cross-checks, contributor tiers (Oct 24, Claude in Cowork)
+Aidan: the "% owned / building" card is an eyesore — fill data more subtly, keep achievements (tiered: more help → more), cross-reference member input before claiming it, maybe higher usage for contributors; be covered for expansion / going public / monetization. Asked about Uber Eats / SkipTheDishes.
+- **No more Restaurant info card.** Data is gathered quietly:
+  - **Quick question** (`components/quick-check.tsx`): one small dismissible prompt on places you've *been* to, only for details that are missing or only Google's ("Know their hours?" → Snap the sign / Type them; "How pricey?"; "Still open?"). At most one per place every 14 days and 3 a day; Settings → Quick questions to switch off.
+  - **"Something wrong or missing? Suggest an edit"** — a small link at the bottom of the place page opens the editor page (no percentages, no source labels; a small ✓ marks details several people checked).
+  - **Receipt or order screenshot** in Quick log now also reads the items ("2 Pork Gyoza 19.00" → Pork Gyoza $9.50) → "What you ordered" step adds them to your dishes and to the restaurant's shared menu as `receipt` evidence (`lib/ocr-parse.ts` `receiptItems`). Works with Uber Eats / Skip order confirmations — the member's own data.
+  - "About $24 a person · from Crumbs visits" line under the hours when there's enough data.
+- **Cross-checked = claimed:** a detail is *claimed* as Crumbs' own when members of 2+ different groups agree, when a member independently confirms the OpenStreetMap value, or when 2 people agree and one had a photo/receipt (`verified.claimed`). Menu dishes are claimed when confirmed by 2+ groups (`restaurant_dishes.claimed`).
+- **Contributor tiers** (`lib/tiers.ts`, `my_contributions` → points/tier): 🌱 Taster 0 · 🍴 Regular 25 · 🧭 Local guide 100 · ⭐ Insider 300 · 👑 Legend 1000 points (detail 3, dish/check 1, +5 when others back you up). Each tier raises daily allowances for AI ideas / Explore / menu imports (`lib/tier-limits.ts`, enforced in the API routes; admins get the top tier). Achievements → Building Crumbs shows tier, progress, perks, all tiers and 6 badges.
+- **Admin:** claimed details/dishes, and a going-public check: how many details are still only Google's.
+- Tests 60/60; SQL cross-group claiming tested; build passes; demo tour clean.
+
+### Uber Eats / SkipTheDishes (researched)
+- Scraping is against Uber's terms ("may not… launch any programs or scripts for the purpose of scraping"). Their APIs are for restaurants' own POS/menu integrations (merchant-authorised, written approval) — not a data source for Crumbs.
+- What works: (1) members' own receipts/order screenshots (built), (2) later, restaurants that claim their Crumbs profile (#100) can connect or upload their own menu, (3) "Order on Uber Eats" link-outs via Uber's affiliate program for revenue once public (no data).

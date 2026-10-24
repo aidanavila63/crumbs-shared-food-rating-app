@@ -1,4 +1,5 @@
 import { generateObject } from 'ai'
+import { overDailyLimit } from '@/lib/tier-limits'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
     )
   if (!(await flagAllows(supabase, 'ai_ideas', data.user.id)))
     return Response.json({ error: 'AI ideas are switched off for now' }, { status: 403 })
+  const capped = await overDailyLimit(supabase, data.user.id, 'ai')
+  if (capped) return Response.json({ error: capped }, { status: 429 })
 
   const { taste } = await request.json()
   if (!taste || typeof taste !== 'string') {

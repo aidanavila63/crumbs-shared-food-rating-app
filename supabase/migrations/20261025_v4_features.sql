@@ -513,6 +513,10 @@ begin
     'owned_hours', (select count(*) from public.restaurants where sources->>'hours' in ('crumbs', 'osm')),
     'owned_address', (select count(*) from public.restaurants where sources->>'address' in ('crumbs', 'osm')),
     'facts', (select count(*) from public.restaurant_facts),
+    'claimed_facts', (select coalesce(sum((select count(*) from jsonb_each(r.verified) e where (e.value->>'claimed')::boolean)), 0) from public.restaurants r),
+    'claimed_dishes', (select count(*) from public.restaurant_dishes where claimed),
+    -- Facts that are still only Google's (would need showing live, not stored, once public).
+    'borrowed_fields', (select coalesce(sum((select count(*) from jsonb_each_text(r.sources) e where e.value = 'google')), 0) from public.restaurants r),
     -- Free-tier meters: database (500 MB) and photo storage (1 GB).
     'db_bytes', pg_database_size(current_database()),
     'storage_bytes', (select coalesce(sum((metadata->>'size')::bigint), 0) from storage.objects where bucket_id = 'crumbs-photos')
@@ -577,7 +581,8 @@ create table if not exists public.restaurant_dishes (
   description text check (description is null or char_length(description) <= 300),
   course text check (course in ('starter', 'main', 'side', 'dessert', 'drink')),
   dietary text[] not null default '{}',
-  source text not null default 'manual' check (source in ('photo', 'website', 'manual')),
+  source text not null default 'manual' check (source in ('photo', 'website', 'manual', 'receipt')),
+  claimed boolean not null default false, -- confirmed by 2+ different groups: Crumbs' own
   confirms integer not null default 0,
   flags integer not null default 0,
   hidden boolean not null default false,
@@ -705,7 +710,7 @@ begin
             case when (d->>'price') ~ '^[0-9]{1,4}(\.[0-9]{1,2})?$' then (d->>'price')::numeric end,
             left(nullif(trim(d->>'description'), ''), 300),
             case when d->>'course' in ('starter', 'main', 'side', 'dessert', 'drink') then d->>'course' end,
-            case when how in ('photo', 'website', 'manual') then how else 'manual' end,
+            case when how in ('photo', 'website', 'manual', 'receipt') then how else 'manual' end,
             auth.uid())
     on conflict (restaurant_id, name_key) do update set
       price = coalesce(excluded.price, restaurant_dishes.price),
@@ -723,6 +728,12 @@ begin
     flags = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'flag')
   where rd.restaurant_id = target;
   update public.restaurant_dishes set hidden = (flags >= 2 and flags > confirms) where restaurant_id = target;
+  update public.restaurant_dishes rd set claimed = (
+    select count(distinct p.group_id) from public.restaurant_dish_votes v
+      join public.group_members gm on gm.user_id = v.user_id
+      join public.places p on p.group_id = gm.group_id and p.restaurant_id = rd.restaurant_id
+     where v.dish_id = rd.id and v.vote = 'confirm') >= 2
+  where rd.restaurant_id = target;
   return added;
 end $$;
 
@@ -748,6 +759,12 @@ begin
     flags = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'flag')
   where rd.id = target_dish;
   update public.restaurant_dishes set hidden = (flags >= 2 and flags > confirms) where id = target_dish;
+  update public.restaurant_dishes rd set claimed = (
+    select count(distinct p.group_id) from public.restaurant_dish_votes v
+      join public.group_members gm on gm.user_id = v.user_id
+      join public.places p on p.group_id = gm.group_id and p.restaurant_id = rd.restaurant_id
+     where v.dish_id = rd.id and v.vote = 'confirm') >= 2
+  where rd.id = target_dish;
   delete from public.restaurant_dishes where id = target_dish and flags >= 3 and confirms = 0;
 end $$;
 
@@ -839,6 +856,8 @@ declare
   agree integer;
   src text;
   applied boolean := false;
+  groups_agree integer;
+  claimed boolean;
 begin
   if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
   select * into r from public.restaurants where id = target;
@@ -867,6 +886,12 @@ begin
   on conflict (restaurant_id, field, user_id) do update set value = excluded.value, evidence = excluded.evidence, created_at = now();
 
   select count(*) into agree from public.restaurant_facts f where f.restaurant_id = target and f.field = fact and f.value = v;
+  -- Cross-check: how many different groups' members independently said the same thing.
+  select count(distinct p.group_id) into groups_agree
+    from public.restaurant_facts f
+    join public.group_members gm on gm.user_id = f.user_id
+    join public.places p on p.group_id = gm.group_id and p.restaurant_id = target
+   where f.restaurant_id = target and f.field = fact and f.value = v;
   src := r.sources->>fact;
   current := case fact
     when 'name' then to_jsonb(r.name) when 'address' then to_jsonb(r.formatted_address)
@@ -876,6 +901,12 @@ begin
     when 'location' then case when r.latitude is null then null else jsonb_build_object('lat', r.latitude, 'lng', r.longitude) end
   end;
 
+  -- Claimed = verified as Crumbs' own: two different groups agree, or a member independently
+  -- confirmed what OpenStreetMap says, or two people agree and one of them had a photo.
+  claimed := groups_agree >= 2
+    or (src = 'osm' and current = v)
+    or (agree >= 2 and exists (select 1 from public.restaurant_facts f where f.restaurant_id = target
+                                 and f.field = fact and f.value = v and f.evidence in ('photo', 'receipt')));
   if src is distinct from 'crumbs' or current is null or agree >= 2 or current = v then
     applied := current is distinct from v or src is distinct from 'crumbs';
     update public.restaurants set
@@ -891,11 +922,11 @@ begin
       latitude = case when fact = 'location' then (v->>'lat')::float8 else latitude end,
       longitude = case when fact = 'location' then (v->>'lng')::float8 else longitude end,
       sources = sources || jsonb_build_object(fact, 'crumbs'),
-      verified = verified || jsonb_build_object(fact, jsonb_build_object('n', agree, 'at', now())),
+      verified = verified || jsonb_build_object(fact, jsonb_build_object('n', agree, 'groups', groups_agree, 'claimed', claimed, 'at', now())),
       updated_at = now()
     where id = target;
   end if;
-  return jsonb_build_object('applied', applied, 'agree', agree);
+  return jsonb_build_object('applied', applied, 'agree', agree, 'claimed', claimed);
 end $$;
 
 -- OpenStreetMap facts (free to keep forever, with credit). Fill only what's missing or from Google.
@@ -952,16 +983,30 @@ grant execute on function public.restaurant_insights(uuid) to authenticated;
 
 -- Your contributions (for the profile page and badges).
 create or replace function public.my_contributions()
-returns jsonb language sql stable security definer set search_path = public as $$
-  select jsonb_build_object(
-    'facts', (select count(*) from public.restaurant_facts where user_id = auth.uid()),
-    'dishes', (select count(*) from public.restaurant_dishes where added_by = auth.uid()),
-    'checks', (select count(*) from public.restaurant_dish_votes where user_id = auth.uid()),
-    'restaurants', (select count(distinct restaurant_id) from (
-        select restaurant_id from public.restaurant_facts where user_id = auth.uid()
-        union all select restaurant_id from public.restaurant_dishes where added_by = auth.uid()) x)
-  )
-$$;
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  facts integer; dishes integer; checks integer; places integer; verified integer; points integer; tier integer;
+begin
+  select count(*) into facts from public.restaurant_facts where user_id = me;
+  select count(*) into dishes from public.restaurant_dishes where added_by = me;
+  select count(*) into checks from public.restaurant_dish_votes where user_id = me;
+  select count(distinct restaurant_id) into places from (
+    select restaurant_id from public.restaurant_facts where user_id = me
+    union all select restaurant_id from public.restaurant_dishes where added_by = me) x;
+  -- Your facts that others later backed up (now claimed as Crumbs' own) count extra.
+  select count(*) into verified from public.restaurant_facts f join public.restaurants r on r.id = f.restaurant_id
+   where f.user_id = me and coalesce((r.verified->f.field->>'claimed')::boolean, false)
+     and f.value = case f.field
+       when 'name' then to_jsonb(r.name) when 'address' then to_jsonb(r.formatted_address)
+       when 'phone' then to_jsonb(r.phone) when 'website' then to_jsonb(r.website)
+       when 'cuisine' then to_jsonb(r.cuisine) when 'price_level' then to_jsonb(r.price_level)
+       when 'status' then to_jsonb(r.business_status) when 'hours' then r.opening_hours else null end;
+  points := facts * 3 + dishes + checks + verified * 5;
+  tier := case when points >= 1000 then 4 when points >= 300 then 3 when points >= 100 then 2 when points >= 25 then 1 else 0 end;
+  return jsonb_build_object('facts', facts, 'dishes', dishes, 'checks', checks, 'restaurants', places,
+                            'verified', verified, 'points', points, 'tier', tier);
+end $$;
 
 do $$
 declare f text;

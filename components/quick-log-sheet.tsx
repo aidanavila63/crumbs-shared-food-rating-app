@@ -12,7 +12,8 @@ import { useUserLocation } from '@/lib/use-user-location'
 import { haptic } from '@/lib/motion'
 import { Sheet } from './sheet'
 import { ReadPhotoButton } from './photo-reader'
-import { receiptTotal } from '@/lib/ocr-parse'
+import { receiptItems, receiptTotal, type MenuLine } from '@/lib/ocr-parse'
+import { linkRestaurant, shareDishes } from '@/lib/restaurants'
 import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
 
 const todayIso = () => {
@@ -62,6 +63,9 @@ export function QuickLogSheet({
   const [score, setScore] = useState(0)
   const [spend, setSpend] = useState('')
   const [busy, setBusy] = useState(false)
+  // #74 Items read off the receipt / order screenshot, offered after logging.
+  const [items, setItems] = useState<(MenuLine & { on: boolean })[]>([])
+  const [ordered, setOrdered] = useState<Place | null>(null)
   const [kind, setKind] = useState<VisitKind>('dine_in')
   const [people, setPeople] = useState('')
   const [pickedBy, setPickedBy] = useState('')
@@ -180,7 +184,9 @@ export function QuickLogSheet({
       track('quick_log', { offline, rated: !!saved, kind: (extra as any).kind ?? null })
       if (offline) toast(`Saved on your phone — ${picked.name} will sync when you’re back online`)
       else toast.success(`Logged ${picked.name}`)
-      onClose()
+      // What you ordered (from the receipt) → your dishes + the restaurant's shared menu.
+      if (items.length && !offline) setOrdered(picked)
+      else onClose()
     } catch (error: any) {
       toast.error(error?.message || 'Could not log that visit')
     } finally {
@@ -202,7 +208,90 @@ export function QuickLogSheet({
         </button>
       </div>
 
-      {!picked ? (
+      {ordered ? (
+        <div className="stagger mt-4 flex flex-col gap-3">
+          <p className="font-semibold">What you ordered</p>
+          <p className="text-sm text-muted-foreground">
+            From your receipt. Tick the right ones — they’re added to your dishes so you can rate
+            them.
+          </p>
+          {items.map((item, i) => (
+            <label
+              key={i}
+              className={`surface-soft flex items-center gap-3 ${item.on ? '' : 'opacity-50'}`}
+            >
+              <input
+                type="checkbox"
+                className="size-5 accent-[var(--primary)]"
+                checked={item.on}
+                onChange={(event) =>
+                  setItems(items.map((x, j) => (j === i ? { ...x, on: event.target.checked } : x)))
+                }
+              />
+              <span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>
+              {item.price !== null && (
+                <span className="text-sm text-muted-foreground">${item.price.toFixed(2)}</span>
+              )}
+            </label>
+          ))}
+          <div className="flex gap-2">
+            <button className="secondary" onClick={onClose}>
+              Skip
+            </button>
+            <button
+              className="primary flex-1"
+              disabled={busy || !items.some((x) => x.on)}
+              onClick={async () => {
+                const chosen = items.filter((x) => x.on)
+                setBusy(true)
+                try {
+                  if (!demo) {
+                    const have = new Set(
+                      (ordered.dishes ?? []).map((d) => d.name.trim().toLowerCase()),
+                    )
+                    const rows = chosen
+                      .filter((x) => !have.has(x.name.trim().toLowerCase()))
+                      .map((x) => ({
+                        place_id: ordered.id,
+                        name: x.name.slice(0, 120),
+                        price: x.price,
+                        is_ai_suggestion: false,
+                        created_by: userId,
+                      }))
+                    const { data, error } = rows.length
+                      ? await supabase
+                          .from('dishes')
+                          .insert(rows)
+                          .select('*,dish_ratings(score,points,user_id,notes)')
+                      : { data: [], error: null }
+                    if (error) throw error
+                    onUpdate({ ...ordered, dishes: [...(ordered.dishes ?? []), ...(data ?? [])] })
+                    // Receipts are strong evidence: they also feed the restaurant's shared menu.
+                    if (v4) {
+                      const shared = ordered.restaurant_id
+                        ? { id: ordered.restaurant_id }
+                        : await linkRestaurant(supabase, ordered.id).catch(() => null)
+                      if (shared)
+                        await shareDishes(supabase, shared.id, chosen, 'receipt').catch(() => 0)
+                    }
+                  }
+                  haptic('success')
+                  toast.success(
+                    `Added ${chosen.length} dish${chosen.length === 1 ? '' : 'es'} to rate`,
+                  )
+                  onClose()
+                } catch (error: any) {
+                  toast.error(error?.message || 'Could not add those')
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              Add {items.filter((x) => x.on).length} to our dishes
+            </button>
+          </div>
+        </div>
+      ) : !picked ? (
         <div className="stagger mt-4 flex flex-col gap-2">
           <input
             className="field"
@@ -267,10 +356,11 @@ export function QuickLogSheet({
               />
               {/* #74 read the total off the receipt (on the phone, free) */}
               <ReadPhotoButton
-                label="Receipt"
+                label="Receipt or order"
                 className="secondary shrink-0 !min-h-12 !px-3 text-sm"
                 onText={(text) => {
                   const total = receiptTotal(text)
+                  setItems(receiptItems(text).map((item) => ({ ...item, on: true })))
                   if (total === null) return toast('Couldn’t find a total — type it in')
                   setSpend(total.toFixed(2))
                   toast(`Read $${total.toFixed(2)} from the receipt — check it’s right`)

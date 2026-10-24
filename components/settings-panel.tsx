@@ -11,6 +11,7 @@ import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
 import { GroupSettingsCard } from './group-settings'
 import { YourDataCard } from './your-data-card'
+import { QUICK_CHECKS_KEY } from './quick-check'
 
 // #73: which notifications you get. Missing = on.
 const NOTIFY_TYPES = [
@@ -60,6 +61,13 @@ export function SettingsPanel({
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
   const [saving, setSaving] = useState<'name' | 'feedback' | null>(null)
   const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
+  const [quickChecks, setQuickChecks] = useState(() => {
+    try {
+      return localStorage.getItem(QUICK_CHECKS_KEY) !== 'off'
+    } catch {
+      return true
+    }
+  })
   const [feedback, setFeedback] = useState('')
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
   const canManage = myRole === 'owner' || myRole === 'admin'
@@ -179,6 +187,26 @@ export function SettingsPanel({
             checked={prefs.haptics && vibrates}
             disabled={!vibrates}
             onChange={(on) => setMotionPrefs({ haptics: on })}
+          />
+        </div>
+        <div className="settings-row">
+          <span>
+            <span className="font-semibold">Quick questions</span>
+            <span className="block text-sm text-muted-foreground">
+              Now and then, one question about a place you’ve been (“How pricey is it?”). Answers
+              earn Crumbs points.
+            </span>
+          </span>
+          <Switch
+            label="Quick questions"
+            checked={quickChecks}
+            onChange={(on) => {
+              setQuickChecks(on)
+              try {
+                if (on) localStorage.removeItem(QUICK_CHECKS_KEY)
+                else localStorage.setItem(QUICK_CHECKS_KEY, 'off')
+              } catch {}
+            }}
           />
         </div>
         <div className="settings-row">

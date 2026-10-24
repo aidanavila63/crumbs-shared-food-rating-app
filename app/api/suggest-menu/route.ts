@@ -1,4 +1,5 @@
 import { generateObject } from 'ai'
+import { overDailyLimit } from '@/lib/tier-limits'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
     )
   if (!(await flagAllows(supabase, 'menu_import', data.user.id)))
     return Response.json({ error: 'Menu import is switched off for now' }, { status: 403 })
+  const capped = await overDailyLimit(supabase, data.user.id, 'menuImport')
+  if (capped) return Response.json({ error: capped }, { status: 429 })
 
   const { placeId } = await request.json()
   if (!placeId || typeof placeId !== 'string') {

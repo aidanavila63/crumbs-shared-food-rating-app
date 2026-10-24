@@ -21,7 +21,7 @@ export type Restaurant = {
   places_count: number
   // Data ownership (#27): where each field came from, and how many members confirmed it.
   sources?: Partial<Record<FactField, FactSource>>
-  verified?: Partial<Record<FactField, { n: number; at: string }>>
+  verified?: Partial<Record<FactField, { n: number; at: string; groups?: number; claimed?: boolean }>>
   phone?: string | null
   osm_id?: string | null
   osm_checked_at?: string | null
@@ -96,7 +96,7 @@ export type MenuDish = {
   description: string | null
   course: 'starter' | 'main' | 'side' | 'dessert' | 'drink' | null
   dietary: string[]
-  source: 'photo' | 'website' | 'manual'
+  source: 'photo' | 'website' | 'manual' | 'receipt'
   confirms: number
   flags: number
   price_checked_at: string
@@ -180,7 +180,7 @@ export async function shareDishes(
   supabase: any,
   restaurantId: string,
   dishes: NewMenuDish[],
-  how: 'photo' | 'website' | 'manual',
+  how: 'photo' | 'website' | 'manual' | 'receipt',
 ) {
   const clean = dishes
     .filter((d) => d.name?.trim())
@@ -263,7 +263,7 @@ export async function loadInsights(supabase: any, restaurantId: string): Promise
 export async function myContributions(supabase: any) {
   const { data, error } = await supabase.rpc('my_contributions')
   if (error) return null
-  return data as { facts: number; dishes: number; checks: number; restaurants: number }
+  return data as { facts: number; dishes: number; checks: number; restaurants: number; verified: number; points: number; tier: number }
 }
 
 export async function searchRestaurants(

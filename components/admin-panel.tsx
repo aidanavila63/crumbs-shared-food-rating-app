@@ -44,6 +44,9 @@ const demoData = {
     owned_hours: 1,
     owned_address: 3,
     facts: 5,
+    claimed_facts: 2,
+    claimed_dishes: 1,
+    borrowed_fields: 9,
     db_bytes: 38 * 1024 ** 2,
     storage_bytes: 120 * 1024 ** 2,
   },
@@ -232,7 +235,13 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
                 )
               })}
               <p className="mt-1 text-xs text-muted-foreground">
-                {stats.facts ?? 0} facts added by members so far.
+                {stats.facts ?? 0} details added by members · {stats.claimed_facts ?? 0} details and
+                {stats.claimed_dishes ?? 0} menu dishes cross-checked by 2+ groups (claimed as
+                Crumbs’ own).
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Going-public check: {stats.borrowed_fields ?? 0} details are still only Google’s and
+                would need to be shown live (not stored) or replaced.
               </p>
             </div>
           </div>

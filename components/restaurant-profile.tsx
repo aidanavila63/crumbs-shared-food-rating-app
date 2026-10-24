@@ -3,17 +3,9 @@
 // Members add what they see (or snap the hours sign) so Crumbs owns its data instead of
 // borrowing Google's. Members' facts beat open data (OpenStreetMap), which beats Google.
 import { useState } from 'react'
-import { ChevronDown, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RestaurantStore } from '@/hooks/use-restaurant'
-import {
-  PROFILE_FIELDS,
-  needsHelp,
-  ownedShare,
-  type Evidence,
-  type FactField,
-  type Restaurant,
-} from '@/lib/restaurants'
+import { PROFILE_FIELDS, type Evidence, type FactField, type Restaurant } from '@/lib/restaurants'
 import { hoursToText, localUtcOffset, parseHoursText } from '@/lib/hours-text'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
@@ -31,7 +23,17 @@ const LABEL: Record<FactField, string> = {
   cuisine: 'Cuisine',
   status: 'Open?',
 }
-const STATUS: { id: string; label: string }[] = [
+/** Thank-you line after a contribution (points: fact 3, +5 when others back it up). */
+export function thanks(
+  fact: FactField,
+  result: { applied: boolean; agree: number; claimed?: boolean },
+) {
+  if (result.claimed) return `Thanks! That’s now checked by ${result.agree} people · +3 points`
+  if (result.applied) return `Thanks — ${LABEL[fact].toLowerCase()} saved for everyone · +3 points`
+  return 'Thanks — saved. One more person agreeing will update it · +3 points'
+}
+
+export const STATUS: { id: string; label: string }[] = [
   { id: 'OPERATIONAL', label: 'Open as usual' },
   { id: 'CLOSED_TEMPORARILY', label: 'Temporarily closed' },
   { id: 'CLOSED_PERMANENTLY', label: 'Closed for good' },
@@ -80,17 +82,7 @@ function show(r: Restaurant, f: FactField) {
   return String(v)
 }
 
-function SourceTag({ r, f }: { r: Restaurant; f: FactField }) {
-  const src = r.sources?.[f]
-  const n = r.verified?.[f]?.n ?? 0
-  if (!show(r, f)) return <span className="src-tag src-missing">Missing</span>
-  if (src === 'crumbs')
-    return <span className="src-tag src-crumbs">✓ Crumbs{n > 1 ? ` · ${n}` : ''}</span>
-  if (src === 'osm') return <span className="src-tag src-osm">OpenStreetMap</span>
-  return <span className="src-tag src-google">Google · borrowed</span>
-}
-
-export function RestaurantProfile({
+export function RestaurantInfoEditor({
   store,
   onHours,
 }: {
@@ -98,12 +90,9 @@ export function RestaurantProfile({
   /** Hours a member entered: also update this group's copy so the "Open now" line uses them. */
   onHours: (hours: Hours) => void
 }) {
-  const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<FactField | null>(null)
   const r = store.restaurant
   if (!store.enabled || !r) return null
-  const share = ownedShare(r)
-  const todo = needsHelp(r)
 
   async function save(fact: FactField, val: unknown, how: Evidence) {
     try {
@@ -112,13 +101,7 @@ export function RestaurantProfile({
       haptic('success')
       track('fact_added', { fact, how, applied: result.applied })
       if (fact === 'hours') onHours(val as Hours)
-      toast.success(
-        result.applied
-          ? `Thanks — ${LABEL[fact].toLowerCase()} saved for everyone`
-          : result.agree >= 2
-            ? `Confirmed — ${result.agree} people agree`
-            : 'Thanks — saved. One more person agreeing will update it for everyone',
-      )
+      toast.success(thanks(fact, result))
       setEditing(null)
     } catch (error: any) {
       toast.error(error?.message || 'Could not save that')
@@ -126,38 +109,12 @@ export function RestaurantProfile({
   }
 
   return (
-    <div className="surface-soft restaurant-profile flex flex-col gap-2">
-      <button
-        className="flex w-full items-center gap-3 text-left"
-        aria-expanded={open}
-        onClick={() => {
-          haptic('tap')
-          setOpen(!open)
-        }}
-      >
-        <ShieldCheck size={22} className="shrink-0 text-primary" />
-        <span className="min-w-0 flex-1">
-          <span className="block font-serif text-xl font-bold">Restaurant info</span>
-          <span className="block text-xs text-muted-foreground">
-            {share}% Crumbs-owned
-            {todo.length
-              ? ` · ${todo.length} thing${todo.length === 1 ? '' : 's'} to check`
-              : ' · all checked'}
-          </span>
-          <span className="owned-bar mt-1" aria-hidden="true">
-            <span className="bar-fill" style={{ width: `${share}%` }} />
-          </span>
-        </span>
-        <ChevronDown
-          size={20}
-          className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div className="rise-panel flex flex-col">
-          <p className="mb-1 text-xs text-muted-foreground">
-            Shared with every group that saves this place. Info you add is Crumbs’ own; Google’s
-            copy is only borrowed and can’t be kept.
+    <div className="flex flex-col gap-2">
+      {
+        <div className="flex flex-col">
+          <p className="mb-2 text-sm text-muted-foreground">
+            Fix or add anything you’ve seen yourself. It helps everyone who saves this place, and
+            earns you Crumbs points.
           </p>
           {store.insights && store.insights.visits > 0 && (
             <p className="mb-1 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
@@ -180,7 +137,14 @@ export function RestaurantProfile({
                   <span className="min-w-0 flex-1 text-sm">
                     {text ?? <span className="text-muted-foreground">Not known yet</span>}
                   </span>
-                  <SourceTag r={r} f={f} />
+                  {r.verified?.[f]?.claimed && (
+                    <span
+                      className="text-xs font-bold text-[#2f7d4f]"
+                      title="Checked by several people"
+                    >
+                      ✓
+                    </span>
+                  )}
                 </div>
                 {editing !== f && (
                   <div className="flex gap-3 pl-[72px] text-xs font-semibold">
@@ -189,11 +153,11 @@ export function RestaurantProfile({
                         className="text-[#2f7d4f] underline"
                         onClick={() => save(f, valueOf(r, f), 'in_person')}
                       >
-                        ✓ Still right
+                        Still right
                       </button>
                     )}
                     <button className="text-primary underline" onClick={() => setEditing(f)}>
-                      {text ? (owned ? 'Fix' : 'Add what you see') : 'Add it'}
+                      {text ? 'Edit' : 'Add'}
                     </button>
                   </div>
                 )}
@@ -216,12 +180,12 @@ export function RestaurantProfile({
             </p>
           )}
         </div>
-      )}
+      }
     </div>
   )
 }
 
-function FactEditor({
+export function FactEditor({
   field,
   initial,
   utc,

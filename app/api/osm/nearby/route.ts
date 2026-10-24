@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { overDailyLimit } from '@/lib/tier-limits'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { OSM_UA } from '@/lib/osm'
 import { overpassQuery, overpassToPlaces } from '@/lib/nearby'
@@ -22,6 +23,9 @@ export async function GET(request: Request) {
   const key = `${lat.toFixed(cuisine ? 2 : 3)},${lon.toFixed(cuisine ? 2 : 3)},${cuisine.toLowerCase()}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < 864e5) return Response.json({ results: hit.results })
+  // Fresh lookups use the daily Explore allowance (more for contributors).
+  const capped = await overDailyLimit(supabase, data.user.id, 'explore')
+  if (capped) return Response.json({ error: capped }, { status: 429 })
   if (tooManyRequests(`nearby:${data.user.id}`, 10))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },

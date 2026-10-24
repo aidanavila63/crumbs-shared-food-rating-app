@@ -16,7 +16,9 @@ export function Sheet({
     const previous = document.activeElement as HTMLElement | null
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
+    // An open full-screen page (Overlay) handles Escape first.
+    const onKey = (event: KeyboardEvent) =>
+      event.key === 'Escape' && !document.querySelector('.overlay') && onClose()
     window.addEventListener('keydown', onKey)
     return () => {
       document.body.style.overflow = overflow

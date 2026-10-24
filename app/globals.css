@@ -1553,3 +1553,20 @@ body,
   background: var(--muted);
   color: var(--muted-foreground);
 }
+.quick-check {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  border: 1px dashed color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.tier-badge {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, var(--card)), var(--card));
+  font-size: 30px;
+  animation: pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
+}
