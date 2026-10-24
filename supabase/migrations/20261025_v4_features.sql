@@ -450,7 +450,8 @@ create policy flags_write on public.feature_flags for all to authenticated
 -- The two AI features start on for everyone (as today); switch them to "Admin" on the admin page.
 insert into public.feature_flags (key, state, note) values
   ('ai_ideas', 'everyone', 'AI dinner ideas on Decide & Plan'),
-  ('menu_import', 'everyone', 'Import menu from website (AI)')
+  ('menu_import', 'everyone', 'Import menu from website (AI)'),
+  ('restaurant_claims', 'admin', 'Restaurants can claim their page (#100) — switch to Everyone when public')
 on conflict (key) do nothing;
 
 create table if not exists public.client_errors (
@@ -510,11 +511,12 @@ begin
     'restaurants', (select count(*) from public.restaurants),
     'menu_dishes', (select count(*) from public.restaurant_dishes where hidden = false),
     -- How much of the restaurant data Crumbs owns (from members or open data, not Google).
-    'owned_hours', (select count(*) from public.restaurants where sources->>'hours' in ('crumbs', 'osm')),
-    'owned_address', (select count(*) from public.restaurants where sources->>'address' in ('crumbs', 'osm')),
+    'owned_hours', (select count(*) from public.restaurants where sources->>'hours' in ('crumbs', 'osm', 'owner')),
+    'owned_address', (select count(*) from public.restaurants where sources->>'address' in ('crumbs', 'osm', 'owner')),
     'facts', (select count(*) from public.restaurant_facts),
     'claimed_facts', (select coalesce(sum((select count(*) from jsonb_each(r.verified) e where (e.value->>'claimed')::boolean)), 0) from public.restaurants r),
     'claimed_dishes', (select count(*) from public.restaurant_dishes where claimed),
+    'claims_pending', (select count(*) from public.restaurant_claims where status = 'pending'),
     -- Facts that are still only Google's (would need showing live, not stored, once public).
     'borrowed_fields', (select coalesce(sum((select count(*) from jsonb_each_text(r.sources) e where e.value = 'google')), 0) from public.restaurants r),
     -- Free-tier meters: database (500 MB) and photo storage (1 GB).
@@ -698,9 +700,10 @@ declare
   d jsonb;
   added integer := 0;
   row_id uuid;
+  is_new boolean;
   k text;
 begin
-  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  if not (public.my_restaurant(target) or public.manages_restaurant(target)) then raise exception 'Not one of your restaurants'; end if;
   if jsonb_typeof(dishes) <> 'array' or jsonb_array_length(dishes) > 80 then raise exception 'Too many dishes at once'; end if;
   for d in select * from jsonb_array_elements(dishes) loop
     k := public.dish_key(d->>'name');
@@ -717,7 +720,9 @@ begin
       price_checked_at = case when excluded.price is not null then now() else restaurant_dishes.price_checked_at end,
       description = coalesce(restaurant_dishes.description, excluded.description),
       course = coalesce(restaurant_dishes.course, excluded.course)
-    returning id into row_id;
+    returning id, (xmax = 0) into row_id, is_new;
+    perform public.award_points(auth.uid(), case when is_new then 'dish' else 'check' end, 1, target,
+                                case when is_new then 'dish:' else 'check:' end || row_id);
     -- Adding a dish that's already there is a vote that it's real.
     insert into public.restaurant_dish_votes (dish_id, user_id, vote) values (row_id, auth.uid(), 'confirm')
     on conflict (dish_id, user_id) do update set vote = 'confirm';
@@ -759,6 +764,7 @@ begin
     flags = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'flag')
   where rd.id = target_dish;
   update public.restaurant_dishes set hidden = (flags >= 2 and flags > confirms) where id = target_dish;
+  if choice is not null then perform public.award_points(auth.uid(), 'check', 1, r, 'vote:' || target_dish); end if;
   update public.restaurant_dishes rd set claimed = (
     select count(distinct p.group_id) from public.restaurant_dish_votes v
       join public.group_members gm on gm.user_id = v.user_id
@@ -858,8 +864,12 @@ declare
   applied boolean := false;
   groups_agree integer;
   claimed boolean;
+  was_claimed boolean;
+  manager boolean := public.manages_restaurant(target);
+  last_at timestamptz;
+  useful boolean;
 begin
-  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  if not (public.my_restaurant(target) or manager) then raise exception 'Not one of your restaurants'; end if;
   select * into r from public.restaurants where id = target;
   -- Validate + tidy each kind of fact.
   if fact in ('name', 'address', 'phone', 'website', 'cuisine') then
@@ -903,12 +913,20 @@ begin
 
   -- Claimed = verified as Crumbs' own: two different groups agree, or a member independently
   -- confirmed what OpenStreetMap says, or two people agree and one of them had a photo.
-  claimed := groups_agree >= 2
+  was_claimed := coalesce((r.verified->fact->>'claimed')::boolean, false);
+  last_at := coalesce((r.verified->fact->>'at')::timestamptz, case when src = 'osm' then r.osm_checked_at end);
+  -- Worth points only when it adds something: new, changed, not yet ours, or due a re-check.
+  useful := current is null or current is distinct from v or src is distinct from 'crumbs'
+            or last_at is null or last_at < now() - make_interval(days => public.fact_refresh_days(fact));
+  claimed := manager or groups_agree >= 2
     or (src = 'osm' and current = v)
     or (agree >= 2 and exists (select 1 from public.restaurant_facts f where f.restaurant_id = target
                                  and f.field = fact and f.value = v and f.evidence in ('photo', 'receipt')));
-  if src is distinct from 'crumbs' or current is null or agree >= 2 or current = v then
+  -- The restaurant's own confirmed manager always wins; members need 3 to overrule them.
+  if manager or (src = 'owner' and (agree >= 3 or current = v))
+     or (coalesce(src, '') not in ('crumbs', 'owner') or current is null or (src = 'crumbs' and agree >= 2) or current = v) then
     applied := current is distinct from v or src is distinct from 'crumbs';
+    if src = 'owner' and not manager and current = v then applied := false; end if;
     update public.restaurants set
       name = case when fact = 'name' then left(v #>> '{}', 160) else name end,
       formatted_address = case when fact = 'address' then v #>> '{}' else formatted_address end,
@@ -921,12 +939,21 @@ begin
       hours_checked_at = case when fact in ('hours', 'status') then now() else hours_checked_at end,
       latitude = case when fact = 'location' then (v->>'lat')::float8 else latitude end,
       longitude = case when fact = 'location' then (v->>'lng')::float8 else longitude end,
-      sources = sources || jsonb_build_object(fact, 'crumbs'),
+      sources = sources || jsonb_build_object(fact, case when manager then 'owner'
+                                                         when src = 'owner' and current = v then 'owner' else 'crumbs' end),
       verified = verified || jsonb_build_object(fact, jsonb_build_object('n', agree, 'groups', groups_agree, 'claimed', claimed, 'at', now())),
       updated_at = now()
     where id = target;
   end if;
-  return jsonb_build_object('applied', applied, 'agree', agree, 'claimed', claimed);
+  if useful then
+    perform public.award_points(auth.uid(), 'fact', 3, target, target || ':' || fact || ':' || to_char(now(), 'YYYY-MM'));
+  end if;
+  -- Backed up by someone else → everyone who said the same thing gets a bonus (once).
+  if claimed and not was_claimed then
+    perform public.award_points(f.user_id, 'backed', 5, target, target || ':' || fact || ':backed:' || to_char(now(), 'YYYY-MM'))
+      from public.restaurant_facts f where f.restaurant_id = target and f.field = fact and f.value = v and f.user_id is not null;
+  end if;
+  return jsonb_build_object('applied', applied, 'agree', agree, 'claimed', claimed, 'points', case when useful then 3 else 0 end);
 end $$;
 
 -- OpenStreetMap facts (free to keep forever, with credit). Fill only what's missing or from Google.
@@ -1002,10 +1029,14 @@ begin
        when 'phone' then to_jsonb(r.phone) when 'website' then to_jsonb(r.website)
        when 'cuisine' then to_jsonb(r.cuisine) when 'price_level' then to_jsonb(r.price_level)
        when 'status' then to_jsonb(r.business_status) when 'hours' then r.opening_hours else null end;
-  points := facts * 3 + dishes + checks + verified * 5;
+  select coalesce(sum(cp.points), 0) into points from public.contribution_points cp where cp.user_id = me;
   tier := case when points >= 1000 then 4 when points >= 300 then 3 when points >= 100 then 2 when points >= 25 then 1 else 0 end;
   return jsonb_build_object('facts', facts, 'dishes', dishes, 'checks', checks, 'restaurants', places,
-                            'verified', verified, 'points', points, 'tier', tier);
+                            'verified', verified, 'points', points, 'tier', tier,
+                            'today', (select coalesce(sum(c.points), 0) from public.contribution_points c
+                                       where c.user_id = me and c.created_at >= date_trunc('day', now())),
+                            'daily_cap', 40,
+                            'manages', (select coalesce(jsonb_agg(restaurant_id), '[]') from public.restaurant_managers where user_id = me));
 end $$;
 
 do $$
@@ -1017,6 +1048,261 @@ begin
   end loop;
 end $$;
 update public.restaurants set sources = sources where true; -- backfill sources on existing rows
+
+-- ============================================================================================
+-- 13d. Quick questions, points, allowances and restaurant owners
+-- ============================================================================================
+-- How long a member-checked detail stays fresh before Crumbs asks someone to check it again.
+create or replace function public.fact_refresh_days(fact text)
+returns integer language sql immutable as $$
+  select case fact when 'phone' then 180 when 'website' then 180 when 'hours' then 120
+                   when 'price_level' then 365 when 'status' then 90 else 3650 end
+$$;
+
+-- Points ledger: every award is a row, so points can be capped (40 a day) and audited.
+create table if not exists public.contribution_points (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null,
+  points integer not null check (points between 0 and 20),
+  restaurant_id uuid references public.restaurants(id) on delete set null,
+  ref text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, kind, ref)
+);
+create index if not exists contribution_points_user_idx on public.contribution_points (user_id, created_at);
+alter table public.contribution_points enable row level security;
+drop policy if exists contribution_points_read on public.contribution_points;
+create policy contribution_points_read on public.contribution_points for select to authenticated using (user_id = (select auth.uid()));
+
+create or replace function public.award_points(uid uuid, what text, pts integer, rid uuid, tag text)
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  today integer;
+  given integer;
+begin
+  if uid is null then return 0; end if;
+  select coalesce(sum(points), 0) into today from public.contribution_points
+   where user_id = uid and created_at >= date_trunc('day', now());
+  given := greatest(0, least(pts, 40 - today)); -- daily cap
+  insert into public.contribution_points (user_id, kind, points, restaurant_id, ref)
+  values (uid, what, given, rid, left(tag, 200))
+  on conflict (user_id, kind, ref) do nothing;
+  return given;
+end $$;
+revoke execute on function public.award_points(uuid, text, integer, uuid, text) from public, anon, authenticated;
+
+-- "Not sure" / "not now" on a quick question: don't ask this person that again for a while.
+create table if not exists public.restaurant_question_skips (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  field text not null,
+  until timestamptz not null,
+  primary key (user_id, restaurant_id, field)
+);
+alter table public.restaurant_question_skips enable row level security;
+drop policy if exists question_skips_read on public.restaurant_question_skips;
+create policy question_skips_read on public.restaurant_question_skips for select to authenticated using (user_id = (select auth.uid()));
+
+create or replace function public.skip_question(target uuid, fact text, days integer default 7)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  insert into public.restaurant_question_skips (user_id, restaurant_id, field, until)
+  values (auth.uid(), target, left(fact, 20), now() + make_interval(days => least(greatest(days, 1), 365)))
+  on conflict (user_id, restaurant_id, field) do update set until = excluded.until;
+end $$;
+
+-- The one question to ask this person about this restaurant (or null): missing details first,
+-- then details Crumbs doesn't own yet (only Google's), then the oldest check that's due.
+-- Each person gets a different order, so the same unanswerable question isn't asked of everyone.
+create or replace function public.next_question(target uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  r public.restaurants;
+  me uuid := auth.uid();
+  pick record;
+begin
+  if not public.my_restaurant(target) then return null; end if;
+  select * into r from public.restaurants where id = target;
+  select * into pick from (
+    select f.field,
+      case when f.val is null then 1 when coalesce(r.sources->>f.field, 'google') = 'google' then 2 else 3 end as tier,
+      coalesce((r.verified->f.field->>'at')::timestamptz, case when r.sources->>f.field = 'osm' then r.osm_checked_at end) as last_at
+    from (values
+      ('hours', r.opening_hours::text), ('price_level', r.price_level::text), ('phone', r.phone),
+      ('website', r.website), ('status', r.business_status), ('cuisine', r.cuisine), ('address', r.formatted_address)
+    ) as f(field, val)
+    where not exists (select 1 from public.restaurant_question_skips k
+                       where k.user_id = me and k.restaurant_id = target and k.field = f.field and k.until > now())
+      and not exists (select 1 from public.restaurant_facts x
+                       where x.user_id = me and x.restaurant_id = target and x.field = f.field
+                         and x.created_at > now() - make_interval(days => public.fact_refresh_days(f.field)))
+      -- Address and cuisine: only ask when missing (they rarely change).
+      and (f.val is null or f.field not in ('address', 'cuisine') or coalesce(r.sources->>f.field, 'google') = 'google' and f.field = 'cuisine')
+      -- The restaurant's owner keeps their own details current.
+      and coalesce(r.sources->>f.field, '') <> 'owner'
+  ) c
+  where c.tier < 3 or c.last_at is null or c.last_at < now() - make_interval(days => public.fact_refresh_days(c.field))
+  order by c.tier, c.last_at nulls first, md5(me::text || c.field || target::text)
+  limit 1;
+  if pick.field is null then return null; end if;
+  return jsonb_build_object('field', pick.field,
+                            'reason', case pick.tier when 1 then 'missing' when 2 then 'unowned' else 'stale' end,
+                            'checked_at', pick.last_at);
+end $$;
+
+-- Allowances: anything that costs money or uses a free quota has a per-person daily allowance
+-- (bigger for contributor tiers) AND an overall budget, so Crumbs can never be run into a bill.
+create table if not exists public.usage_budgets (
+  kind text primary key,
+  daily_total integer,          -- everyone together, per day (null = no daily cap)
+  monthly_total integer,        -- everyone together, per calendar month (null = none)
+  per_tier integer[] not null,  -- per person per day, by tier 0..4
+  note text
+);
+insert into public.usage_budgets (kind, daily_total, monthly_total, per_tier, note) values
+  ('ai', 150, 3000, '{3,4,5,6,8}', 'AI ideas (Vercel AI Gateway credit)'),
+  ('menu_import', 60, 1200, '{2,2,3,3,4}', 'Import menu from website (AI)'),
+  ('explore', 1500, null, '{15,20,25,30,40}', 'OpenStreetMap Explore / nearby (free, fair use)'),
+  ('google', 40, 900, '{10,12,15,18,20}', 'Google place details + hours (1,000 Enterprise free a month)')
+on conflict (kind) do nothing;
+create table if not exists public.usage_counts (
+  kind text not null,
+  day date not null,
+  user_id uuid not null, -- all zeros = everyone together
+  count integer not null default 0,
+  primary key (kind, day, user_id)
+);
+alter table public.usage_budgets enable row level security;
+alter table public.usage_counts enable row level security;
+drop policy if exists usage_budgets_read on public.usage_budgets;
+create policy usage_budgets_read on public.usage_budgets for select to authenticated using (true);
+
+create or replace function public.use_allowance(what text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  b public.usage_budgets;
+  me uuid := auth.uid();
+  everyone constant uuid := '00000000-0000-0000-0000-000000000000';
+  admin boolean := public.is_crumbs_admin();
+  tier integer;
+  mine integer;
+  total integer;
+  month integer;
+begin
+  if me is null then return jsonb_build_object('ok', false, 'reason', 'signin'); end if;
+  select * into b from public.usage_budgets where kind = what;
+  if b.kind is null then return jsonb_build_object('ok', true); end if;
+  tier := coalesce((public.my_contributions()->>'tier')::int, 0);
+  select count into mine from public.usage_counts where kind = what and day = current_date and user_id = me;
+  select count into total from public.usage_counts where kind = what and day = current_date and user_id = everyone;
+  select coalesce(sum(count), 0) into month from public.usage_counts
+   where kind = what and user_id = everyone and day >= date_trunc('month', current_date);
+  if b.monthly_total is not null and month >= b.monthly_total then
+    return jsonb_build_object('ok', false, 'reason', 'budget_month');
+  end if;
+  if b.daily_total is not null and coalesce(total, 0) >= b.daily_total then
+    return jsonb_build_object('ok', false, 'reason', 'budget_day');
+  end if;
+  if not admin and coalesce(mine, 0) >= b.per_tier[least(tier, 4) + 1] then
+    return jsonb_build_object('ok', false, 'reason', 'personal', 'limit', b.per_tier[least(tier, 4) + 1]);
+  end if;
+  insert into public.usage_counts (kind, day, user_id, count) values (what, current_date, me, 1), (what, current_date, everyone, 1)
+  on conflict (kind, day, user_id) do update set count = usage_counts.count + 1;
+  delete from public.usage_counts where day < current_date - 62; -- keep two months
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.usage_today()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'kind', b.kind, 'note', b.note, 'daily_total', b.daily_total, 'monthly_total', b.monthly_total, 'per_tier', b.per_tier,
+    'today', coalesce((select count from public.usage_counts c where c.kind = b.kind and c.day = current_date
+                        and c.user_id = '00000000-0000-0000-0000-000000000000'), 0),
+    'month', coalesce((select sum(count) from public.usage_counts c where c.kind = b.kind
+                        and c.day >= date_trunc('month', current_date) and c.user_id = '00000000-0000-0000-0000-000000000000'), 0)
+  ) order by b.kind), '[]')
+  from public.usage_budgets b
+  where public.is_crumbs_admin()
+$$;
+
+create or replace function public.set_budget(what text, daily integer, monthly integer, tiers integer[])
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_crumbs_admin() then raise exception 'Admins only'; end if;
+  if array_length(tiers, 1) <> 5 then raise exception 'Need 5 tier values'; end if;
+  update public.usage_budgets set daily_total = daily, monthly_total = monthly, per_tier = tiers where kind = what;
+end $$;
+
+-- Restaurant owners (#100): claim a profile; once an admin approves, their details apply
+-- straight away as the 'owner' source (members need 3 to overrule) and their menu counts as claimed.
+create table if not exists public.restaurant_claims (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  contact_name text not null check (char_length(contact_name) between 1 and 120),
+  role text check (role is null or char_length(role) <= 60),
+  email text check (email is null or char_length(email) <= 200),
+  phone text check (phone is null or char_length(phone) <= 40),
+  proof text check (proof is null or char_length(proof) <= 1000),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  unique (restaurant_id, user_id)
+);
+create table if not exists public.restaurant_managers (
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  since timestamptz not null default now(),
+  primary key (restaurant_id, user_id)
+);
+alter table public.restaurant_claims enable row level security;
+alter table public.restaurant_managers enable row level security;
+drop policy if exists restaurant_claims_read on public.restaurant_claims;
+create policy restaurant_claims_read on public.restaurant_claims for select to authenticated
+  using (user_id = (select auth.uid()) or public.is_crumbs_admin());
+drop policy if exists restaurant_managers_read on public.restaurant_managers;
+create policy restaurant_managers_read on public.restaurant_managers for select to authenticated using (true);
+
+create or replace function public.manages_restaurant(target uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.restaurant_managers where restaurant_id = target and user_id = (select auth.uid()))
+$$;
+
+create or replace function public.claim_restaurant(target uuid, contact text, job text, mail text, tel text, evidence text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.my_restaurant(target) then raise exception 'Save this restaurant first, then claim it'; end if;
+  insert into public.restaurant_claims (restaurant_id, user_id, contact_name, role, email, phone, proof)
+  values (target, auth.uid(), trim(contact), nullif(trim(job), ''), nullif(trim(mail), ''), nullif(trim(tel), ''), nullif(trim(evidence), ''))
+  on conflict (restaurant_id, user_id) do update set contact_name = excluded.contact_name, role = excluded.role,
+    email = excluded.email, phone = excluded.phone, proof = excluded.proof, status = 'pending', created_at = now();
+end $$;
+
+create or replace function public.review_claim(claim uuid, approve boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  c public.restaurant_claims;
+begin
+  if not public.is_crumbs_admin() then raise exception 'Admins only'; end if;
+  update public.restaurant_claims set status = case when approve then 'approved' else 'rejected' end, reviewed_at = now()
+   where id = claim returning * into c;
+  if approve and c.id is not null then
+    insert into public.restaurant_managers (restaurant_id, user_id) values (c.restaurant_id, c.user_id) on conflict do nothing;
+  end if;
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['skip_question(uuid, text, integer)', 'next_question(uuid)', 'use_allowance(text)', 'usage_today()',
+                           'set_budget(text, integer, integer, integer[])', 'manages_restaurant(uuid)',
+                           'claim_restaurant(uuid, text, text, text, text, text)', 'review_claim(uuid, boolean)'] loop
+    execute format('revoke execute on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
 
 -- ============================================================================================
 -- 13b. Your data (#88 delete account, #89 backups)

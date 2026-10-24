@@ -5,7 +5,13 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { RestaurantStore } from '@/hooks/use-restaurant'
-import { PROFILE_FIELDS, type Evidence, type FactField, type Restaurant } from '@/lib/restaurants'
+import {
+  PROFILE_FIELDS,
+  claimRestaurant,
+  type Evidence,
+  type FactField,
+  type Restaurant,
+} from '@/lib/restaurants'
 import { hoursToText, localUtcOffset, parseHoursText } from '@/lib/hours-text'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
@@ -85,7 +91,12 @@ function show(r: Restaurant, f: FactField) {
 export function RestaurantInfoEditor({
   store,
   onHours,
+  supabase,
+  claims = false,
 }: {
+  supabase?: any
+  /** #100 restaurant claims switched on (admin switch "restaurant_claims") */
+  claims?: boolean
   store: RestaurantStore
   /** Hours a member entered: also update this group's copy so the "Open now" line uses them. */
   onHours: (hours: Hours) => void
@@ -112,10 +123,17 @@ export function RestaurantInfoEditor({
     <div className="flex flex-col gap-2">
       {
         <div className="flex flex-col">
-          <p className="mb-2 text-sm text-muted-foreground">
-            Fix or add anything you’ve seen yourself. It helps everyone who saves this place, and
-            earns you Crumbs points.
-          </p>
+          {store.manages ? (
+            <p className="mb-2 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
+              <strong>🏪 You manage {r.name}.</strong> Your changes go live straight away for
+              everyone and show as confirmed by the restaurant.
+            </p>
+          ) : (
+            <p className="mb-2 text-sm text-muted-foreground">
+              Fix or add anything you’ve seen yourself. It helps everyone who saves this place, and
+              earns you Crumbs points.
+            </p>
+          )}
           {store.insights && store.insights.visits > 0 && (
             <p className="mb-1 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
               <strong>From Crumbs:</strong> {store.insights.visits} visit
@@ -129,7 +147,8 @@ export function RestaurantInfoEditor({
           )}
           {PROFILE_FIELDS.map((f) => {
             const text = show(r, f)
-            const owned = r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'
+            const owned =
+              r.sources?.[f] === 'owner' || r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'
             return (
               <div key={f} className="profile-row flex flex-col gap-1 py-2">
                 <div className="flex items-start gap-2">
@@ -140,9 +159,13 @@ export function RestaurantInfoEditor({
                   {r.verified?.[f]?.claimed && (
                     <span
                       className="text-xs font-bold text-[#2f7d4f]"
-                      title="Checked by several people"
+                      title={
+                        r.sources?.[f] === 'owner'
+                          ? 'Confirmed by the restaurant'
+                          : 'Checked by several people'
+                      }
                     >
-                      ✓
+                      {r.sources?.[f] === 'owner' ? '✓ Restaurant' : '✓'}
                     </span>
                   )}
                 </div>
@@ -178,6 +201,9 @@ export function RestaurantInfoEditor({
             <p className="mt-1 text-[11px] text-muted-foreground">
               Some details © OpenStreetMap contributors (ODbL).
             </p>
+          )}
+          {claims && !store.manages && supabase && (
+            <ClaimForm restaurantId={r.id} name={r.name} supabase={supabase} />
           )}
         </div>
       }
@@ -316,6 +342,114 @@ export function FactEditor({
           onClick={() => onSave(val, how)}
         >
           Save for everyone
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** #100 "Own or manage this place?" — a request an admin checks before the owner gets control. */
+function ClaimForm({
+  restaurantId,
+  name,
+  supabase,
+}: {
+  restaurantId: string
+  name: string
+  supabase: any
+}) {
+  const [open, setOpen] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [form, setForm] = useState({ contact: '', job: '', mail: '', tel: '', evidence: '' })
+  const set = (k: keyof typeof form) => (event: { target: { value: string } }) =>
+    setForm({ ...form, [k]: event.target.value })
+  if (sent)
+    return (
+      <p className="mt-3 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
+        Thanks — we’ll check your claim and let you know. Once confirmed, your changes go live
+        straight away.
+      </p>
+    )
+  if (!open)
+    return (
+      <button
+        className="mt-3 self-start text-sm font-semibold text-primary underline"
+        onClick={() => setOpen(true)}
+      >
+        Own or manage {name}? Claim this page
+      </button>
+    )
+  return (
+    <div className="rise-panel mt-3 flex flex-col gap-2 rounded-2xl bg-[var(--card)] p-3">
+      <p className="font-semibold">Claim {name}</p>
+      <p className="text-xs text-muted-foreground">
+        We check every claim (usually by emailing or calling the restaurant). Once confirmed you can
+        keep hours, menu and details right for everyone.
+      </p>
+      <input
+        className="field !min-h-10 text-sm"
+        aria-label="Your name"
+        placeholder="Your name"
+        maxLength={120}
+        value={form.contact}
+        onChange={set('contact')}
+      />
+      <input
+        className="field !min-h-10 text-sm"
+        aria-label="Your role"
+        placeholder="Role (owner, manager…)"
+        maxLength={60}
+        value={form.job}
+        onChange={set('job')}
+      />
+      <input
+        className="field !min-h-10 text-sm"
+        aria-label="Work email"
+        type="email"
+        placeholder="Work email (ideally at the restaurant’s website)"
+        maxLength={200}
+        value={form.mail}
+        onChange={set('mail')}
+      />
+      <input
+        className="field !min-h-10 text-sm"
+        aria-label="Restaurant phone"
+        inputMode="tel"
+        placeholder="Restaurant phone we can call"
+        maxLength={40}
+        value={form.tel}
+        onChange={set('tel')}
+      />
+      <textarea
+        className="field min-h-16 text-sm"
+        aria-label="Anything that shows it’s yours"
+        placeholder="Anything that shows it’s yours (optional)"
+        maxLength={1000}
+        value={form.evidence}
+        onChange={set('evidence')}
+      />
+      <div className="flex gap-2">
+        <button className="secondary !min-h-10 text-sm" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <button
+          className="primary !min-h-10 flex-1 text-sm"
+          disabled={busy || !form.contact.trim() || (!form.mail.trim() && !form.tel.trim())}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await claimRestaurant(supabase, restaurantId, form)
+              track('claim_sent')
+              setSent(true)
+            } catch (error: any) {
+              toast.error(error?.message || 'Could not send that')
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          Send claim
         </button>
       </div>
     </div>

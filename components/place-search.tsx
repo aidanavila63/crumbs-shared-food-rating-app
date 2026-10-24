@@ -6,6 +6,7 @@ import { useUserLocation } from '@/lib/use-user-location'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { hoursFromGoogle, type Hours } from '@/lib/place-info'
 import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
+import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 
 export type FoundPlace = {
   google_place_id: string
@@ -110,7 +111,8 @@ export function fromRestaurant(r: Restaurant): FoundPlace {
 // Shared details younger than this are reused instead of asking Google again.
 const FRESH_DAYS = 60
 const fresh = (r: Restaurant | null) =>
-  !!r?.details_checked_at && Date.now() - new Date(r.details_checked_at).getTime() < FRESH_DAYS * 864e5
+  !!r?.details_checked_at &&
+  Date.now() - new Date(r.details_checked_at).getTime() < FRESH_DAYS * 864e5
 
 async function searchOsm(
   query: string,
@@ -268,7 +270,29 @@ export function PlaceSearch({
         // Saved by another group recently? Use that copy (saves an Enterprise lookup).
         const shared = supabase ? await findRestaurant(supabase, item.prediction.placeId) : null
         if (shared && fresh(shared)) found = fromRestaurant(shared)
-        else {
+        else if (supabase && !(await takeAllowance(supabase, 'google')).ok) {
+          // Over Crumbs' Google budget: keep the place ID (allowed forever) and take the
+          // location from OpenStreetMap instead of paying for a Google lookup.
+          toast(
+            allowanceMessage({ ok: false, reason: 'budget_day' }, 'Google lookups') +
+              ' Using OpenStreetMap.',
+          )
+          const osm = await findOnOsm(`${item.main} ${item.secondary}`, location).catch(() => null)
+          found = {
+            ...(osm ?? {
+              name: item.main,
+              formatted_address: item.secondary || null,
+              latitude: null,
+              longitude: null,
+              price_level: null,
+              cuisine: null,
+              website: null,
+              google_maps_url: null,
+            }),
+            name: item.main,
+            google_place_id: item.prediction.placeId,
+          }
+        } else {
           const place = item.prediction.toPlace()
           await place.fetchFields({ fields: FIELDS })
           found = toFoundPlace(place)
@@ -311,7 +335,8 @@ export function PlaceSearch({
           {[
             ...crumbs,
             ...results.filter(
-              (item) => !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
+              (item) =>
+                !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
             ),
           ].map((item) => (
             <button key={item.id} type="button" onClick={() => pick(item)}>
@@ -333,7 +358,10 @@ export async function findOnGoogle(
   places: any,
   query: string,
   bias?: { lat: number; lng: number } | null,
+  supabase?: any,
 ): Promise<FoundPlace | null> {
+  // Over Crumbs' Google budget → null, and callers use OpenStreetMap instead.
+  if (supabase && !(await takeAllowance(supabase, 'google')).ok) return null
   const request: any = { textQuery: query, fields: FIELDS, maxResultCount: 1 }
   if (bias) request.locationBias = { center: bias, radius: 500 }
   const { places: found } = await places.Place.searchByText(request)

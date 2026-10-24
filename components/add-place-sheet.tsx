@@ -138,6 +138,7 @@ export function AddPlaceSheet({
           placeholder="Search for a restaurant"
         />
         <MapsLinkImport
+          supabase={demo ? undefined : supabase}
           onFound={(place) => {
             setFound(place)
             setName(place.name)

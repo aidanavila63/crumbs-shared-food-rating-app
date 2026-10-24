@@ -20,8 +20,22 @@ export async function tierOf(supabase: any, userId: string): Promise<Tier> {
   return tier
 }
 
-/** True when this user has used today's allowance of `kind`. */
+const DB_KIND: Record<keyof Tier['limits'], string> = {
+  ai: 'ai',
+  explore: 'explore',
+  menuImport: 'menu_import',
+}
+
+/** Message when this user (or Crumbs overall) has used today's allowance of `kind`, else null. */
 export async function overDailyLimit(supabase: any, userId: string, kind: keyof Tier['limits']) {
+  // The database keeps the real count (per person + overall budget) once the v4 update has run.
+  const { data, error } = await supabase.rpc('use_allowance', { what: DB_KIND[kind] })
+  if (!error && data) {
+    if (data.ok) return null
+    return data.reason === 'personal'
+      ? `That’s today’s limit for you (${data.limit}). Answering quick questions in Crumbs raises it.`
+      : 'Crumbs has used today’s budget for this — try again tomorrow.'
+  }
   const tier = await tierOf(supabase, userId)
   return tooManyRequests(`day:${kind}:${userId}`, tier.limits[kind], DAY)
     ? `That’s today’s limit for ${tier.name} (${tier.limits[kind]}). Help build Crumbs’ restaurant info to raise it.`

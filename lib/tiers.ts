@@ -1,5 +1,6 @@
 // Contributor tiers: the more you help build Crumbs' own restaurant data, the more you get.
 // Points: fact 3 · menu dish 1 · check 1 · +5 when others back up your fact (it becomes Crumbs' own).
+// Max 40 points a day, and repeat answers within a detail's refresh window earn nothing.
 export type Tier = {
   level: number
   name: string

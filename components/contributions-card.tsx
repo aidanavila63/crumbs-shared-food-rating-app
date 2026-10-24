@@ -13,6 +13,8 @@ type C = {
   restaurants: number
   verified?: number
   points?: number
+  today?: number
+  daily_cap?: number
 }
 
 const BADGES = [
@@ -113,7 +115,8 @@ export function ContributionsCard({
       </p>
       <p className="text-xs text-muted-foreground">
         Earn points by answering quick questions, snapping menus, hours signs and receipts, and
-        checking dishes: 3 a detail, 1 a dish or check, +5 when others back you up.
+        checking dishes: 3 a detail, 1 a dish or check, +5 when others back you up. Up to{' '}
+        {c.daily_cap ?? 40} a day{c.today !== undefined ? ` (${c.today} today)` : ''}.
       </p>
       <div className="grid grid-cols-4 gap-2 text-center">
         {(

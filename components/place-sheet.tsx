@@ -288,7 +288,10 @@ export function PlaceSheet({
   v4 = false,
   allPlaces = [],
   menuImport = true,
+  claims = false,
 }: {
+  /** #100 admin switch "restaurant_claims" */
+  claims?: boolean
   /** #109 admin switch */
   menuImport?: boolean
   group?: Group | null
@@ -898,7 +901,7 @@ export function PlaceSheet({
             </div>
           </div>
         )}
-        <QuickCheck place={place} store={restaurant} onHours={saveHours} />
+        <QuickCheck place={place} store={restaurant} supabase={supabase} demo={demo} onHours={saveHours} />
         <FactsEditor place={place} supabase={supabase} demo={demo} userId={userId} onUpdate={onUpdate} />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         <div className="flex flex-col gap-2">
@@ -1058,7 +1061,12 @@ export function PlaceSheet({
       </div>
       {editInfo && (
         <Overlay label="Suggest an edit" title="Suggest an edit" onClose={() => setEditInfo(false)}>
-          <RestaurantInfoEditor store={restaurant} onHours={saveHours} />
+          <RestaurantInfoEditor
+            store={restaurant}
+            onHours={saveHours}
+            supabase={demo ? undefined : supabase}
+            claims={claims}
+          />
         </Overlay>
       )}
     </Sheet>

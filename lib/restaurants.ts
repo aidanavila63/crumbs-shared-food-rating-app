@@ -21,7 +21,9 @@ export type Restaurant = {
   places_count: number
   // Data ownership (#27): where each field came from, and how many members confirmed it.
   sources?: Partial<Record<FactField, FactSource>>
-  verified?: Partial<Record<FactField, { n: number; at: string; groups?: number; claimed?: boolean }>>
+  verified?: Partial<
+    Record<FactField, { n: number; at: string; groups?: number; claimed?: boolean }>
+  >
   phone?: string | null
   osm_id?: string | null
   osm_checked_at?: string | null
@@ -37,7 +39,7 @@ export type FactField =
   | 'price_level'
   | 'cuisine'
   | 'status'
-export type FactSource = 'crumbs' | 'osm' | 'google'
+export type FactSource = 'owner' | 'crumbs' | 'osm' | 'google'
 export type Evidence = 'in_person' | 'photo' | 'website' | 'receipt' | 'phone_call'
 
 /** The facts a profile is scored on (name/location come with the place). */
@@ -78,7 +80,9 @@ const has = (r: Restaurant, f: FactField) => {
  */
 export function ownedShare(r: Restaurant) {
   const owned = PROFILE_FIELDS.filter(
-    (f) => has(r, f) && (r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'),
+    (f) =>
+      has(r, f) &&
+      (r.sources?.[f] === 'owner' || r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'),
   )
   return Math.round((owned.length / PROFILE_FIELDS.length) * 100)
 }
@@ -260,10 +264,53 @@ export async function loadInsights(supabase: any, restaurantId: string): Promise
   return error ? null : data
 }
 
+export type Contributions = {
+  facts: number
+  dishes: number
+  checks: number
+  restaurants: number
+  verified: number
+  points: number
+  tier: number
+  today?: number
+  daily_cap?: number
+  /** restaurants this person is the confirmed owner/manager of */
+  manages?: string[]
+}
+
+export type Question = {
+  field: FactField
+  reason: 'missing' | 'unowned' | 'stale'
+  checked_at: string | null
+}
+/** The one quick question for this person about this restaurant (rotates per person). */
+export async function nextQuestion(supabase: any, restaurantId: string): Promise<Question | null> {
+  const { data, error } = await supabase.rpc('next_question', { target: restaurantId })
+  return error ? null : (data ?? null)
+}
+/** "Not now" (a week) / "Not sure" (three months): don't ask this person again for a while. */
+export async function skipQuestion(
+  supabase: any,
+  restaurantId: string,
+  fact: FactField,
+  days: number,
+) {
+  await supabase.rpc('skip_question', { target: restaurantId, fact, days })
+}
+
+export async function claimRestaurant(
+  supabase: any,
+  restaurantId: string,
+  form: { contact: string; job: string; mail: string; tel: string; evidence: string },
+) {
+  const { error } = await supabase.rpc('claim_restaurant', { target: restaurantId, ...form })
+  if (error) throw error
+}
+
 export async function myContributions(supabase: any) {
   const { data, error } = await supabase.rpc('my_contributions')
   if (error) return null
-  return data as { facts: number; dishes: number; checks: number; restaurants: number; verified: number; points: number; tier: number }
+  return data as Contributions
 }
 
 export async function searchRestaurants(

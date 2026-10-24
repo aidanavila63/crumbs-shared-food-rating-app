@@ -235,7 +235,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
                 )
               })}
               <p className="mt-1 text-xs text-muted-foreground">
-                {stats.facts ?? 0} details added by members · {stats.claimed_facts ?? 0} details and
+                {stats.facts ?? 0} details added by members · {stats.claimed_facts ?? 0} details and{' '}
                 {stats.claimed_dishes ?? 0} menu dishes cross-checked by 2+ groups (claimed as
                 Crumbs’ own).
               </p>
@@ -269,6 +269,8 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         </p>
       </section>
 
+      <BudgetsCard supabase={supabase} demo={demo} />
+      <ClaimsCard supabase={supabase} demo={demo} />
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
         <p className="text-sm text-muted-foreground">
@@ -413,5 +415,208 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         ))}
       </section>
     </div>
+  )
+}
+
+type Budget = {
+  kind: string
+  note: string
+  daily_total: number | null
+  monthly_total: number | null
+  per_tier: number[]
+  today: number
+  month: number
+}
+
+/** Spending guard: today's / this month's use of everything that costs money or free quota. */
+function BudgetsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [rows, setRows] = useState<Budget[] | null>(null)
+  const load = useCallback(async () => {
+    if (demo)
+      return setRows([
+        {
+          kind: 'ai',
+          note: 'AI ideas',
+          daily_total: 150,
+          monthly_total: 3000,
+          per_tier: [3, 4, 5, 6, 8],
+          today: 12,
+          month: 240,
+        },
+        {
+          kind: 'google',
+          note: 'Google place details + hours',
+          daily_total: 40,
+          monthly_total: 900,
+          per_tier: [10, 12, 15, 18, 20],
+          today: 9,
+          month: 310,
+        },
+      ])
+    const { data, error } = await supabase.rpc('usage_today')
+    if (!error) setRows(data ?? [])
+  }, [demo, supabase])
+  useEffect(() => {
+    load()
+  }, [load])
+  async function save(b: Budget, changes: Partial<Budget>) {
+    const next = { ...b, ...changes }
+    setRows((current) => current?.map((r) => (r.kind === b.kind ? next : r)) ?? null)
+    if (demo) return
+    const { error } = await supabase.rpc('set_budget', {
+      what: b.kind,
+      daily: next.daily_total,
+      monthly: next.monthly_total,
+      tiers: next.per_tier,
+    })
+    if (error) toast.error(error.message)
+    else toast.success('Budget saved')
+  }
+  if (!rows?.length) return null
+  const num = (v: string) => (v.trim() === '' ? null : Math.max(0, Math.round(Number(v)) || 0))
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Spending guard</h3>
+      <p className="text-sm text-muted-foreground">
+        Everything that costs money or uses a free quota stops at these totals, whatever anyone’s
+        tier. Per-person allowances are by tier (Taster → Legend).
+      </p>
+      {rows.map((b) => {
+        const day = b.daily_total ? Math.min(100, Math.round((b.today / b.daily_total) * 100)) : 0
+        const month = b.monthly_total
+          ? Math.min(100, Math.round((b.month / b.monthly_total) * 100))
+          : 0
+        const tone = (pct: number) =>
+          pct >= 80 ? 'meter-red' : pct >= 60 ? 'meter-amber' : 'meter-green'
+        return (
+          <div key={b.kind} className="surface-soft flex flex-col gap-2">
+            <p className="font-semibold">{b.note || b.kind}</p>
+            <div className="text-xs">
+              Today {b.today}
+              {b.daily_total ? ` of ${b.daily_total}` : ''}
+              <span className={`owned-bar mt-1 ${tone(day)}`}>
+                <span className="bar-fill" style={{ width: `${Math.max(2, day)}%` }} />
+              </span>
+            </div>
+            {b.monthly_total ? (
+              <div className="text-xs">
+                This month {b.month} of {b.monthly_total}
+                <span className={`owned-bar mt-1 ${tone(month)}`}>
+                  <span className="bar-fill" style={{ width: `${Math.max(2, month)}%` }} />
+                </span>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <label className="flex flex-col gap-1">
+                Per day
+                <input
+                  className="field !min-h-9 !py-1 text-sm"
+                  inputMode="numeric"
+                  defaultValue={b.daily_total ?? ''}
+                  onBlur={(e) =>
+                    num(e.target.value) !== b.daily_total &&
+                    save(b, { daily_total: num(e.target.value) })
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                Per month
+                <input
+                  className="field !min-h-9 !py-1 text-sm"
+                  inputMode="numeric"
+                  defaultValue={b.monthly_total ?? ''}
+                  onBlur={(e) =>
+                    num(e.target.value) !== b.monthly_total &&
+                    save(b, { monthly_total: num(e.target.value) })
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                Each person (by tier)
+                <input
+                  className="field !min-h-9 !py-1 text-sm"
+                  defaultValue={b.per_tier.join(',')}
+                  onBlur={(e) => {
+                    const tiers = e.target.value
+                      .split(',')
+                      .map((x) => Math.max(0, Math.round(Number(x)) || 0))
+                    if (tiers.length === 5 && tiers.join(',') !== b.per_tier.join(','))
+                      save(b, { per_tier: tiers })
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+type Claim = {
+  id: string
+  contact_name: string
+  role: string | null
+  email: string | null
+  phone: string | null
+  proof: string | null
+  created_at: string
+  restaurants: { name: string; formatted_address: string | null; website: string | null } | null
+}
+
+/** #100 Restaurant claims waiting for a check (call or email the restaurant, then approve). */
+function ClaimsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [claims, setClaims] = useState<Claim[]>([])
+  useEffect(() => {
+    if (demo) return
+    supabase
+      .from('restaurant_claims')
+      .select(
+        'id,contact_name,role,email,phone,proof,created_at,restaurants(name,formatted_address,website)',
+      )
+      .eq('status', 'pending')
+      .order('created_at')
+      .then(({ data }: any) => setClaims(data ?? []))
+  }, [demo, supabase])
+  if (!claims.length) return null
+  async function review(id: string, approve: boolean) {
+    const { error } = await supabase.rpc('review_claim', { claim: id, approve })
+    if (error) return toast.error(error.message)
+    setClaims((current) => current.filter((c) => c.id !== id))
+    toast.success(approve ? 'Approved — they can now manage the page' : 'Claim declined')
+  }
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Restaurant claims ({claims.length})</h3>
+      <p className="text-sm text-muted-foreground">
+        Check before approving: email at the restaurant’s own website, or call the restaurant’s
+        listed number.
+      </p>
+      {claims.map((c) => (
+        <div key={c.id} className="surface-soft flex flex-col gap-1 text-sm">
+          <p className="font-semibold">{c.restaurants?.name ?? 'Restaurant'}</p>
+          <p className="text-xs text-muted-foreground">
+            {c.restaurants?.formatted_address}
+            {c.restaurants?.website ? ` · ${c.restaurants.website}` : ''}
+          </p>
+          <p>
+            {c.contact_name}
+            {c.role ? ` (${c.role})` : ''} · {[c.email, c.phone].filter(Boolean).join(' · ')}
+          </p>
+          {c.proof && <p className="text-xs text-muted-foreground">“{c.proof}”</p>}
+          <div className="flex gap-2">
+            <button
+              className="secondary !min-h-9 flex-1 text-sm"
+              onClick={() => review(c.id, false)}
+            >
+              Decline
+            </button>
+            <button className="primary !min-h-9 flex-1 text-sm" onClick={() => review(c.id, true)}>
+              Approve
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
   )
 }

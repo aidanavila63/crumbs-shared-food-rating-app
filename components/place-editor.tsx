@@ -79,7 +79,9 @@ export function PlaceEditor({
       let found = null
       if (places && !googleDown) {
         try {
-          found = await findOnGoogle(places, query)
+          found =
+            (await findOnGoogle(places, query, null, demo ? undefined : supabase)) ??
+            (await findOnOsm(query, null))
         } catch (error) {
           if (navigator.onLine) markGoogleDown()
           found = await findOnOsm(query, null)

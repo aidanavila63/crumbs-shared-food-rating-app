@@ -64,6 +64,7 @@ export function useRestaurant({
   const [mine, setMine] = useState<Record<string, 'confirm' | 'flag'>>({})
   const [loading, setLoading] = useState(false)
   const [insights, setInsights] = useState<Insights | null>(null)
+  const [manages, setManages] = useState(false)
   const enabled = (v4 || demo) && shareable(place.google_place_id)
 
   const reload = useCallback(
@@ -118,6 +119,14 @@ export function useRestaurant({
         if (!place.restaurant_id) onLinked(r.id)
         await reload(r.id)
         loadInsights(supabase, r.id).then((data) => !cancelled && setInsights(data))
+        if (userId)
+          supabase
+            .from('restaurant_managers')
+            .select('user_id')
+            .eq('restaurant_id', r.id)
+            .eq('user_id', userId)
+            .maybeSingle()
+            .then(({ data }: any) => !cancelled && setManages(!!data))
         // Fill gaps from OpenStreetMap (free data we can keep) — at most every ~3 months.
         const stale =
           !r.osm_checked_at || Date.now() - new Date(r.osm_checked_at).getTime() > 90 * 864e5
@@ -163,7 +172,7 @@ export function useRestaurant({
     return result
   }
 
-  async function share(dishes: NewMenuDish[], how: 'photo' | 'website' | 'manual') {
+  async function share(dishes: NewMenuDish[], how: 'photo' | 'website' | 'manual' | 'receipt') {
     if (!restaurant) return 0
     if (demo) {
       const have = new Set(menu.map((d) => d.name_key))
@@ -214,7 +223,7 @@ export function useRestaurant({
     }
   }
 
-  return { enabled, restaurant, menu, mine, loading, insights, share, vote, contribute }
+  return { enabled, restaurant, menu, mine, loading, insights, manages, share, vote, contribute }
 }
 
 export type RestaurantStore = ReturnType<typeof useRestaurant>

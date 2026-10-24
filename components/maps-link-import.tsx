@@ -7,7 +7,13 @@ import { isMapsHost } from '@/lib/maps-link'
 import { findOnGoogle, findOnOsm, type FoundPlace } from './place-search'
 
 /** Paste a Google Maps share link and get the place filled in (one search, no list import). */
-export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => void }) {
+export function MapsLinkImport({
+  onFound,
+  supabase,
+}: {
+  onFound: (place: FoundPlace) => void
+  supabase?: any
+}) {
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
   const [link, setLink] = useState('')
@@ -28,7 +34,7 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
       let found: FoundPlace | null = null
       if (places && !googleDown) {
         try {
-          found = await findOnGoogle(places, parsed.name, bias)
+          found = await findOnGoogle(places, parsed.name, bias, supabase)
         } catch {
           if (navigator.onLine) markGoogleDown()
         }
@@ -63,28 +69,28 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
       <button className="secondary w-full" disabled={busy} onClick={paste}>
         📋 {busy ? 'Reading…' : 'Paste copied Maps link'}
       </button>
-    <details className="text-sm">
-      <summary className="cursor-pointer font-semibold text-primary">
-        Paste a Google Maps link
-      </summary>
-      <div className="mt-2 flex gap-2">
-        <input
-          aria-label="Google Maps link"
-          className="field min-w-0 flex-1"
-          inputMode="url"
-          placeholder="https://maps.app.goo.gl/…"
-          value={link}
-          onChange={(event) => setLink(event.target.value)}
-          onKeyDown={(event) => event.key === 'Enter' && run()}
-        />
-        <button className="secondary !min-h-11 !px-3" disabled={busy} onClick={() => run()}>
-          {busy ? 'Reading…' : 'Import'}
-        </button>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        In Google Maps tap Share → Copy link on a place, then paste it here. One place at a time.
-      </p>
-    </details>
+      <details className="text-sm">
+        <summary className="cursor-pointer font-semibold text-primary">
+          Paste a Google Maps link
+        </summary>
+        <div className="mt-2 flex gap-2">
+          <input
+            aria-label="Google Maps link"
+            className="field min-w-0 flex-1"
+            inputMode="url"
+            placeholder="https://maps.app.goo.gl/…"
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && run()}
+          />
+          <button className="secondary !min-h-11 !px-3" disabled={busy} onClick={() => run()}>
+            {busy ? 'Reading…' : 'Import'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          In Google Maps tap Share → Copy link on a place, then paste it here. One place at a time.
+        </p>
+      </details>
     </>
   )
 }

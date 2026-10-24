@@ -4,7 +4,15 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { loadRestaurant, shareHours } from '@/lib/restaurants'
-import { hasGoogleId, hoursAreStale, hoursFromGoogle, isClosedForever, openStatus, takeQuota } from '@/lib/place-info'
+import { takeAllowance } from '@/lib/allowance'
+import {
+  hasGoogleId,
+  hoursAreStale,
+  hoursFromGoogle,
+  isClosedForever,
+  openStatus,
+  takeQuota,
+} from '@/lib/place-info'
 
 /** Asks Google for opening hours + whether the place has closed, and saves them on the place. */
 async function refreshHours(places: any, supabase: any, place: Place, demo: boolean) {
@@ -13,7 +21,11 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
     const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
     // Hours members or OpenStreetMap gave us are Crumbs' own: trust them for ~3 months.
     const owned = shared?.sources?.hours === 'crumbs' || shared?.sources?.hours === 'osm'
-    if (shared?.hours_checked_at && shared.opening_hours && !hoursAreStale(shared, owned ? 90 : 14)) {
+    if (
+      shared?.hours_checked_at &&
+      shared.opening_hours &&
+      !hoursAreStale(shared, owned ? 90 : 14)
+    ) {
       const reused = {
         opening_hours: shared.opening_hours,
         business_status: shared.business_status,
@@ -24,8 +36,12 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
       return reused
     }
   }
+  // Counts against Crumbs' Google budget (and this person's daily allowance).
+  if (!demo && !(await takeAllowance(supabase, 'google')).ok) throw new Error('google-budget')
   const googlePlace = new places.Place({ id: place.google_place_id })
-  await googlePlace.fetchFields({ fields: ['regularOpeningHours', 'businessStatus', 'utcOffsetMinutes'] })
+  await googlePlace.fetchFields({
+    fields: ['regularOpeningHours', 'businessStatus', 'utcOffsetMinutes'],
+  })
   const changes = {
     opening_hours: hoursFromGoogle(googlePlace),
     business_status: (googlePlace.businessStatus as string | null) ?? null,
@@ -36,7 +52,12 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
     if (error) throw error
     // Share so the next group that opens this restaurant doesn't pay for the same lookup.
     if (place.restaurant_id)
-      shareHours(supabase, place.restaurant_id, changes.opening_hours, changes.business_status).catch(() => {})
+      shareHours(
+        supabase,
+        place.restaurant_id,
+        changes.opening_hours,
+        changes.business_status,
+      ).catch(() => {})
   }
   return changes
 }
@@ -57,13 +78,14 @@ export function PlaceHours({
   const googleDown = useGoogleDown()
   const tried = useRef(false)
   useEffect(() => {
-    if (tried.current || !places || googleDown || !hasGoogleId(place) || !hoursAreStale(place)) return
+    if (tried.current || !places || googleDown || !hasGoogleId(place) || !hoursAreStale(place))
+      return
     tried.current = true
     if (!takeQuota('hours', 12)) return
     refreshHours(places, supabase, place, demo)
       .then((changes) => onUpdate({ ...place, ...changes }))
-      .catch(() => {
-        if (navigator.onLine) markGoogleDown()
+      .catch((error) => {
+        if (navigator.onLine && error?.message !== 'google-budget') markGoogleDown()
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places, googleDown, place.id])
@@ -75,7 +97,9 @@ export function PlaceHours({
   const status = openStatus(place.opening_hours)
   if (!status) return null
   return (
-    <p className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}>
+    <p
+      className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}
+    >
       {status.open ? '● ' : '○ '}
       {status.text}
     </p>
@@ -101,7 +125,9 @@ export function HoursRefresher({
     if (done.current || !places || googleDown || !all.length) return
     done.current = true
     const stale = all
-      .filter((place) => place.status === 'Want to try' && hasGoogleId(place) && hoursAreStale(place))
+      .filter(
+        (place) => place.status === 'Want to try' && hasGoogleId(place) && hoursAreStale(place),
+      )
       .slice(0, 2)
     ;(async () => {
       for (const place of stale) {
