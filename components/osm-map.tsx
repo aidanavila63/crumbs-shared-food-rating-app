@@ -61,6 +61,8 @@ export function OsmMap({
         [center.lat, center.lng],
         2,
       )
+      // Only the map data's licence credit (required); no library/brand badge.
+      map.attributionControl.setPrefix(false)
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',

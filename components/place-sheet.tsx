@@ -34,13 +34,15 @@ import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
-import { dishAverage, dishPoints } from '@/lib/stats'
+import { dishAverage, dishPoints, mustTry } from '@/lib/stats'
 import { ALLERGENS, dishWarnings, normaliseFacts, placeWarnings } from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
 import { FactsEditor } from './facts-editor'
 import { notifyMates } from '@/lib/push'
 import { Sheet } from './sheet'
 import { PlaceEditor } from './place-editor'
+import { usualCost, valueScore } from '@/lib/value'
+import { OtherGroups } from './other-groups'
 function DishRow({
   dish,
   userId,
@@ -302,6 +304,7 @@ export function PlaceSheet({
   onDelete,
   onRestore,
   group = null,
+  groups = [],
   v4 = false,
   allPlaces = [],
   menuImport = true,
@@ -312,6 +315,8 @@ export function PlaceSheet({
   /** #109 admin switch */
   menuImport?: boolean
   group?: Group | null
+  /** all your groups (#52 other groups' ratings, #47 sharing yours) */
+  groups?: Group[]
   v4?: boolean
   /** Everyone's real ratings (for the balanced score). */
   allPlaces?: Place[]
@@ -329,6 +334,9 @@ export function PlaceSheet({
   onRestore: (place: Place) => void
 }) {
   const mine = place.place_ratings.find((rating) => rating.user_id === userId)
+  const me = members.find((member) => member.id === userId) ?? null
+  // #47 the rating you just saved here, so it can go to your other groups too
+  const [rated, setRated] = useState<{ rating: Partial<Rating>; at: number } | null>(null)
   const [notes, setNotes] = useState(mine?.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [dishName, setDishName] = useState('')
@@ -437,7 +445,14 @@ export function PlaceSheet({
       ...place,
       place_ratings: [...place.place_ratings.filter((rating) => rating.user_id !== userId), next],
     })
-    if (demo) return
+    const shareNow =
+      next.score !== mine?.score ||
+      next.points !== mine?.points ||
+      CATEGORIES.some(({ key }) => next[key] !== mine?.[key])
+    if (demo) {
+      if (shareNow) setRated((prev) => ({ rating: next, at: (prev?.at ?? 0) + 1 }))
+      return
+    }
     const row: Record<string, unknown> = {
       place_id: place.id,
       user_id: userId,
@@ -454,6 +469,8 @@ export function PlaceSheet({
         would_return: next.would_return ?? null,
       })
     const { error } = await supabase.from('place_ratings').upsert(row)
+    if (!error && shareNow)
+      setRated((prev) => ({ rating: v4 ? next : { score: next.score }, at: (prev?.at ?? 0) + 1 }))
     if (error) toast.error(error.message)
     else if (next.score !== mine?.score) {
       track('rated', { scale, categories: CATEGORIES.some(({ key }) => next[key] != null) })
@@ -746,12 +763,12 @@ export function PlaceSheet({
     })
   }
   const warnings = placeWarnings(normaliseFacts(place.place_facts), members)
-  const order = dishes.filter(
-    (dish) =>
-      dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
-  )
+  const order = mustTry(dishes)
   const skip = dishes.filter((dish) => dish.verdict === 'never')
   const average = average5(place.place_ratings)
+  // #6 value for money, compared with what a place usually costs your group a person.
+  const people = Math.max(1, members.length || 2)
+  const value = valueScore(place, usualCost(allPlaces.length ? allPlaces : [place], people), people)
   const offsets = raterOffsets(allPlaces)
   const balancedRaw =
     place.place_ratings.length >= 2 ? balancedAverage(place.place_ratings, offsets) : 0
@@ -849,6 +866,18 @@ export function PlaceSheet({
                 }
               >
                 Balanced: {formatScore(balanced, scale)}
+              </button>
+            )}
+            {value && (
+              <button
+                className="ml-3 text-xs text-muted-foreground underline decoration-dotted"
+                onClick={() =>
+                  toast(`${value.label}: ${value.score}/10`, {
+                    description: `About $${Math.round(value.perHead)} a person here vs your usual $${Math.round(value.usual)}. Your group’s rating, nudged up when it costs less than usual and down when it costs more.`,
+                  })
+                }
+              >
+                💸 Value {value.score}/10
               </button>
             )}
           </div>
@@ -1005,6 +1034,18 @@ export function PlaceSheet({
             onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
           />
         </div>
+        {(groups.length > 1 || demo) && (
+          <OtherGroups
+            place={place}
+            groups={groups}
+            userId={userId}
+            profile={me}
+            supabase={supabase}
+            demo={demo}
+            scale={scale}
+            rated={rated}
+          />
+        )}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="font-serif text-xl font-bold">Dishes</h3>

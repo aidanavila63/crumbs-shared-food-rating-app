@@ -566,6 +566,7 @@ function CrumbsShell() {
                       setTab('Map')
                     }}
                     onSelect={setSelected}
+                    trips={settingsOf(data.group).trips}
                   />
                 </div>
               ) : (
@@ -886,6 +887,7 @@ function CrumbsShell() {
           demo={data.demo}
           supabase={data.supabase}
           group={data.group}
+          groups={data.groups}
           v4={data.v4}
           allPlaces={data.places}
           menuImport={flag('menu_import')}

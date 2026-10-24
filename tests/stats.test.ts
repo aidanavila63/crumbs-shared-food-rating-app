@@ -323,3 +323,20 @@ test('best dishes by kind (#18)', async () => {
   )
   assert.deepEqual(rankedCourses([p]), ['starter'])
 })
+
+test('must try (#14)', async () => {
+  const { mustTry } = await import('../lib/stats.ts')
+  const d = (name: string, score: number | null, verdict: any = null) =>
+    ({
+      id: name,
+      name,
+      verdict,
+      dish_ratings: score === null ? [] : [{ user_id: 'u', score: 5, points: score }],
+    }) as any
+  assert.deepEqual(
+    mustTry([d('A', 86), d('B', 95), d('C', 70), d('D', null, 'again'), d('E', 99, 'never')]).map(
+      (x) => x.name,
+    ),
+    ['B', 'A', 'D'],
+  )
+})

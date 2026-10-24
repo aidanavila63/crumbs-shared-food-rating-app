@@ -7,6 +7,13 @@ import { Switch } from './switch'
 
 type Home = { lat: number; lng: number } | null
 
+// #47 Choose which groups see each rating.
+const SHARE: { id: NonNullable<Profile['share_ratings']>; label: string }[] = [
+  { id: 'group', label: 'Just there' },
+  { id: 'ask', label: 'Ask me' },
+  { id: 'all', label: 'All of them' },
+]
+
 /** What you avoid, blind ratings, and your home spot. Warnings use everyone's avoid list. */
 export function PreferencesCard({
   profile,
@@ -106,6 +113,37 @@ export function PreferencesCard({
           onChange={(on) => save({ blind_ratings: on })}
         />
       </div>
+      {profile?.share_ratings !== undefined && (
+        <div className="flex flex-col gap-2">
+          <span>
+            <span className="font-semibold">Your ratings in your other groups</span>
+            <span className="block text-sm text-muted-foreground">
+              When another group you’re in saved the same place. Only your scores go, never your
+              notes.
+            </span>
+          </span>
+          <div className="segmented segmented-3" role="radiogroup" aria-label="Share your ratings">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{
+                transform: `translateX(${SHARE.findIndex((x) => x.id === profile.share_ratings) * 100}%)`,
+              }}
+            />
+            {SHARE.map((option) => (
+              <button
+                key={option.id}
+                role="radio"
+                aria-checked={profile.share_ratings === option.id}
+                className={profile.share_ratings === option.id ? 'segmented-active' : ''}
+                onClick={() => save({ share_ratings: option.id })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <p className="font-semibold">Home</p>
         <p className="text-sm text-muted-foreground">

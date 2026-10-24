@@ -17,6 +17,7 @@ export function settingsOf(group?: Pick<Group, 'settings'> | null): Required<Gro
     turns: !!s.turns,
     home: s.home !== false,
     weather: s.weather !== false,
+    trips: s.trips !== false,
     tags: Array.isArray(s.tags) && s.tags.length ? s.tags.slice(0, 16) : DEFAULT_TAGS,
   }
 }

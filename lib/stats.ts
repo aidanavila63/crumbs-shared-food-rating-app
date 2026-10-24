@@ -10,6 +10,16 @@ export function dishAverage(dish: Dish) {
   return Math.round(total / dish.dish_ratings.length)
 }
 
+/** #14 "MUST TRY": dishes someone would order again, or rated 85+ (and nobody said never), best first. */
+export function mustTry(dishes: Dish[]) {
+  return dishes
+    .filter(
+      (dish) =>
+        dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
+    )
+    .sort((a, b) => (dishAverage(b) ?? 0) - (dishAverage(a) ?? 0))
+}
+
 export type DishCourse = NonNullable<Dish['course']>
 /** Best dishes overall, or (#18) only one kind: the best starters, mains, desserts… */
 export function bestDishes(places: Place[], limit = 10, course?: DishCourse) {

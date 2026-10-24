@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LocateFixed, SlidersHorizontal, Telescope, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { notYetSaved, type FoundSpot } from '@/lib/add-found'
-import { distanceKm } from '@/lib/stats'
+import { distanceKm, mustTry } from '@/lib/stats'
 import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
@@ -550,6 +550,12 @@ export function MapTab({
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
+                {mustTry(preview.dishes ?? [])[0] && (
+                  <p className="mt-1 text-xs">
+                    <span className="tag mr-1 !px-2 !py-0.5 !text-[0.625rem]">MUST TRY</span>
+                    <strong>{mustTry(preview.dishes ?? [])[0].name}</strong>
+                  </p>
+                )}
               </div>
               <strong className="font-serif text-2xl text-primary">
                 {show(placeAverage(preview))}

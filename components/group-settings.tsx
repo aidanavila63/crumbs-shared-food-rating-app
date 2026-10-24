@@ -168,6 +168,7 @@ export function GroupSettingsCard({
               ['categories', 'Category scores', 'Rate food, service, vibe and value separately.'],
               ['wouldReturn', '“Would go back?”', 'A quick yes / maybe / no on every rating.'],
               ['turns', 'Whose turn to pick', 'Crumbs tracks who chose last and who’s next.'],
+              ['trips', 'Trips', 'Turn a list into a trip: city, dates, spend and its own map.'],
               ['home', 'Home cooking', 'The Home area for meals you cook yourselves.'],
               ['weather', 'Weather nudges', '“Rainy tonight — soup weather” for everyone.'],
             ] as const

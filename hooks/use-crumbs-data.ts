@@ -86,6 +86,7 @@ export type GroupSettings = {
   categories?: boolean // #1
   wouldReturn?: boolean // #3
   turns?: boolean // #37
+  trips?: boolean // #29 (on unless false)
   home?: boolean // #77 (on unless false)
   weather?: boolean // #35 (on unless false)
   tags?: string[] // #8 preset vibe tags
@@ -133,6 +134,8 @@ export type Profile = {
   notify?: Record<string, boolean> | null
   /** Runs a restaurant page as its verified owner (which one is never shown). */
   restaurant_owner?: boolean | null
+  /** #47 copy my ratings to my other groups that saved the same place */
+  share_ratings?: 'group' | 'all' | 'ask'
   role?: 'owner' | 'admin' | 'member' | null
 }
 export type List = {
@@ -280,6 +283,7 @@ const demoMembers: Profile[] = [
     blind_ratings: false,
     is_admin: true,
     restaurant_owner: true,
+    share_ratings: 'ask',
     role: 'owner',
   },
   {

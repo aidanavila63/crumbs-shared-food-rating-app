@@ -406,6 +406,10 @@ alter table public.profiles add column if not exists is_admin boolean not null d
 alter table public.profiles add column if not exists notify jsonb not null default '{}'::jsonb;
 -- "Restaurant owner" tag (never says which restaurant). Set only by the claims flow (13e).
 alter table public.profiles add column if not exists restaurant_owner boolean not null default false;
+-- #47 Your rating in your other groups that saved the same place: 'group' = only where you rate it,
+-- 'all' = copied to all of them, 'ask' = Crumbs offers each time.
+alter table public.profiles add column if not exists share_ratings text not null default 'group'
+  check (share_ratings in ('group', 'all', 'ask'));
 -- Nobody can make themselves admin (or a restaurant owner) from the app; only the SQL editor
 -- (no signed-in user) or the approved-claim trigger can.
 create or replace function public.protect_admin_flag()

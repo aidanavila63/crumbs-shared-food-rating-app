@@ -1,5 +1,6 @@
 // #42 Smart lists: filled in automatically from your ratings and visits. Nothing is stored.
 import type { Place } from '../hooks/use-crumbs-data'
+import { usualCost, valueScore } from './value.ts'
 
 const average = (place: Place) =>
   place.place_ratings.length
@@ -11,7 +12,9 @@ const visitCount = (place: Place) =>
 
 export type SmartList = { id: string; emoji: string; name: string; hint: string; places: Place[] }
 
-export function smartLists(places: Place[]): SmartList[] {
+export function smartLists(places: Place[], people = 2): SmartList[] {
+  const usual = usualCost(places, people)
+  const value = (p: Place) => valueScore(p, usual, people)?.score ?? 0
   return [
     {
       id: 'top',
@@ -28,6 +31,13 @@ export function smartLists(places: Place[]): SmartList[] {
       places: places
         .filter((p) => visitCount(p) >= 2)
         .sort((a, b) => visitCount(b) - visitCount(a)),
+    },
+    {
+      id: 'value',
+      emoji: '💸',
+      name: 'Best value',
+      hint: 'Great for what it cost you a person (8/10 or more)',
+      places: places.filter((p) => value(p) >= 8).sort((a, b) => value(b) - value(a)),
     },
     {
       id: 'unrated',

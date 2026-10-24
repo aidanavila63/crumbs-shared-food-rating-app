@@ -253,3 +253,13 @@ Aidan: nothing in the app should talk about Google or other organizations/servic
 - **Confirmed** = 2 people other than the adder tick ✓ after the dish was last changed (price), or the owner ticks ✓ / adds / edits it. Owners can now tick dishes on their own menu.
 - Admin → Points: menu step (5), points per step added (1) / confirmed (2), queue size (50).
 - Tests 67/67; SQL on a fresh DB: 12 dishes with a 10-dish queue (10 in, 2 in line, 2 points), 5 confirmed (+2, line moves in), a price change voids earlier ✓, dishes confirmed while in line earn the full 3, receipts add nothing. Build passes; demo clean.
+
+## Round 20 - value score, other groups' ratings, rating sharing, trips switch, must-try on the map (Oct 24, Claude in Cowork)
+Aidan: keep making features.
+- **#6 Value score** (`lib/value.ts`): "💸 Value 8/10" under the group average. Your group's rating, nudged up when it cost less a person than your usual (middle of your places) and down when it cost more (√ of the ratio: half price ≈ +40%, double ≈ −30%). Visits without a head count assume the group's size. Needs 3+ places with a spend. New smart list **💸 Best value** (8/10+). Runs on the phone, nothing stored.
+- **#52 Your other groups:** on a place page, if other groups you're in saved the same restaurant (same map id or same shared profile), shows each group's average and your own score there. Respects blind ratings ("Rate it to see").
+- **#47 Choose which groups see each rating** (Settings → What you avoid card → "Your ratings in your other groups": Just there / Ask me / All of them; `profiles.share_ratings`). "All" copies your scores (overall, categories, would-go-back — never notes) to your other groups' copies of that place; "Ask me" offers chips after you rate. Only into groups that already saved the place.
+- **#29 Trips switch** in Group settings (on by default — was always on); off hides the trip panel on lists.
+- **#14 MUST TRY on the map preview card** (best must-try dish), shared `mustTry()` helper (best first).
+- Map: removed the map library's badge (kept only the required map-data credit).
+- Tests 70/70; SQL: share_ratings column + check tested; build passes; demo clean.

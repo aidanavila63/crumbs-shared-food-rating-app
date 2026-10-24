@@ -19,7 +19,10 @@ export function ListsTab({
   onLists,
   onShowOnMap,
   onSelect,
+  trips = true,
 }: {
+  /** #29 group setting: trips on lists */
+  trips?: boolean
   lists: List[]
   places: Place[]
   userId?: string
@@ -210,15 +213,17 @@ export function ListsTab({
           <h2 className="mt-3 font-serif text-2xl font-bold">
             {active.emoji} {active.name}
           </h2>
-          <TripPanel
-            list={active}
-            lists={lists}
-            places={places}
-            supabase={supabase}
-            demo={demo}
-            onLists={onLists}
-            onShowOnMap={onShowOnMap ?? (() => {})}
-          />
+          {trips && (
+            <TripPanel
+              list={active}
+              lists={lists}
+              places={places}
+              supabase={supabase}
+              demo={demo}
+              onLists={onLists}
+              onShowOnMap={onShowOnMap ?? (() => {})}
+            />
+          )}
           <div className="mt-4 flex gap-2">
             <input
               className="field"
