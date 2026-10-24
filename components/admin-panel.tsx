@@ -24,6 +24,8 @@ const LABELS: Record<string, string> = {
   active_7d: 'Active this week',
   waitlist: 'Waitlist',
   feedback: 'Feedback',
+  restaurants: 'Shared restaurants',
+  menu_dishes: 'Menu dishes',
 }
 
 const demoData = {
@@ -37,6 +39,8 @@ const demoData = {
     active_7d: 2,
     waitlist: 1,
     feedback: 1,
+    restaurants: 4,
+    menu_dishes: 4,
   },
   feedback: [
     {

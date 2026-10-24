@@ -15,15 +15,11 @@ export async function GET(request: Request) {
   const lat = Number(params.get('lat'))
   const lon = Number(params.get('lon'))
   const cuisine = (params.get('cuisine') ?? '').trim().slice(0, 40)
-  if (
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lon) ||
-    Math.abs(lat) > 90 ||
-    Math.abs(lon) > 180 ||
-    !cuisine
-  )
-    return Response.json({ error: 'Need a location and a cuisine' }, { status: 400 })
-  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${cuisine.toLowerCase()}`
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)
+    return Response.json({ error: 'Need a location' }, { status: 400 })
+  // Without a cuisine this is "Explore": everything to eat within ~1.2 km (#36 on the map).
+  const radius = cuisine ? 2000 : 1200
+  const key = `${lat.toFixed(cuisine ? 2 : 3)},${lon.toFixed(cuisine ? 2 : 3)},${cuisine.toLowerCase()}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < 864e5) return Response.json({ results: hit.results })
   if (tooManyRequests(`nearby:${data.user.id}`, 10))
@@ -35,7 +31,7 @@ export async function GET(request: Request) {
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
-      body: new URLSearchParams({ data: overpassQuery(lat, lon, cuisine) }),
+      body: new URLSearchParams({ data: overpassQuery(lat, lon, cuisine, radius) }),
       signal: AbortSignal.timeout(12000),
     })
     if (!response.ok) throw new Error(`Overpass ${response.status}`)

@@ -20,7 +20,14 @@ export function OsmMap({
   route = [],
   labels = {},
   heat = false,
+  spots = [],
+  onSpot = () => {},
+  onProbe,
 }: {
+  /** #36 Explore: OpenStreetMap spots you haven't saved */
+  spots?: { google_place_id: string; latitude: number; longitude: number }[]
+  onSpot?: (id: string) => void
+  onProbe?: (probe: () => { lat: number; lng: number } | null) => void
   /** #24 show warm spots instead of pins */
   heat?: boolean
   /** Pin text override (crawl stop numbers) */
@@ -41,6 +48,8 @@ export function OsmMap({
     null,
   )
   const callbacks = useRef({ onPick, onBackgroundClick })
+  const onSpotRef = useRef(onSpot)
+  onSpotRef.current = onSpot
   callbacks.current = { onPick, onBackgroundClick }
 
   useEffect(() => {
@@ -58,6 +67,10 @@ export function OsmMap({
       }).addTo(map)
       map.on('click', () => callbacks.current.onBackgroundClick())
       state.current = { L, map, layer: L.layerGroup().addTo(map), fitted: '' }
+      onProbe?.(() => {
+        const c = map.getCenter()
+        return { lat: c.lat, lng: c.lng }
+      })
       draw()
     })()
     return () => {
@@ -97,6 +110,21 @@ export function OsmMap({
           .addTo(layer),
       )
     }
+    spots.forEach((spot) =>
+      L.marker([spot.latitude, spot.longitude], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="marker marker-ghost${still}">+</div>`,
+          iconSize: [34, 30],
+          iconAnchor: [17, 15],
+        }),
+      })
+        .on('click', (event: any) => {
+          L.DomEvent.stopPropagation(event)
+          onSpotRef.current(spot.google_place_id)
+        })
+        .addTo(layer),
+    )
     located.forEach((place) => {
       if (heat) return
       const average = placeAverage(place)
@@ -126,7 +154,7 @@ export function OsmMap({
     }
   }
 
-  useEffect(draw, [places, pinMode, selectedId, route, labels, heat])
+  useEffect(draw, [places, pinMode, selectedId, route, labels, heat, spots])
 
   useEffect(() => {
     if (locateTarget) state.current?.map.setView([locateTarget.lat, locateTarget.lng], 14)

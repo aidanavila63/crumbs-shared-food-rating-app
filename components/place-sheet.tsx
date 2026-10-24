@@ -1,6 +1,6 @@
 'use client'
 import { track } from '@/lib/analytics'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes, undoableDelete } from '@/lib/undoable'
 import type { Dish, Group, List, Place, Profile, Rating, Status } from '@/hooks/use-crumbs-data'
@@ -24,6 +24,9 @@ import { haptic } from '@/lib/motion'
 import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
 import { ReadPhotoButton } from './photo-reader'
 import { MenuReview } from './menu-review'
+import { CommunityMenu } from './community-menu'
+import { useRestaurant } from '@/hooks/use-restaurant'
+import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
@@ -311,8 +314,23 @@ export function PlaceSheet({
   const status = place.status
   const [dishes, setDishes] = useState(place.dishes ?? [])
   const [menuDraft, setMenuDraft] = useState<MenuLine[] | null>(null)
-  async function addMenuDishes(lines: MenuLine[]) {
-    setMenuDraft(null)
+  // #27/#19 Shared restaurant profile: links this place and loads the community menu.
+  const latest = useRef(place)
+  useEffect(() => {
+    latest.current = place
+  })
+  const restaurant = useRestaurant({
+    place,
+    userId,
+    supabase,
+    demo,
+    v4,
+    onLinked: (id) => onUpdate({ ...latest.current, restaurant_id: id }),
+  })
+  /** Copies dishes into this group's own list (to rate them). Returns how many were added. */
+  async function addOurDishes(
+    lines: { name: string; price: number | null; description: string | null; course?: Dish['course'] }[],
+  ) {
     const rows = lines.map((line) => ({
       place_id: place.id,
       name: line.name.trim().slice(0, 120),
@@ -320,6 +338,7 @@ export function PlaceSheet({
       description: line.description,
       is_ai_suggestion: false,
       created_by: userId,
+      ...(v4 && line.course ? { course: line.course } : {}),
     }))
     if (demo)
       setDishes((current) => [
@@ -331,11 +350,33 @@ export function PlaceSheet({
         .from('dishes')
         .insert(rows)
         .select('*,dish_ratings(score,points,user_id,notes)')
-      if (error) return toast.error(error.message)
+      if (error) {
+        toast.error(error.message)
+        return 0
+      }
       setDishes((current) => [...current, ...(data ?? [])])
     }
+    return rows.length
+  }
+  async function addFromMenu(menuDishes: MenuDish[]) {
+    const added = await addOurDishes(menuDishes)
+    if (!added) return
     haptic('success')
-    toast.success(`Added ${rows.length} dish${rows.length === 1 ? '' : 'es'} from the menu photo`)
+    toast.success(added === 1 ? `Added ${menuDishes[0].name} to your dishes` : `Added ${added} dishes to rate`)
+  }
+  async function addMenuDishes(lines: MenuLine[]) {
+    setMenuDraft(null)
+    const added = await addOurDishes(lines)
+    if (!added) return
+    haptic('success')
+    // Confirmed dishes also feed the restaurant's shared menu.
+    let shared = false
+    try {
+      shared = (await restaurant.share(lines, 'photo')) > 0
+    } catch {}
+    toast.success(
+      `Added ${added} dish${added === 1 ? '' : 'es'} from the menu photo${shared ? ` — and to ${place.name}’s menu on Crumbs` : ''}`,
+    )
   }
   // Pick up a partner's dishes/ratings when the data reloads (skipping ones mid-undo).
   useEffect(() => {
@@ -487,6 +528,8 @@ export function PlaceSheet({
         if (error) throw error
         setDishes((current) => [...current, ...(data ?? [])])
       }
+      // Website menus feed the shared restaurant profile too.
+      restaurant.share(result.dishes, 'website').catch(() => {})
       toast.success('Added dishes from their website')
     } catch (error: any) {
       toast.error(error.message || 'Could not suggest a menu')
@@ -962,6 +1005,12 @@ export function PlaceSheet({
             </button>
           </div>
         </div>
+        <CommunityMenu
+          store={restaurant}
+          ours={dishes}
+          placeName={place.name}
+          onAddToOurs={addFromMenu}
+        />
         <div className="flex gap-2">
           <a
             className="secondary flex-1 text-center"

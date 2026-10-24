@@ -46,9 +46,13 @@ export function osmCuisine(cuisine: string) {
 }
 
 /** Overpass query: food places with that cuisine within `radius` metres. */
-export function overpassQuery(lat: number, lon: number, cuisine: string, radius = 2000) {
-  const c = osmCuisine(cuisine)
-  return `[out:json][timeout:10];nwr["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["cuisine"~"(^|;)${c}($|;)",i]["name"](around:${Math.min(5000, radius)},${lat.toFixed(5)},${lon.toFixed(5)});out center 25;`
+export function overpassQuery(lat: number, lon: number, cuisine = '', radius = 2000) {
+  const c = cuisine ? osmCuisine(cuisine) : ''
+  const byCuisine = c ? `["cuisine"~"(^|;)${c}($|;)",i]` : ''
+  const amenity = c
+    ? 'restaurant|fast_food|cafe|food_court'
+    : 'restaurant|fast_food|cafe|food_court|bar|pub|ice_cream'
+  return `[out:json][timeout:10];nwr["amenity"~"^(${amenity})$"]${byCuisine}["name"](around:${Math.min(5000, Math.max(200, radius))},${lat.toFixed(5)},${lon.toFixed(5)});out center ${c ? 25 : 60};`
 }
 
 export function overpassToPlaces(json: any) {

@@ -3,10 +3,25 @@ import { useEffect, useRef } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
+import { loadRestaurant, shareHours } from '@/lib/restaurants'
 import { hasGoogleId, hoursAreStale, hoursFromGoogle, isClosedForever, openStatus, takeQuota } from '@/lib/place-info'
 
 /** Asks Google for opening hours + whether the place has closed, and saves them on the place. */
 async function refreshHours(places: any, supabase: any, place: Place, demo: boolean) {
+  // #27 Another group may have fetched these hours recently: reuse them (no Google call).
+  if (!demo && place.restaurant_id) {
+    const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
+    if (shared?.hours_checked_at && !hoursAreStale(shared)) {
+      const reused = {
+        opening_hours: shared.opening_hours,
+        business_status: shared.business_status,
+        hours_checked_at: shared.hours_checked_at,
+      }
+      const { error } = await supabase.from('places').update(reused).eq('id', place.id)
+      if (error) throw error
+      return reused
+    }
+  }
   const googlePlace = new places.Place({ id: place.google_place_id })
   await googlePlace.fetchFields({ fields: ['regularOpeningHours', 'businessStatus', 'utcOffsetMinutes'] })
   const changes = {
@@ -17,6 +32,9 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
   if (!demo) {
     const { error } = await supabase.from('places').update(changes).eq('id', place.id)
     if (error) throw error
+    // Share so the next group that opens this restaurant doesn't pay for the same lookup.
+    if (place.restaurant_id)
+      shareHours(supabase, place.restaurant_id, changes.opening_hours, changes.business_status).catch(() => {})
   }
   return changes
 }

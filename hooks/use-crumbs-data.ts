@@ -78,6 +78,8 @@ export type Place = {
   created_at: string
   place_ratings: Rating[]
   dishes?: Dish[]
+  // v4: the shared restaurant profile this place is linked to (#27)
+  restaurant_id?: string | null
 }
 export type GroupSettings = {
   scale?: '5' | 'half' | '10' // #2

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
+import { linkRestaurant } from '@/lib/restaurants'
 import { Sheet } from './sheet'
 import { PlaceSearch, type FoundPlace } from './place-search'
 import { MapsLinkImport } from './maps-link-import'
@@ -93,7 +94,13 @@ export function AddPlaceSheet({
             .upsert({ place_id: data.id, user_id: userId, score, notes })
           if (rating.error) throw rating.error
         }
-        onSaved(data)
+        // #27 Link to the shared restaurant profile (creates it if this is the first group).
+        let saved = data
+        try {
+          const shared = await linkRestaurant(supabase, data.id)
+          if (shared) saved = { ...data, restaurant_id: shared.id }
+        } catch {}
+        onSaved(saved)
       }
       toast.success('Place added')
       onClose()
@@ -117,6 +124,7 @@ export function AddPlaceSheet({
       </div>
       <div className="mt-5 flex flex-col gap-3">
         <PlaceSearch
+          supabase={demo ? undefined : supabase}
           autoFocus
           value={name}
           onChange={(text) => {

@@ -1442,3 +1442,58 @@ body,
     radial-gradient(60rem 30rem at 110% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%),
     var(--background);
 }
+
+/* Explore (#36) ghost pins + shared menu (#19/#27) */
+.marker-ghost {
+  min-width: 30px;
+  background: var(--card);
+  color: var(--primary);
+  border: 2px dashed color-mix(in srgb, var(--primary) 70%, transparent);
+  font-size: 16px;
+  font-weight: 800;
+  opacity: 0.92;
+}
+.explore-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.community-menu {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.menu-row + .menu-row,
+.community-menu .menu-row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.menu-vote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+.menu-vote:active {
+  transform: scale(0.88);
+}
+.menu-vote-yes {
+  background: #2f7d4f;
+  border-color: #2f7d4f;
+  color: #fff;
+}
+.menu-vote-no {
+  background: #b23a26;
+  border-color: #b23a26;
+  color: #fff;
+}
+.menu-add {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}

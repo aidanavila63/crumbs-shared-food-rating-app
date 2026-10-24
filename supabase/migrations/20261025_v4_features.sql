@@ -506,7 +506,9 @@ begin
     'meals', (select count(*) from public.home_meals),
     'active_7d', (select count(distinct actor) from public.activity where created_at > now() - interval '7 days'),
     'waitlist', (select count(*) from public.waitlist),
-    'feedback', (select count(*) from public.feedback)
+    'feedback', (select count(*) from public.feedback),
+    'restaurants', (select count(*) from public.restaurants),
+    'menu_dishes', (select count(*) from public.restaurant_dishes where hidden = false)
   );
 end $$;
 revoke execute on function public.admin_stats() from public, anon;
@@ -524,6 +526,242 @@ begin
       execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null; when undefined_object then null;
     end;
+  end loop;
+end $$;
+
+-- ============================================================================================
+-- 13a. Shared restaurant profiles (#27 shared data layer, #19 menus feed the profile)
+-- ============================================================================================
+-- ONE copy per real restaurant, reused by every group. Holds only facts about the restaurant
+-- (name, address, hours, menu) — never who rated it or who goes there. Groups link their own
+-- place to it. Everyone signed in can read it; changes only go through the functions below,
+-- and only for restaurants one of your groups has saved.
+create table if not exists public.restaurants (
+  id uuid primary key default gen_random_uuid(),
+  source_key text not null unique check (char_length(source_key) between 3 and 300), -- Google place id or osm:N123
+  name text not null check (char_length(name) between 1 and 160),
+  formatted_address text,
+  latitude double precision,
+  longitude double precision,
+  cuisine text,
+  price_level smallint check (price_level between 0 and 4),
+  website text,
+  google_maps_url text,
+  opening_hours jsonb,
+  business_status text,
+  hours_checked_at timestamptz,   -- when hours/status were last fetched (Google or OSM)
+  details_checked_at timestamptz, -- when name/address/price/website were last fetched
+  places_count integer not null default 0, -- how many group places link here
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists restaurants_name_idx on public.restaurants (lower(name));
+create index if not exists restaurants_geo_idx on public.restaurants (latitude, longitude);
+alter table public.places add column if not exists restaurant_id uuid references public.restaurants(id) on delete set null;
+create index if not exists places_restaurant_idx on public.places (restaurant_id);
+
+-- The community menu: one row per dish name per restaurant (duplicates collate into one).
+create table if not exists public.restaurant_dishes (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 120),
+  name_key text not null,
+  price numeric(10,2) check (price is null or (price >= 0 and price < 10000)),
+  description text check (description is null or char_length(description) <= 300),
+  course text check (course in ('starter', 'main', 'side', 'dessert', 'drink')),
+  dietary text[] not null default '{}',
+  source text not null default 'manual' check (source in ('photo', 'website', 'manual')),
+  confirms integer not null default 0,
+  flags integer not null default 0,
+  hidden boolean not null default false,
+  added_by uuid references auth.users(id) on delete set null,
+  price_checked_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (restaurant_id, name_key)
+);
+create table if not exists public.restaurant_dish_votes (
+  dish_id uuid not null references public.restaurant_dishes(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  vote text not null check (vote in ('confirm', 'flag')),
+  created_at timestamptz not null default now(),
+  primary key (dish_id, user_id)
+);
+
+alter table public.restaurants enable row level security;
+alter table public.restaurant_dishes enable row level security;
+alter table public.restaurant_dish_votes enable row level security;
+drop policy if exists restaurants_read on public.restaurants;
+create policy restaurants_read on public.restaurants for select to authenticated using (true);
+drop policy if exists restaurant_dishes_read on public.restaurant_dishes;
+create policy restaurant_dishes_read on public.restaurant_dishes for select to authenticated using (hidden = false or public.is_crumbs_admin());
+drop policy if exists restaurant_dish_votes_read on public.restaurant_dish_votes;
+create policy restaurant_dish_votes_read on public.restaurant_dish_votes for select to authenticated using (user_id = (select auth.uid()));
+-- (no insert/update/delete policies: writes go through the functions below)
+
+-- Is this restaurant saved by one of my groups?
+create or replace function public.my_restaurant(target uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.places p where p.restaurant_id = target and public.is_group_member(p.group_id))
+$$;
+
+create or replace function public.dish_key(dish text)
+returns text language sql immutable as $$
+  select trim(regexp_replace(lower(trim(dish)), '[^a-z0-9à-ÿ]+', ' ', 'g'))
+$$;
+
+-- Links a group place to its shared restaurant (creating it from the place if needed) and
+-- returns the restaurant. Manual places (no Google/OSM id) aren't shared.
+create or replace function public.link_restaurant(target_place uuid)
+returns public.restaurants language plpgsql security definer set search_path = public as $$
+declare
+  p public.places;
+  r public.restaurants;
+begin
+  select * into p from public.places where id = target_place;
+  if p.id is null or not public.is_group_member(p.group_id) then raise exception 'Not your place'; end if;
+  if p.google_place_id like 'manual:%' then return null; end if;
+  select * into r from public.restaurants where source_key = p.google_place_id;
+  -- Same restaurant found through the other map (Google vs OpenStreetMap)? Same name within
+  -- ~60 m counts as the same place, so there's still only one copy.
+  if r.id is null and p.latitude is not null then
+    select * into r from public.restaurants
+     where public.dish_key(name) = public.dish_key(p.name)
+       and abs(latitude - p.latitude) < 0.0006 and abs(longitude - p.longitude) < 0.0008
+     order by places_count desc limit 1;
+  end if;
+  if r.id is null then
+    insert into public.restaurants (source_key, name, formatted_address, latitude, longitude, cuisine, price_level,
+                                    website, google_maps_url, opening_hours, business_status, hours_checked_at, details_checked_at)
+    values (p.google_place_id, left(p.name, 160), p.formatted_address, p.latitude, p.longitude, p.cuisine, p.price_level,
+            p.website, p.google_maps_url, p.opening_hours, p.business_status, p.hours_checked_at, p.created_at)
+    on conflict (source_key) do nothing
+    returning * into r;
+    if r.id is null then select * into r from public.restaurants where source_key = p.google_place_id; end if;
+  else
+    -- A place saved in the last hour came with a fresh Google/OSM lookup: refresh the shared
+    -- details from it (never the name or cuisine, which groups may edit, and never with blanks).
+    if p.created_at > now() - interval '1 hour' and p.created_at > coalesce(r.details_checked_at, '-infinity') then
+      update public.restaurants set
+        formatted_address = coalesce(p.formatted_address, formatted_address),
+        latitude = coalesce(p.latitude, latitude), longitude = coalesce(p.longitude, longitude),
+        price_level = coalesce(p.price_level, price_level), website = coalesce(p.website, website),
+        google_maps_url = coalesce(p.google_maps_url, google_maps_url), details_checked_at = p.created_at
+      where id = r.id returning * into r;
+    end if;
+    -- Fill gaps from the group's copy (never overwrite with blanks).
+    update public.restaurants set
+      formatted_address = coalesce(formatted_address, p.formatted_address),
+      latitude = coalesce(latitude, p.latitude), longitude = coalesce(longitude, p.longitude),
+      cuisine = coalesce(cuisine, p.cuisine), price_level = coalesce(price_level, p.price_level),
+      website = coalesce(website, p.website), google_maps_url = coalesce(google_maps_url, p.google_maps_url),
+      opening_hours = case when coalesce(p.hours_checked_at, '-infinity') > coalesce(hours_checked_at, '-infinity') then p.opening_hours else opening_hours end,
+      business_status = case when coalesce(p.hours_checked_at, '-infinity') > coalesce(hours_checked_at, '-infinity') then p.business_status else business_status end,
+      hours_checked_at = greatest(hours_checked_at, p.hours_checked_at),
+      updated_at = now()
+    where id = r.id returning * into r;
+  end if;
+  if p.restaurant_id is distinct from r.id then
+    update public.places set restaurant_id = r.id where id = p.id;
+    update public.restaurants set places_count = (select count(*) from public.places where restaurant_id = r.id) where id = r.id
+      returning * into r;
+  end if;
+  return r;
+end $$;
+
+-- Fresh hours/status from Google or OSM, shared so other groups don't pay for the same lookup.
+create or replace function public.share_restaurant_hours(target uuid, hours jsonb, status text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  update public.restaurants set opening_hours = hours, business_status = left(status, 40),
+         hours_checked_at = now(), updated_at = now()
+   where id = target;
+end $$;
+
+-- Dishes from a menu photo / website / by hand. Same name = same dish (counts as a confirmation);
+-- a newer price replaces an older one.
+create or replace function public.add_restaurant_dishes(target uuid, dishes jsonb, how text default 'photo')
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  d jsonb;
+  added integer := 0;
+  row_id uuid;
+  k text;
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  if jsonb_typeof(dishes) <> 'array' or jsonb_array_length(dishes) > 80 then raise exception 'Too many dishes at once'; end if;
+  for d in select * from jsonb_array_elements(dishes) loop
+    k := public.dish_key(d->>'name');
+    continue when k is null or length(k) < 2 or length(d->>'name') > 120;
+    insert into public.restaurant_dishes (restaurant_id, name, name_key, price, description, course, source, added_by)
+    values (target, trim(d->>'name'), k,
+            case when (d->>'price') ~ '^[0-9]{1,4}(\.[0-9]{1,2})?$' then (d->>'price')::numeric end,
+            left(nullif(trim(d->>'description'), ''), 300),
+            case when d->>'course' in ('starter', 'main', 'side', 'dessert', 'drink') then d->>'course' end,
+            case when how in ('photo', 'website', 'manual') then how else 'manual' end,
+            auth.uid())
+    on conflict (restaurant_id, name_key) do update set
+      price = coalesce(excluded.price, restaurant_dishes.price),
+      price_checked_at = case when excluded.price is not null then now() else restaurant_dishes.price_checked_at end,
+      description = coalesce(restaurant_dishes.description, excluded.description),
+      course = coalesce(restaurant_dishes.course, excluded.course)
+    returning id into row_id;
+    -- Adding a dish that's already there is a vote that it's real.
+    insert into public.restaurant_dish_votes (dish_id, user_id, vote) values (row_id, auth.uid(), 'confirm')
+    on conflict (dish_id, user_id) do update set vote = 'confirm';
+    added := added + 1;
+  end loop;
+  update public.restaurant_dishes rd set
+    confirms = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'confirm'),
+    flags = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'flag')
+  where rd.restaurant_id = target;
+  update public.restaurant_dishes set hidden = (flags >= 2 and flags > confirms) where restaurant_id = target;
+  return added;
+end $$;
+
+-- ✓ "this is on the menu" / ✕ "not on the menu any more". Flagged-out dishes hide, and are
+-- deleted once 3 people flag them and nobody confirmed.
+create or replace function public.vote_restaurant_dish(target_dish uuid, choice text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  r uuid;
+begin
+  select restaurant_id into r from public.restaurant_dishes where id = target_dish;
+  if r is null or not public.my_restaurant(r) then raise exception 'Not one of your restaurants'; end if;
+  if choice is null then
+    delete from public.restaurant_dish_votes where dish_id = target_dish and user_id = auth.uid();
+  elsif choice in ('confirm', 'flag') then
+    insert into public.restaurant_dish_votes (dish_id, user_id, vote) values (target_dish, auth.uid(), choice)
+    on conflict (dish_id, user_id) do update set vote = excluded.vote, created_at = now();
+  else
+    raise exception 'Bad vote';
+  end if;
+  update public.restaurant_dishes rd set
+    confirms = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'confirm'),
+    flags = (select count(*) from public.restaurant_dish_votes v where v.dish_id = rd.id and v.vote = 'flag')
+  where rd.id = target_dish;
+  update public.restaurant_dishes set hidden = (flags >= 2 and flags > confirms) where id = target_dish;
+  delete from public.restaurant_dishes where id = target_dish and flags >= 3 and confirms = 0;
+end $$;
+
+-- Crumbs' own search, checked before Google: restaurants other groups already saved.
+create or replace function public.search_restaurants(q text, lat double precision default null, lng double precision default null)
+returns setof public.restaurants language sql stable security definer set search_path = public as $$
+  select * from public.restaurants
+  where length(trim(q)) >= 3 and lower(name) like '%' || lower(trim(q)) || '%'
+    and (lat is null or latitude is null or (abs(latitude - lat) < 0.5 and abs(longitude - lng) < 0.7))
+  order by places_count desc, (case when lat is null or latitude is null then 0 else abs(latitude - lat) + abs(longitude - lng) end)
+  limit 5
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['my_restaurant(uuid)', 'link_restaurant(uuid)', 'share_restaurant_hours(uuid, jsonb, text)',
+                           'add_restaurant_dishes(uuid, jsonb, text)', 'vote_restaurant_dish(uuid, text)',
+                           'search_restaurants(text, double precision, double precision)'] loop
+    execute format('revoke execute on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
 

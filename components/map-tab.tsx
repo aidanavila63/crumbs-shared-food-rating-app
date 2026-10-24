@@ -1,7 +1,10 @@
 'use client'
 import { useShowScore } from './score-input'
-import { useEffect, useMemo, useState } from 'react'
-import { LocateFixed, MapPin, SlidersHorizontal } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { LocateFixed, SlidersHorizontal, Telescope, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { notYetSaved, type FoundSpot } from '@/lib/add-found'
+import { distanceKm } from '@/lib/stats'
 import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
@@ -76,6 +79,14 @@ function HeatCircles({ places, onPick }: { places: Place[]; onPick: (id: string)
   }, [map, places, onPick])
   return null
 }
+/** Lets the Explore button ask the Google map where it's looking. */
+function CenterProbe({ onProbe }: { onProbe: (probe: () => { lat: number; lng: number } | null) => void }) {
+  const map = useMap()
+  useEffect(() => {
+    onProbe(() => map?.getCenter()?.toJSON() ?? null)
+  }, [map, onProbe])
+  return null
+}
 function Recenter({ target }: { target: { lat: number; lng: number } | null }) {
   const map = useMap()
   useEffect(() => {
@@ -92,7 +103,12 @@ export function MapTab({
   onSelect,
   route = [],
   labels = {},
+  demo = false,
+  onAddFound,
 }: {
+  demo?: boolean
+  /** #36 Explore: save an OpenStreetMap spot to Want to try */
+  onAddFound?: (spot: FoundSpot) => Promise<boolean>
   route?: { lat: number; lng: number }[]
   labels?: Record<string, string>
   places: Place[]
@@ -105,6 +121,57 @@ export function MapTab({
   // #22 extra filters + #21 pin colours (pin colours are remembered on this phone).
   const [showFilters, setShowFilters] = useState(false)
   const [heat, setHeat] = useState(false)
+  // #36 Explore: everything to eat around where the map is looking, from OpenStreetMap (free).
+  const [spots, setSpots] = useState<FoundSpot[] | null>(null)
+  const [spotId, setSpotId] = useState<string | null>(null)
+  const [exploring, setExploring] = useState(false)
+  const [exploreCenter, setExploreCenter] = useState<{ lat: number; lng: number } | null>(null)
+  const centerProbe = useRef<(() => { lat: number; lng: number } | null) | null>(null)
+  const setProbe = useCallback((probe: () => { lat: number; lng: number } | null) => {
+    centerProbe.current = probe
+  }, [])
+  const spot = spots?.find((s) => s.google_place_id === spotId) ?? null
+  async function explore() {
+    haptic('tap')
+    const center = centerProbe.current?.() ?? location
+    setExploring(true)
+    setExploreCenter(center)
+    setPreviewId(null)
+    try {
+      let found: FoundSpot[]
+      if (demo)
+        found = [
+          ['Golden Dumpling', 'Chinese', 0.003, 0.002],
+          ['Café Luna', 'Coffee Shop', -0.002, 0.004],
+          ['Smash Burger Co', 'Burger', 0.004, -0.003],
+        ].map(([name, cuisine, dLat, dLng], i) => ({
+          google_place_id: `osm:N${900 + i}`,
+          name: name as string,
+          cuisine: cuisine as string,
+          formatted_address: null,
+          latitude: center.lat + (dLat as number),
+          longitude: center.lng + (dLng as number),
+          website: null,
+          google_maps_url: null,
+        }))
+      else {
+        const url = new URL('/api/osm/nearby', window.location.origin)
+        url.searchParams.set('lat', String(center.lat))
+        url.searchParams.set('lon', String(center.lng))
+        const response = await fetch(url)
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error)
+        found = json.results ?? []
+      }
+      const fresh = notYetSaved(found, places)
+      setSpots(fresh)
+      if (!fresh.length) toast('Nothing new to eat around here on OpenStreetMap')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not explore right now')
+    } finally {
+      setExploring(false)
+    }
+  }
   const [minRating, setMinRating] = useState(0)
   const [prices, setPrices] = useState<number[]>([])
   const [cuisine, setCuisine] = useState<string | null>(null)
@@ -345,6 +412,12 @@ export function MapTab({
             route={route}
             labels={labels}
             heat={heat}
+            spots={spots ?? []}
+            onSpot={(id) => {
+              setPreviewId(null)
+              setSpotId(id)
+            }}
+            onProbe={setProbe}
           />
         ) : (
           <>
@@ -361,6 +434,19 @@ export function MapTab({
               <FitBounds places={filtered} />
               <Recenter target={locateTarget} />
               <RouteLine route={route} />
+              <CenterProbe onProbe={setProbe} />
+              {(spots ?? []).map((s) => (
+                <AdvancedMarker
+                  key={s.google_place_id}
+                  position={{ lat: s.latitude, lng: s.longitude }}
+                  onClick={() => {
+                    setPreviewId(null)
+                    setSpotId(s.google_place_id)
+                  }}
+                >
+                  <div className={`marker marker-ghost ${spotId === s.google_place_id ? 'marker-selected' : ''}`}>+</div>
+                </AdvancedMarker>
+              ))}
               {heat && <HeatCircles places={filtered} onPick={setPreviewId} />}
               {!heat &&
                 filtered
@@ -382,6 +468,71 @@ export function MapTab({
           </>
         )}
 
+        {spots && (
+          <button
+            type="button"
+            className="chip chip-sm chip-active absolute right-3 top-16 z-10"
+            aria-label="Stop exploring"
+            onClick={() => {
+              setSpots(null)
+              setSpotId(null)
+            }}
+          >
+            🔭 {spots.length} new spot{spots.length === 1 ? '' : 's'} <X size={14} className="ml-1" />
+          </button>
+        )}
+        {spot && !preview && (
+          <div
+            key={spot.google_place_id}
+            className="surface preview-pop absolute bottom-4 left-3 right-16 z-10 flex flex-col gap-2"
+          >
+            <div>
+              <p className="tag mb-1 w-fit">New to you</p>
+              <p className="font-serif text-xl font-bold">{spot.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {[
+                  spot.cuisine,
+                  spot.formatted_address,
+                  exploreCenter &&
+                    (() => {
+                      const km = distanceKm(exploreCenter, { lat: spot.latitude, lng: spot.longitude })
+                      return km < 1 ? `${Math.round(km * 100) * 10} m from the map centre` : `${km.toFixed(1)} km from the map centre`
+                    })(),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="primary !min-h-10 flex-1 !px-3 text-sm"
+                disabled={!onAddFound}
+                onClick={async () => {
+                  if (!onAddFound || !(await onAddFound(spot))) return
+                  setSpots((current) => current?.filter((s) => s.google_place_id !== spot.google_place_id) ?? null)
+                  setSpotId(null)
+                }}
+              >
+                + Want to try
+              </button>
+              <a
+                className="secondary !min-h-10 !px-3 text-sm"
+                target="_blank"
+                rel="noreferrer"
+                href={
+                  spot.google_maps_url ||
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${spot.name} ${spot.latitude},${spot.longitude}`)}`
+                }
+              >
+                Look
+              </a>
+              <button className="icon-btn !h-10 !w-10" aria-label="Close" onClick={() => setSpotId(null)}>
+                ×
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">From OpenStreetMap contributors</p>
+          </div>
+        )}
         {preview && (
           <div
             key={preview.id}
@@ -445,6 +596,15 @@ export function MapTab({
               : 'Use OpenStreetMap'}
           </button>
         )}
+        <button
+          type="button"
+          aria-label="Explore places to eat around here"
+          className="icon-btn explore-btn absolute bottom-20 right-4 z-10"
+          disabled={exploring}
+          onClick={explore}
+        >
+          <Telescope size={20} className={exploring ? 'animate-pulse' : ''} />
+        </button>
         <button
           type="button"
           aria-label="Locate me"

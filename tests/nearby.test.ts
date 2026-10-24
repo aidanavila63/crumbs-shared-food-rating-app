@@ -34,6 +34,8 @@ test('loved to try matches cuisine and sorts by distance', () => {
 test('overpass helpers', () => {
   assert.equal(osmCuisine('Middle Eastern'), 'middle_eastern')
   assert.equal(osmCuisine('Thai restaurant'), 'thai')
+  assert.doesNotMatch(overpassQuery(43, -79), /cuisine/)
+  assert.match(overpassQuery(43, -79, '', 1200), /around:1200/)
   const q = overpassQuery(43.123456, -79.5, 'Ramen')
   assert.match(q, /around:2000,43.12346,-79.50000/)
   assert.match(q, /\(\^\|;\)ramen\(\$\|;\)/)

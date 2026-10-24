@@ -39,6 +39,7 @@ import { useFlags } from '@/hooks/use-flags'
 import { useDecide } from '@/hooks/use-decide'
 import { installErrorReporter } from '@/lib/report-errors'
 import { flushQueue } from '@/lib/offline-queue'
+import { addFoundPlace } from '@/lib/add-found'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -686,6 +687,26 @@ function CrumbsShell() {
                 onSelect={setSelected}
                 route={crawl.route}
                 labels={crawl.labels}
+                demo={data.demo}
+                onAddFound={async (spot) => {
+                  try {
+                    const place = await addFoundPlace({
+                      supabase: data.supabase,
+                      demo: data.demo,
+                      groupId: data.group!.id,
+                      userId: data.user!.id,
+                      found: spot,
+                    })
+                    data.setPlaces((current) => [place, ...current])
+                    haptic('success')
+                    track('explore_added')
+                    toast.success(`${spot.name} added to Want to try`)
+                    return true
+                  } catch (error: any) {
+                    toast.error(error?.message || 'Could not add that place')
+                    return false
+                  }
+                }}
               />
             </>
           )}

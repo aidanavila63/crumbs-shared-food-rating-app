@@ -5,6 +5,7 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { hoursFromGoogle, type Hours } from '@/lib/place-info'
+import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
 
 export type FoundPlace = {
   google_place_id: string
@@ -85,7 +86,31 @@ type Suggestion = {
   secondary: string
   prediction?: any
   osm?: FoundPlace
+  /** Already on Crumbs (another group saved it): no Google lookup needed */
+  crumbs?: Restaurant
 }
+
+/** A shared Crumbs restaurant, in the shape the add-place form wants. */
+export function fromRestaurant(r: Restaurant): FoundPlace {
+  return {
+    google_place_id: r.source_key,
+    name: r.name,
+    formatted_address: r.formatted_address,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    price_level: r.price_level,
+    cuisine: r.cuisine,
+    website: r.website,
+    google_maps_url: r.google_maps_url,
+    opening_hours: r.opening_hours,
+    business_status: r.business_status,
+    hours_checked_at: r.hours_checked_at,
+  }
+}
+// Shared details younger than this are reused instead of asking Google again.
+const FRESH_DAYS = 60
+const fresh = (r: Restaurant | null) =>
+  !!r?.details_checked_at && Date.now() - new Date(r.details_checked_at).getTime() < FRESH_DAYS * 864e5
 
 async function searchOsm(
   query: string,
@@ -127,7 +152,10 @@ export function PlaceSearch({
   onPick,
   placeholder = 'Search restaurants',
   autoFocus,
+  supabase,
 }: {
+  /** When given, Crumbs' own shared restaurants are searched first (free). */
+  supabase?: any
   value: string
   onChange: (text: string) => void
   onPick: (place: FoundPlace) => void
@@ -139,6 +167,7 @@ export function PlaceSearch({
   const googleDown = useGoogleDown()
   const [waited, setWaited] = useState(false)
   const [results, setResults] = useState<Suggestion[]>([])
+  const [crumbs, setCrumbs] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
   // Text we just filled in from a pick: don't search for it again.
@@ -155,9 +184,23 @@ export function PlaceSearch({
     skipValue.current = null
     if ((!places && !useOsm) || value.trim().length < 3) {
       setResults([])
+      setCrumbs([])
       return
     }
     let cancelled = false
+    // #27 Places other groups already saved come first and cost nothing to pick.
+    if (supabase)
+      searchRestaurants(supabase, value.trim(), location).then((found) => {
+        if (cancelled) return
+        setCrumbs(
+          found.map((r) => ({
+            id: `crumbs:${r.id}`,
+            main: r.name,
+            secondary: r.formatted_address ?? '',
+            crumbs: r,
+          })),
+        )
+      })
     const timer = setTimeout(
       async () => {
         if (useOsm) {
@@ -217,15 +260,23 @@ export function PlaceSearch({
     setLoading(true)
     try {
       let found: FoundPlace
-      if (item.osm) {
+      if (item.crumbs) {
+        found = fromRestaurant(item.crumbs)
+      } else if (item.osm) {
         found = await enrichOsm(item.osm)
       } else {
-        const place = item.prediction.toPlace()
-        await place.fetchFields({ fields: FIELDS })
-        token.current = null // a pick ends the billing session
-        found = toFoundPlace(place)
+        // Saved by another group recently? Use that copy (saves an Enterprise lookup).
+        const shared = supabase ? await findRestaurant(supabase, item.prediction.placeId) : null
+        if (shared && fresh(shared)) found = fromRestaurant(shared)
+        else {
+          const place = item.prediction.toPlace()
+          await place.fetchFields({ fields: FIELDS })
+          found = toFoundPlace(place)
+        }
+        token.current = null // a pick ends the session either way
       }
       setResults([])
+      setCrumbs([])
       skipValue.current = found.name
       onChange(found.name)
       onPick(found)
@@ -255,11 +306,19 @@ export function PlaceSearch({
         </p>
       )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}
-      {results.length > 0 && (
+      {results.length + crumbs.length > 0 && (
         <div className="suggestions" role="listbox">
-          {results.map((item) => (
+          {[
+            ...crumbs,
+            ...results.filter(
+              (item) => !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
+            ),
+          ].map((item) => (
             <button key={item.id} type="button" onClick={() => pick(item)}>
-              <span className="font-semibold">{item.main}</span>
+              <span className="font-semibold">
+                {item.main}
+                {item.crumbs && <span className="tag ml-2 align-middle">On Crumbs</span>}
+              </span>
               <span className="text-xs text-muted-foreground">{item.secondary}</span>
             </button>
           ))}

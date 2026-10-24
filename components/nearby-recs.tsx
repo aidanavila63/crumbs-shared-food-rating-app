@@ -6,6 +6,7 @@ import { Plus, Telescope } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { lovedToTry } from '@/lib/nearby'
+import { addFoundPlace } from '@/lib/add-found'
 import { average5 } from '@/lib/ratings'
 import { distanceKm } from '@/lib/stats'
 import { haptic } from '@/lib/motion'
@@ -118,45 +119,17 @@ export function NearbyRecs({
 
   async function add(item: Found) {
     if (!userId) return
-    const row = {
-      group_id: groupId,
-      created_by: userId,
-      name: item.name,
-      formatted_address: item.formatted_address,
-      latitude: item.latitude,
-      longitude: item.longitude,
-      price_level: null,
-      cuisine: item.cuisine,
-      website: item.website,
-      google_maps_url: item.google_maps_url,
-      google_place_id: item.google_place_id,
-      status: 'Want to try',
+    try {
+      const place = await addFoundPlace({ supabase, demo, groupId, userId, found: item })
+      haptic('success')
+      setFound(
+        (current) => current?.filter((f) => f.google_place_id !== item.google_place_id) ?? null,
+      )
+      onAdded(place)
+      toast.success(`${item.name} added to Want to try`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not add that place')
     }
-    let place: Place = {
-      ...row,
-      id: crypto.randomUUID(),
-      status: 'Want to try',
-      pinned: false,
-      tags: [],
-      created_at: new Date().toISOString(),
-      place_ratings: [],
-      dishes: [],
-    }
-    if (!demo) {
-      const { data, error } = await supabase
-        .from('places')
-        .insert(row)
-        .select('*,place_ratings(*),place_visits(*),place_facts(*),dishes(*)')
-        .single()
-      if (error) return toast.error(error.code === '23505' ? 'Already on your list' : error.message)
-      place = { ...data, dishes: [] }
-    }
-    haptic('success')
-    setFound(
-      (current) => current?.filter((f) => f.google_place_id !== item.google_place_id) ?? null,
-    )
-    onAdded(place)
-    toast.success(`${item.name} added to Want to try`)
   }
 
   if (!recs.length && !loved.length) return null
