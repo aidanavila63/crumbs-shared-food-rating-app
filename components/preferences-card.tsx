@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Profile } from '@/hooks/use-crumbs-data'
 import { ALLERGENS, AVOID_OPTIONS } from '@/lib/place-info'
+import { Switch } from './switch'
 
 type Home = { lat: number; lng: number } | null
 
@@ -63,43 +64,55 @@ export function PreferencesCard({
       <div>
         <h2 className="font-serif text-2xl font-bold">What you avoid</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Places that clash get a warning, and Surprise us and Tonight skip them. Allergies and dietary needs:
-          tag dishes with the same words.
+          Places that clash get a warning, and Surprise us and Tonight skip them. Allergies and
+          dietary needs: tag dishes with the same words.
         </p>
         <div className="chip-row mt-3">
           {AVOID_OPTIONS.map((option) => (
-            <button key={option.key} aria-pressed={avoid.includes(option.key)} className={chip(avoid.includes(option.key))} onClick={() => toggle(option.key)}>
+            <button
+              key={option.key}
+              aria-pressed={avoid.includes(option.key)}
+              className={chip(avoid.includes(option.key))}
+              onClick={() => toggle(option.key)}
+            >
               {option.label}
             </button>
           ))}
           {ALLERGENS.map((item) => {
             const key = `a:${item.toLowerCase()}`
             return (
-              <button key={key} aria-pressed={avoid.includes(key)} className={chip(avoid.includes(key))} onClick={() => toggle(key)}>
+              <button
+                key={key}
+                aria-pressed={avoid.includes(key)}
+                className={chip(avoid.includes(key))}
+                onClick={() => toggle(key)}
+              >
                 No {item.toLowerCase()}
               </button>
             )
           })}
         </div>
       </div>
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 size-5"
-          checked={!!profile?.blind_ratings}
-          onChange={(event) => save({ blind_ratings: event.target.checked })}
-        />
+      <div className="settings-row">
         <span>
           <span className="font-semibold">Blind ratings</span>
           <span className="block text-sm text-muted-foreground">
             Hide your partner’s scores on anything you haven’t rated yet. This is your own setting.
           </span>
         </span>
-      </label>
+        <Switch
+          label="Blind ratings"
+          checked={!!profile?.blind_ratings}
+          onChange={(on) => save({ blind_ratings: on })}
+        />
+      </div>
       <div>
         <p className="font-semibold">Home</p>
         <p className="text-sm text-muted-foreground">
-          {home ? 'Cards show how far each place is from home.' : 'Save where you live to see distances on cards.'} Saved on this phone only.
+          {home
+            ? 'Cards show how far each place is from home.'
+            : 'Save where you live to see distances on cards.'}{' '}
+          Saved on this phone only.
         </p>
         <div className="mt-2 flex gap-2">
           <button className="secondary" disabled={locating} onClick={setHere}>

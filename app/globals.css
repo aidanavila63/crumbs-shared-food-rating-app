@@ -285,7 +285,7 @@ textarea.field {
   z-index: 40;
   display: flex;
   justify-content: space-around;
-  gap: 2px;
+  gap: 0;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--background) 88%, transparent);
   backdrop-filter: blur(16px);
@@ -295,23 +295,51 @@ textarea.field {
   display: none;
 }
 .tab-bar button {
+  position: relative;
+  z-index: 1;
   flex: 1;
-  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
   border: 0;
   background: transparent;
   border-radius: 14px;
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   padding-inline: 2px;
+  transition: color 0.2s ease;
+}
+.tab-bar button:active svg {
+  transform: scale(0.88);
 }
 .tab-bar .tab-active {
   color: var(--primary);
+}
+.tab-bar .tab-active svg {
+  animation: icon-bounce 0.42s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+/* Sliding highlight behind the active tab (4 tabs). */
+.tab-indicator {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: calc((100% - 16px) / 4);
+  height: 54px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--primary) 12%, transparent);
+  transition: transform 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
 /* Map markers */
 .marker {
+  animation: pin-drop 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
+  transition:
+    transform 0.2s cubic-bezier(0.2, 1.4, 0.4, 1),
+    box-shadow 0.2s ease;
   min-width: 38px;
   padding: 6px 10px;
   border-radius: 999px;
@@ -386,13 +414,24 @@ textarea.field {
   background: var(--muted);
 }
 
+/* Motion off: the phone's "reduce motion" setting, or Animations switched off in Settings. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* 0-100 dish score slider */
@@ -400,4 +439,479 @@ textarea.field {
   accent-color: var(--primary, #7b2d5b);
   height: 44px;
   touch-action: pan-y;
+}
+
+/* ================= Layout v4 + animations (Oct 2026) =================
+   Entrance animations use `backwards` fill so nothing lingers after they finish
+   (a lingering transform would break position: fixed sheets inside a tab). */
+
+/* Tab switches slide in from the side you're heading to. */
+.tab-from-right {
+  animation: slide-from-right 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.tab-from-left {
+  animation: slide-from-left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+}
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-22px);
+  }
+}
+
+/* Cards ease in one after another. */
+.stagger > * {
+  animation: rise-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.stagger > :nth-child(2) { animation-delay: 45ms; }
+.stagger > :nth-child(3) { animation-delay: 90ms; }
+.stagger > :nth-child(4) { animation-delay: 135ms; }
+.stagger > :nth-child(5) { animation-delay: 180ms; }
+.stagger > :nth-child(6) { animation-delay: 225ms; }
+.stagger > :nth-child(7) { animation-delay: 270ms; }
+.stagger > :nth-child(8) { animation-delay: 315ms; }
+.stagger > :nth-child(n + 9) { animation-delay: 350ms; }
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Places | Lists switch */
+.segmented {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--muted);
+}
+.segmented button {
+  position: relative;
+  z-index: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 700;
+  transition: color 0.2s ease;
+}
+.segmented .segmented-active {
+  color: var(--foreground);
+}
+.segmented-thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.12);
+}
+
+/* Corner profile button */
+.avatar-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 3px solid var(--card);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease;
+}
+button.avatar-btn:active {
+  transform: scale(0.9);
+}
+.avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.avatar-lg {
+  width: 96px;
+  height: 96px;
+  font-size: 40px;
+  border-width: 4px;
+}
+
+/* Full-screen overlays (profile menu + journal pages) */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 0.22s ease backwards;
+}
+.overlay-panel {
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%),
+    radial-gradient(120% 60% at 100% 100%, color-mix(in srgb, #5fae84 22%, transparent), transparent 60%),
+    var(--background);
+}
+.overlay-menu {
+  background:
+    radial-gradient(90% 50% at 50% 30%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--background) 96%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+}
+.overlay-scroll {
+  flex: 1;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(20px + env(safe-area-inset-top)) 18px calc(120px + env(safe-area-inset-bottom));
+}
+.overlay-panel .overlay-scroll {
+  animation: pop-in 0.34s cubic-bezier(0.2, 1.15, 0.3, 1) backwards;
+}
+.overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.overlay-action {
+  margin-left: auto;
+}
+.overlay-closing {
+  animation: overlay-out 0.17s ease forwards;
+}
+.overlay-close {
+  position: fixed;
+  left: 50%;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  border: 4px solid color-mix(in srgb, var(--card) 85%, transparent);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 22px rgb(0 0 0 / 22%);
+  transform: translateX(-50%);
+  animation: close-in 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) 0.06s backwards;
+  transition: transform 0.15s ease;
+}
+.overlay-close:active {
+  transform: translateX(-50%) scale(0.9);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+}
+@keyframes overlay-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+@keyframes close-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.3) rotate(-90deg);
+  }
+}
+
+/* Profile menu: round buttons that bubble in */
+.hub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 34px;
+  padding-top: 2vh;
+}
+.hub-me {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  animation: pop-in 0.36s cubic-bezier(0.2, 1.15, 0.3, 1) backwards;
+}
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 26px 34px;
+}
+.hub-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--foreground);
+  animation: bubble-in 0.46s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 60ms + 90ms);
+}
+.hub-circle {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--primary);
+  border: 2px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease;
+}
+.hub-circle svg {
+  width: 32px;
+  height: 32px;
+}
+.hub-btn:active .hub-circle {
+  transform: scale(0.9);
+}
+.hub-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+.hub-note {
+  margin-top: -6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+/* Settings: grouped cards with switches */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-heading {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settings-row + .settings-row {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+.switch-on {
+  background: var(--primary);
+}
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+  transition: transform 0.24s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+.switch-on .switch-knob {
+  transform: translateX(20px);
+}
+
+/* Achievements */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 480px) {
+  .badge-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.badge-grid > * {
+  animation: bubble-in 0.42s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+}
+.badge-grid > :nth-child(2) { animation-delay: 40ms; }
+.badge-grid > :nth-child(3) { animation-delay: 80ms; }
+.badge-grid > :nth-child(4) { animation-delay: 120ms; }
+.badge-grid > :nth-child(5) { animation-delay: 160ms; }
+.badge-grid > :nth-child(6) { animation-delay: 200ms; }
+.badge-grid > :nth-child(n + 7) { animation-delay: 240ms; }
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.badge-emoji {
+  font-size: 34px;
+  line-height: 1.1;
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.badge-earned {
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.badge-earned .badge-emoji {
+  filter: none;
+  opacity: 1;
+  animation: badge-shine 0.7s cubic-bezier(0.2, 1.6, 0.4, 1) 0.3s backwards;
+}
+.badge-bar {
+  width: 80%;
+  height: 6px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.badge-bar .bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+@keyframes badge-shine {
+  from {
+    transform: scale(0.3) rotate(-25deg);
+  }
+}
+
+/* Progress bars grow in */
+.bar-fill {
+  transform-origin: left center;
+  animation: grow-x 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s backwards;
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.check-pop {
+  display: inline-block;
+  animation: pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) 0.4s backwards;
+}
+.streak-flame {
+  display: inline-block;
+  animation: flicker 1.8s ease-in-out infinite;
+}
+@keyframes flicker {
+  50% {
+    transform: scale(1.12) rotate(-5deg);
+  }
+}
+.bingo-filled {
+  animation: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) 0.15s backwards;
+}
+
+/* Stars: tap pops the star; 5 stars adds a sparkle burst */
+.star-pop {
+  animation: star-pop 0.36s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes star-pop {
+  40% {
+    transform: scale(1.5) rotate(-12deg);
+  }
+}
+.star-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+.star-burst i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--star);
+  animation: burst 0.6s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+@keyframes burst {
+  from {
+    transform: rotate(var(--a)) translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: rotate(var(--a)) translateY(-24px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* Map: pins drop in, the tapped one grows, its card pops up */
+.marker-selected {
+  transform: scale(1.2);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+}
+.preview-pop {
+  animation: pop-in 0.3s cubic-bezier(0.2, 1.2, 0.3, 1) backwards;
+}
+@keyframes pin-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.6);
+  }
+}
+
+/* Shared small keyframes */
+@keyframes pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+@keyframes icon-bounce {
+  40% {
+    transform: translateY(-4px) scale(1.12);
+  }
+}
+.tab-bar svg {
+  transition: transform 0.15s ease;
 }

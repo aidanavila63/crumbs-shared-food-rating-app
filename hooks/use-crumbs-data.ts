@@ -7,7 +7,12 @@ import { createClient } from '@/lib/supabase'
 import type { Facts, Hours } from '@/lib/place-info'
 
 export type Status = 'Been' | 'Want to try'
-export type Rating = { user_id: string; score: number; notes: string | null; points?: number | null }
+export type Rating = {
+  user_id: string
+  score: number
+  notes: string | null
+  points?: number | null
+}
 export type PlaceVisit = { id: string; place_id: string; visited_on: string; spend: number | null }
 export type Dish = {
   verdict?: 'again' | 'never' | null
@@ -95,6 +100,60 @@ const demoPlaces: Place[] = [
     place_ratings: [],
     dishes: [],
   },
+  // A few rated places so demo mode shows stats, badges, challenges and map pins.
+  ...(
+    [
+      ['demo-ramen', 'Hana Ramen', 'Ramen', 37.7793, -122.4192, 5, 4, 2],
+      ['demo-taco', 'Taquería Sol', 'Mexican', 37.7651, -122.4219, 4, 5, 1],
+      ['demo-thai', 'Baan Thai', 'Thai', 37.7849, -122.4094, 3, 4, 2],
+    ] as const
+  ).map(
+    ([id, name, cuisine, latitude, longitude, mine, theirs, price], index): Place => ({
+      id,
+      group_id: demoGroup.id,
+      name,
+      formatted_address: `${10 + index * 7} Valencia Street`,
+      latitude,
+      longitude,
+      google_place_id: id,
+      price_level: price,
+      cuisine,
+      website: null,
+      google_maps_url: 'https://maps.google.com',
+      status: 'Been',
+      pinned: false,
+      tags: [],
+      created_at: new Date(Date.now() - (index + 1) * 864e5).toISOString(),
+      place_visits: [
+        {
+          id: `${id}-v`,
+          place_id: id,
+          visited_on: new Date(Date.now() - (index + 1) * 864e5).toISOString().slice(0, 10),
+          spend: 40 + index * 15,
+        },
+      ],
+      place_ratings: [
+        { user_id: 'demo-user', score: mine, notes: null },
+        { user_id: 'demo-partner', score: theirs, notes: null },
+      ],
+      dishes: [
+        {
+          id: `${id}-dish`,
+          place_id: id,
+          name: ['Tonkotsu', 'Al pastor', 'Khao soi'][index],
+          price: null,
+          description: null,
+          is_ai_suggestion: false,
+          verdict: 'again',
+          dish_ratings: [{ user_id: 'demo-user', score: 5, notes: null, points: 92 - index * 6 }],
+        },
+      ],
+    }),
+  ),
+]
+const demoMembers: Profile[] = [
+  { id: 'demo-user', display_name: 'Jordan', avatar_url: null, avoid: [], blind_ratings: false },
+  { id: 'demo-partner', display_name: 'Maya', avatar_url: null, avoid: [], blind_ratings: false },
 ]
 
 export function useCrumbsData() {
@@ -104,7 +163,7 @@ export function useCrumbsData() {
   const [group, setGroup] = useState<Group | null>(demo ? demoGroup : null)
   const [places, setPlaces] = useState<Place[]>(demo ? demoPlaces : [])
   const [lists, setLists] = useState<List[]>([])
-  const [members, setMembers] = useState<Profile[]>([])
+  const [members, setMembers] = useState<Profile[]>(demo ? demoMembers : [])
   const [loading, setLoading] = useState(!demo)
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
   const loadedOnce = useRef(false)

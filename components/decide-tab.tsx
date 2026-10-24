@@ -1,26 +1,35 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Dices, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
-import { StatsPanel } from './stats-panel'
-import { PhotoTimeline } from './photo-timeline'
 import { placeAverage } from './place-card'
+import { TonightCard } from './tonight-card'
+import { CravingButton } from './craving-button'
+import { ChallengesCard } from './goals-cards'
 
 type Idea = { title: string; why: string }
 
-export function ForYouTab({
+/** Decide & Plan: what to eat next, challenges, and ideas. */
+export function DecideTab({
   places,
+  allPlaces,
   members = [],
-  userId,
   names = {},
+  groupId,
+  loading = false,
   onSelect,
+  onSurprise,
 }: {
   places: Place[]
+  /** Unmasked places (blind ratings) for challenges, which only count visits. */
+  allPlaces: Place[]
   members?: Profile[]
-  userId?: string
   names?: Record<string, string>
-  onSelect?: (place: Place) => void
+  groupId: string
+  loading?: boolean
+  onSelect: (place: Place) => void
+  onSurprise: () => void
 }) {
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
@@ -88,23 +97,31 @@ export function ForYouTab({
     }
   }
 
-  if (!insights.rated.length && !places.length)
-    return (
-      <div className="empty">
-        <Sparkles className="mx-auto text-primary" />
-        <h2 className="mt-3 font-serif text-2xl font-bold">Your recommendations are waiting</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Add and rate a few places and Crumbs will learn what you both like.
-        </p>
-      </div>
-    )
-
   return (
-    <section className="flex flex-col gap-4">
+    <section className="stagger flex flex-col gap-4">
       <div>
-        <p className="text-sm text-muted-foreground">Based on your shared ratings</p>
-        <h2 className="font-serif text-3xl font-bold">For you</h2>
+        <p className="text-sm text-muted-foreground">What are we eating?</p>
+        <h2 className="font-serif text-3xl font-bold">Decide &amp; Plan</h2>
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button className="primary flex-1" onClick={onSurprise}>
+          <Dices size={20} /> Surprise us
+        </button>
+        <CravingButton groupId={groupId} />
+      </div>
+
+      {!loading && <TonightCard places={places} members={members} onOpen={onSelect} />}
+
+      {!places.length && (
+        <div className="empty">
+          <Sparkles className="mx-auto text-primary" />
+          <h2 className="mt-3 font-serif text-2xl font-bold">Your ideas are waiting</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Add and rate a few places and Crumbs will learn what you both like.
+          </p>
+        </div>
+      )}
 
       {insights.picks.length > 0 && (
         <div className="surface flex flex-col gap-3">
@@ -164,15 +181,7 @@ export function ForYouTab({
         </div>
       )}
 
-      <StatsPanel
-        places={places}
-        members={members}
-        userId={userId}
-        names={names}
-        onSelect={onSelect}
-      />
-
-      <PhotoTimeline places={places} onSelect={onSelect} />
+      <ChallengesCard places={allPlaces} />
 
       <div className="surface flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

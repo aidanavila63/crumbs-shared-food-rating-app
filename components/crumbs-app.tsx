@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Utensils } from 'lucide-react'
+import { Dices, Map as MapIcon, Plus, Search, Users, Utensils, UtensilsCrossed } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
@@ -9,18 +9,26 @@ import { AddPlaceSheet } from './add-place-sheet'
 import { WelcomeCard } from './welcome-card'
 import { MapTab } from './map-tab'
 import { ListsTab } from './lists-tab'
-import { ForYouTab } from './for-you-tab'
+import { DecideTab } from './decide-tab'
 import { GroupTab } from './group-tab'
 import { MapsProvider } from './maps-provider'
 import { SurpriseSheet } from './surprise-sheet'
 import { notifyMates } from '@/lib/push'
-import { GoalsTab } from './goals-tab'
-import { TonightCard } from './tonight-card'
-import { CravingButton } from './craving-button'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
+import { haptic, useMotionPrefs } from '@/lib/motion'
+import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 
-const tabs = ['Places', 'Map', 'Lists', 'Goals', 'For you', 'Group']
+const tabs = [
+  { id: 'Places', label: 'Places', icon: UtensilsCrossed },
+  { id: 'Map', label: 'Map', icon: MapIcon },
+  { id: 'Decide', label: 'Decide & Plan', icon: Dices },
+  { id: 'Group', label: 'Group', icon: Users },
+] as const
+type Tab = (typeof tabs)[number]['id']
+// Old tab names (before the Oct 2026 layout) map onto the new ones.
+const OLD_TABS: Record<string, Tab> = { Lists: 'Places', Goals: 'Decide', 'For you': 'Decide' }
+const tabIndex = (id: Tab) => tabs.findIndex((item) => item.id === id)
 export function CrumbsApp() {
   return (
     <MapsProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
@@ -31,13 +39,33 @@ export function CrumbsApp() {
 
 function CrumbsShell() {
   const data = useCrumbsData()
-  const [tab, setTabState] = useState(() =>
-    typeof window === 'undefined' ? 'Places' : (sessionStorage.getItem('crumbs-tab') ?? 'Places'),
+  useMotionPrefs() // applies the Animations setting to the page
+  const [tab, setTabState] = useState<Tab>(() => {
+    if (typeof window === 'undefined') return 'Places'
+    const saved = sessionStorage.getItem('crumbs-tab') ?? 'Places'
+    return OLD_TABS[saved] ?? (tabs.some((item) => item.id === saved) ? (saved as Tab) : 'Places')
+  })
+  const [direction, setDirection] = useState<'left' | 'right'>('right')
+  const [placesView, setPlacesView] = useState<'places' | 'lists'>(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('crumbs-tab') === 'Lists'
+      ? 'lists'
+      : 'places',
   )
-  function setTab(next: string) {
+  const [hub, setHub] = useState<HubPage[]>([])
+  function setTab(next: Tab) {
+    if (next === tab) return
+    haptic('tap')
+    setDirection(tabIndex(next) > tabIndex(tab) ? 'right' : 'left')
     setTabState(next)
     sessionStorage.setItem('crumbs-tab', next)
     window.scrollTo({ top: 0 })
+  }
+  function signOut() {
+    setHub([])
+    if (data.demo) {
+      data.setUser(null)
+      toast.success('Signed out')
+    } else data.supabase.auth.signOut()
   }
 
   // Hide the tab bar while the keyboard is up so it can't float over the form you're typing in.
@@ -73,7 +101,10 @@ function CrumbsShell() {
   const blind = !!me?.blind_ratings
   // With blind ratings on, everything you look at is a copy with your partner's scores hidden
   // for places and dishes you haven't rated. The real ratings stay in data.places.
-  const view = useMemo(() => (blind ? maskRatings(data.places, userId) : data.places), [blind, data.places, userId])
+  const view = useMemo(
+    () => (blind ? maskRatings(data.places, userId) : data.places),
+    [blind, data.places, userId],
+  )
   const selected = view.find((place) => place.id === selectedId) ?? null
   const [home, setHomeState] = useState<{ lat: number; lng: number } | null>(null)
   useEffect(() => {
@@ -85,7 +116,9 @@ function CrumbsShell() {
   function setHome(next: { lat: number; lng: number } | null) {
     setHomeState(next)
     try {
-      next ? localStorage.setItem('crumbs-home', JSON.stringify(next)) : localStorage.removeItem('crumbs-home')
+      next
+        ? localStorage.setItem('crumbs-home', JSON.stringify(next))
+        : localStorage.removeItem('crumbs-home')
     } catch {}
   }
   const [tripMapId, setTripMapId] = useState<string | null>(null)
@@ -287,16 +320,7 @@ function CrumbsShell() {
             </div>
             <span className="font-serif text-2xl font-bold">crumbs</span>
           </div>
-          <button
-            className="secondary !min-h-10 !px-3 text-xs"
-            onClick={() =>
-              data.demo
-                ? (data.setUser(null), toast.success('Signed out'))
-                : data.supabase.auth.signOut()
-            }
-          >
-            Sign out
-          </button>
+          <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
         <div className="mb-5 flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -322,178 +346,239 @@ function CrumbsShell() {
             </select>
           )}
         </div>
-        {tab === 'Places' && (
-          <section className="flex flex-col gap-4">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  size={18}
+        <div key={tab} className={`tab-pane tab-from-${direction}`}>
+          {tab === 'Places' && (
+            <section className="flex flex-col gap-4">
+              <div className="segmented" role="tablist" aria-label="Places or lists">
+                <span
+                  className="segmented-thumb"
+                  aria-hidden="true"
+                  style={{ transform: placesView === 'lists' ? 'translateX(100%)' : 'none' }}
                 />
-                <input
-                  aria-label="Search places"
-                  className="field field-icon"
-                  placeholder="Search places"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-              <button
-                className="primary size-12 shrink-0"
-                aria-label="Add a place"
-                onClick={() => setAdding(true)}
-              >
-                <Plus />
-              </button>
-            </div>
-            <div className="chip-row">
-              {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
-                <button
-                  key={item}
-                  aria-pressed={filter === item}
-                  className={`chip ${filter === item ? 'chip-active' : ''}`}
-                  onClick={() => setFilter(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {!data.loading && <TonightCard places={view} members={data.members} onOpen={setSelected} />}
-            <div className="flex items-center justify-between gap-2">
-              <div className="chip-row min-w-0">
-                {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
+                {(['places', 'lists'] as const).map((view) => (
                   <button
-                    key={item}
-                    aria-pressed={sort === item}
-                    className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-                    onClick={() => setSort(item)}
+                    key={view}
+                    role="tab"
+                    aria-selected={placesView === view}
+                    className={placesView === view ? 'segmented-active' : ''}
+                    onClick={() => {
+                      if (view === placesView) return
+                      haptic('tap')
+                      setPlacesView(view)
+                    }}
                   >
-                    {item}
+                    {view === 'places' ? 'Places' : 'Lists'}
                   </button>
                 ))}
               </div>
-              <button
-                className="secondary !min-h-10 shrink-0 !px-3 text-sm"
-                onClick={() => setSurprising(true)}
-              >
-                🎲 Surprise us
-              </button>
-            </div>
-            <CravingButton groupId={data.group.id} />
-            {data.loading ? (
-              <div
-                className="flex flex-col gap-4"
-                aria-busy="true"
-                aria-label="Loading your places"
-              >
-                <div className="skeleton h-28" />
-                <div className="skeleton h-28" />
-                <div className="skeleton h-28" />
-              </div>
-            ) : filtered.length ? (
-              filtered.map((place) => (
-                <PlaceCard
-                  key={place.id}
-                  place={place}
-                  names={names}
-                  members={data.members}
-                  home={home}
-                  hidden={blind && !place.place_ratings.some((rating) => rating.user_id === userId) && data.places.find((real) => real.id === place.id)!.place_ratings.some((rating) => rating.user_id !== userId)}
-                  onSelect={setSelected}
-                />
-              ))
-            ) : (
-              <WelcomeCard
-                group={data.group}
-                hasPlaces={data.places.length > 0}
-                onAdd={() => setAdding(true)}
+              {placesView === 'lists' ? (
+                <div className="tab-pane tab-from-right">
+                  <ListsTab
+                    lists={data.lists}
+                    places={data.places}
+                    userId={data.user?.id}
+                    groupId={data.group.id}
+                    demo={data.demo}
+                    supabase={data.supabase}
+                    onLists={data.setLists}
+                    onShowOnMap={(id) => {
+                      setTripMapId(id)
+                      setTab('Map')
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="tab-pane tab-from-left flex flex-col gap-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        size={18}
+                      />
+                      <input
+                        aria-label="Search places"
+                        className="field field-icon"
+                        placeholder="Search places"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                      />
+                    </div>
+                    <button
+                      className="primary size-12 shrink-0"
+                      aria-label="Add a place"
+                      onClick={() => setAdding(true)}
+                    >
+                      <Plus />
+                    </button>
+                  </div>
+                  <div className="chip-row">
+                    {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
+                      <button
+                        key={item}
+                        aria-pressed={filter === item}
+                        className={`chip ${filter === item ? 'chip-active' : ''}`}
+                        onClick={() => setFilter(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="chip-row min-w-0">
+                    {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
+                      <button
+                        key={item}
+                        aria-pressed={sort === item}
+                        className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
+                        onClick={() => setSort(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                  {data.loading ? (
+                    <div
+                      className="flex flex-col gap-4"
+                      aria-busy="true"
+                      aria-label="Loading your places"
+                    >
+                      <div className="skeleton h-28" />
+                      <div className="skeleton h-28" />
+                      <div className="skeleton h-28" />
+                    </div>
+                  ) : filtered.length ? (
+                    <div className="stagger flex flex-col gap-4">
+                      {filtered.map((place) => (
+                        <PlaceCard
+                          key={place.id}
+                          place={place}
+                          names={names}
+                          members={data.members}
+                          home={home}
+                          hidden={
+                            blind &&
+                            !place.place_ratings.some((rating) => rating.user_id === userId) &&
+                            data.places
+                              .find((real) => real.id === place.id)!
+                              .place_ratings.some((rating) => rating.user_id !== userId)
+                          }
+                          onSelect={setSelected}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <WelcomeCard
+                      group={data.group}
+                      hasPlaces={data.places.length > 0}
+                      onAdd={() => setAdding(true)}
+                    />
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+          {tab === 'Map' && (
+            <>
+              {tripList && (
+                <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    ✈️ Showing <strong>{tripList.trip_city || tripList.name}</strong> only
+                  </span>
+                  <button className="text-primary underline" onClick={() => setTripMapId(null)}>
+                    Show everything
+                  </button>
+                </div>
+              )}
+              <MapTab
+                places={mapPlaces}
+                apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+                onSelect={setSelected}
               />
-            )}
-          </section>
-        )}
-        {tab === 'Map' && (
-          <>
-            {tripList && (
-              <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
-                <span>
-                  ✈️ Showing <strong>{tripList.trip_city || tripList.name}</strong> only
-                </span>
-                <button className="text-primary underline" onClick={() => setTripMapId(null)}>
-                  Show everything
-                </button>
-              </div>
-            )}
-          <MapTab
-            places={mapPlaces}
-            apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-            onSelect={setSelected}
-          />
-          </>
-        )}
-        {tab === 'Lists' && (
-          <ListsTab
-            lists={data.lists}
-            places={data.places}
-            userId={data.user?.id}
-            groupId={data.group.id}
-            demo={data.demo}
-            supabase={data.supabase}
-            onLists={data.setLists}
-            onShowOnMap={(id) => {
-              setTripMapId(id)
-              setTab('Map')
-            }}
-          />
-        )}
-        {tab === 'Goals' && <GoalsTab places={data.places} />}
-        {tab === 'For you' && (
-          <ForYouTab
-            places={view}
-            members={data.members}
-            userId={data.user?.id}
-            names={names}
-            onSelect={setSelected}
-          />
-        )}
-        {tab === 'Group' && (
-          <GroupTab
-            group={data.group}
-            groups={data.groups}
-            places={data.places}
-            members={data.members}
-            profile={data.members.find((m) => m.id === data.user?.id) ?? null}
-            userId={data.user?.id}
-            supabase={data.supabase}
-            demo={data.demo}
-            home={home}
-            onHome={setHome}
-            onProfile={(changes) =>
-              data.setMembers((current) =>
-                current.map((member) => (member.id === userId ? { ...member, ...changes } : member)),
-              )
-            }
-            onGroup={data.setGroup}
-            onLeft={(id) => {
-              const rest = data.groups.filter((g) => g.id !== id)
-              data.setGroups(rest)
-              data.setGroup(rest[0] ?? null)
-            }}
-            onSignOut={() => (data.demo ? data.setUser(null) : data.supabase.auth.signOut())}
-          />
-        )}
+            </>
+          )}
+          {tab === 'Decide' && (
+            <DecideTab
+              places={view}
+              allPlaces={data.places}
+              members={data.members}
+              names={names}
+              groupId={data.group.id}
+              loading={data.loading}
+              onSelect={setSelected}
+              onSurprise={() => setSurprising(true)}
+            />
+          )}
+          {tab === 'Group' && (
+            <GroupTab
+              group={data.group}
+              groups={data.groups}
+              places={data.places}
+              members={data.members}
+              userId={data.user?.id}
+              supabase={data.supabase}
+              demo={data.demo}
+              onGroup={data.setGroup}
+              onLeft={(id) => {
+                const rest = data.groups.filter((g) => g.id !== id)
+                data.setGroups(rest)
+                data.setGroup(rest[0] ?? null)
+              }}
+            />
+          )}
+        </div>
       </div>
       <nav className={`tab-bar ${typing ? 'tab-bar-hidden' : ''}`} aria-label="Main">
-        {tabs.map((item) => (
+        <span
+          className="tab-indicator"
+          aria-hidden="true"
+          style={{ transform: `translateX(${tabIndex(tab) * 100}%)` }}
+        />
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
-            className={tab === item ? 'tab-active' : ''}
-            aria-current={tab === item ? 'page' : undefined}
-            key={item}
-            onClick={() => setTab(item)}
+            className={tab === id ? 'tab-active' : ''}
+            aria-current={tab === id ? 'page' : undefined}
+            key={id}
+            onClick={() => setTab(id)}
           >
-            {item}
+            <Icon size={21} strokeWidth={tab === id ? 2.4 : 2} aria-hidden="true" />
+            <span>{label}</span>
           </button>
         ))}
       </nav>
+      {hub.length > 0 && (
+        <ProfileHub
+          pages={hub}
+          onPages={setHub}
+          profile={me}
+          group={data.group}
+          places={view}
+          allPlaces={data.places}
+          members={data.members}
+          userId={userId}
+          names={names}
+          onSelect={(place) => {
+            setHub([])
+            setSelected(place)
+          }}
+          settings={{
+            userId,
+            supabase: data.supabase,
+            demo: data.demo,
+            home,
+            onHome: setHome,
+            onProfile: (changes) =>
+              data.setMembers((current) =>
+                current.map((member) =>
+                  member.id === userId ? { ...member, ...changes } : member,
+                ),
+              ),
+            onGroupRenamed: (group) => {
+              data.setGroup(group)
+              data.setGroups(data.groups.map((item) => (item.id === group.id ? group : item)))
+            },
+            onSignOut: signOut,
+          }}
+        />
+      )}
       {surprising && (
         <SurpriseSheet
           places={view}
@@ -531,7 +616,9 @@ function CrumbsShell() {
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(
-              data.places.map((item) => (item.id === place.id ? (blind ? mergeMasked(item, place, userId) : place) : item)),
+              data.places.map((item) =>
+                item.id === place.id ? (blind ? mergeMasked(item, place, userId) : place) : item,
+              ),
             )
           }}
           onDelete={() => {
@@ -551,7 +638,9 @@ function CrumbsShell() {
           supabase={data.supabase}
           demo={data.demo}
           onPlace={(id, changes) =>
-            data.setPlaces((current) => current.map((item) => (item.id === id ? { ...item, ...changes } : item)))
+            data.setPlaces((current) =>
+              current.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+            )
           }
         />
       )}

@@ -1,13 +1,8 @@
 'use client'
 import { useMemo } from 'react'
+import { useCountUp } from '@/lib/motion'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
-import {
-  BINGO_CUISINES,
-  bestDishes,
-  cuisineBingo,
-  onThisDay,
-  tasteMatch,
-} from '@/lib/stats'
+import { BINGO_CUISINES, bestDishes, cuisineBingo, onThisDay, tasteMatch } from '@/lib/stats'
 
 /** Everything fun we can work out from your ratings, visits and dish scores. */
 export function StatsPanel({
@@ -29,11 +24,11 @@ export function StatsPanel({
     () => ({
       dishes: bestDishes(places, 10),
       match: userId && partner ? tasteMatch(places, userId, partner.id) : null,
-      bingo: cuisineBingo(places),
       memories: onThisDay(places),
     }),
     [places, userId, partner],
   )
+  const matchShown = useCountUp(stats.match?.percent ?? 0)
 
   return (
     <>
@@ -81,7 +76,7 @@ export function StatsPanel({
           {stats.match && (
             <p className="text-sm">
               Taste match{' '}
-              <strong className="font-serif text-2xl text-primary">{stats.match.percent}%</strong>
+              <strong className="font-serif text-2xl text-primary">{matchShown}%</strong>
               <span className="text-muted-foreground">
                 {' '}
                 across {stats.match.count} place{stats.match.count === 1 ? '' : 's'} you both rated
@@ -90,36 +85,41 @@ export function StatsPanel({
           )}
         </div>
       )}
-
-      <div className="surface flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="tag w-fit">Cuisine bingo</span>
-          <span className="text-xs text-muted-foreground">
-            {stats.bingo.filled}/25 · {stats.bingo.bingos} bingo
-            {stats.bingo.bingos === 1 ? '' : 's'}
-          </span>
-        </div>
-        <div className="grid grid-cols-5 gap-1.5" role="list" aria-label="Cuisine bingo">
-          {BINGO_CUISINES.map((cuisine, index) => (
-            <div
-              key={cuisine}
-              role="listitem"
-              aria-label={`${cuisine}: ${stats.bingo.done[index] ? 'tried' : 'not yet'}`}
-              className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[10px] font-semibold leading-tight ${
-                stats.bingo.done[index]
-                  ? 'bg-primary text-primary-foreground'
-                  : 'surface-soft text-muted-foreground'
-              }`}
-            >
-              {cuisine}
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          A square fills when you&apos;ve been to a place with that cuisine or tag.
-        </p>
-      </div>
-
     </>
+  )
+}
+
+/** 5×5 cuisine bingo card (the "cuisine passport"). */
+export function BingoCard({ places }: { places: Place[] }) {
+  const bingo = useMemo(() => cuisineBingo(places), [places])
+  return (
+    <div className="surface flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="tag w-fit">Cuisine bingo</span>
+        <span className="text-xs text-muted-foreground">
+          {bingo.filled}/25 · {bingo.bingos} bingo
+          {bingo.bingos === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div className="bingo-grid grid grid-cols-5 gap-1.5" role="list" aria-label="Cuisine bingo">
+        {BINGO_CUISINES.map((cuisine, index) => (
+          <div
+            key={cuisine}
+            role="listitem"
+            aria-label={`${cuisine}: ${bingo.done[index] ? 'tried' : 'not yet'}`}
+            className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[10px] font-semibold leading-tight ${
+              bingo.done[index]
+                ? 'bingo-filled bg-primary text-primary-foreground'
+                : 'surface-soft text-muted-foreground'
+            }`}
+          >
+            {cuisine}
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A square fills when you&apos;ve been to a place with that cuisine or tag.
+      </p>
+    </div>
   )
 }

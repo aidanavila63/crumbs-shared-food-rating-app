@@ -139,7 +139,7 @@ export function MapTab({
                     onClick={() => setPreviewId(place.id)}
                   >
                     <div
-                      className={`marker ${markerClass(place, placeAverage(place))}`}
+                      className={`marker ${markerClass(place, placeAverage(place))} ${previewId === place.id ? 'marker-selected' : ''}`}
                     >
                       {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
                     </div>
@@ -150,7 +150,10 @@ export function MapTab({
         )}
 
         {preview && (
-          <div className="surface absolute bottom-4 left-3 right-16 z-10 flex flex-col gap-2">
+          <div
+            key={preview.id}
+            className="surface preview-pop absolute bottom-4 left-3 right-16 z-10 flex flex-col gap-2"
+          >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-serif text-xl font-bold">{preview.name}</p>

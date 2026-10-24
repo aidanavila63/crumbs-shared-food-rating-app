@@ -93,3 +93,37 @@ Production (`main`) is still the old simple version. Nothing below is live until
 - Paste a Google Maps link to fill a place. Read-only shared lists (`/share/<token>`).
 - Push notifications (needs VAPID keys; hidden until `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is set).
 - **Database:** run `supabase/migrations/20261023_v2_features.sql` BEFORE deploying this code.
+
+## Round 9 - layout v4 + animations (Oct 23, Claude in Cowork)
+Delivered as patch files (Claude can't push to this repo). Project-level notes live in the Claude project devlog.
+
+**Earlier commits in the same patch series**
+- Removed spend-by-month chart, "who rates harder" and the year-in-review card (backlog #62/#64/#67 = No). `lib/stats.ts` keeps the functions for a future "Crumbs Wrapped".
+- OpenStreetMap map no longer covers the buttons (`isolate` on the Leaflet container).
+- "What to order" → "Dish highlights" with a MUST TRY tag.
+- Next.js 16.4.0 → 16.4.3 (security advisories GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr + Server Actions DoS).
+
+**New layout (4 tabs + profile)**
+- Tabs: **Places** (with a Places | Lists switch), **Map**, **Decide & Plan**, **Group**. Old saved tab names (Lists, Goals, For you) map to the new ones.
+- **Decide & Plan** (`components/decide-tab.tsx`, was For you): Surprise us, Craving, Tonight?, next up, favourites, tastes, hot takes, monthly challenges, AI ideas.
+- **Group**: invite code, together-so-far (counts up), members (owner tag, rating counts), switch group, leave group.
+- **Corner avatar → Profile menu** (`components/profile-hub.tsx`): Pokémon GO-style round buttons that bubble in; each opens a full-screen "journal" page with an opening animation and a round ✕ at the bottom centre (no swipe gestures). Pages: Achievements (streak + 9 badges, `lib/badges.ts`), Cuisine passport (bingo), Stats & memories (best dishes, taste match, On this day, photo timeline), Settings.
+- **Settings** (`components/settings-panel.tsx`): grouped cards with switches — Animations, Vibration, display name, What you avoid / Blind ratings / Home, notifications, Group settings (rename group; only the group creator sees it), Sign out.
+
+**Animations** (`app/globals.css`, `lib/motion.ts`)
+- Tab content slides in from the direction you're heading; sliding highlight behind the active tab; tab icon bounce.
+- Cards ease in one after another (`.stagger`); Places | Lists thumb slides.
+- Overlays fade/pop in and out; ✕ button spins in; profile buttons bubble in.
+- Stars pop on tap; 5★ adds a sparkle burst + a celebration buzz.
+- Map pins drop in, the tapped pin grows, its preview card pops up.
+- Numbers count up (streak, taste match, group totals); progress bars grow; challenge ticks and bingo squares pop; streak flame flickers.
+- Entrance animations use `backwards` fill so no transform lingers (a lingering transform would break `position: fixed` sheets).
+- Off switch: Settings → Animations (sets `html[data-motion="off"]`), and the phone's Reduce Motion setting is respected.
+- Vibration via `navigator.vibrate` (Android only — iPhone Safari has no vibration API); Settings → Vibration turns it off.
+
+**Other**
+- Display-only stars are now spans (they were buttons inside the place-card button → invalid HTML + hydration error).
+- Demo mode has more sample data (3 rated places, a partner, visits, dishes) so every screen has something to show.
+- `.gitignore`: `tsconfig.tsbuildinfo`, `next-env.d.ts`.
+
+**Verified**: `tsc --noEmit` clean, 31/31 tests (4 new badge tests), eslint 0 errors (warnings all pre-existing). Toured every tab, the profile menu and all four pages in a 390×844 headless browser (demo mode, OSM map): no page errors; Escape closes only the top overlay; the Animations switch flips `data-motion`. Not tested on a real phone.
