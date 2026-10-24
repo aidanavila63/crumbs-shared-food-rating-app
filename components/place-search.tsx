@@ -125,7 +125,7 @@ async function searchOsm(
     url.searchParams.set('lon', String(location.lng))
   }
   const response = await fetch(url)
-  if (!response.ok) throw new Error('OpenStreetMap search failed')
+  if (!response.ok) throw new Error('Search failed')
   return (await response.json()).results ?? []
 }
 
@@ -274,8 +274,8 @@ export function PlaceSearch({
           // Over Crumbs' Google budget: keep the place ID (allowed forever) and take the
           // location from OpenStreetMap instead of paying for a Google lookup.
           toast(
-            allowanceMessage({ ok: false, reason: 'budget_day' }, 'Google lookups') +
-              ' Using OpenStreetMap.',
+            allowanceMessage({ ok: false, reason: 'budget_day' }, 'Detailed lookups') +
+              ' Using basic place info.',
           )
           const osm = await findOnOsm(`${item.main} ${item.secondary}`, location).catch(() => null)
           found = {
@@ -325,8 +325,8 @@ export function PlaceSearch({
       />
       {useOsm && (
         <p className="text-xs text-muted-foreground">
-          Google search is unavailable right now, so this is using OpenStreetMap. It may be missing
-          prices and some details.
+          Full search is unavailable right now, so this is basic search. It may be missing prices
+          and some details.
         </p>
       )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}

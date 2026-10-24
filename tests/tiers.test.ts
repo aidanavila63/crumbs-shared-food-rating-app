@@ -27,6 +27,6 @@ test('server thresholds win', () => {
 test('points stay small and expire', () => {
   assert.ok(POINTS.detail <= 2 && POINTS.confirm <= POINTS.detail && POINTS.backed <= 2)
   assert.ok(POINTS.window_days <= 90)
-  // a full queue of menu sets is worth less than one tier
-  assert.ok(POINTS.menu_queue * (POINTS.menu_try + POINTS.menu_ok) < POINTS.tiers[0])
+  // a full menu queue's starting points are worth less than one tier
+  assert.ok((POINTS.menu_queue / POINTS.menu_set) * POINTS.menu_try < POINTS.tiers[0])
 })

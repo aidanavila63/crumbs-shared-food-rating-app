@@ -99,8 +99,8 @@ export function GroupSettingsCard({
 
       {!v4 ? (
         <p className="surface-soft text-sm">
-          More group settings (rating scale, category scores, whose turn, admins…) unlock after the
-          one-time database update has been run in Supabase.
+          More group settings (rating scale, category scores, whose turn, admins…) unlock with the
+          next Crumbs update.
         </p>
       ) : (
         <>

@@ -27,7 +27,7 @@ async function photon(q: string, lat: string | null, lon: string | null, tagged:
     headers: { 'user-agent': OSM_UA },
     signal: AbortSignal.timeout(5000),
   })
-  if (!response.ok) throw new Error(`Photon ${response.status}`)
+  if (!response.ok) throw new Error(`Search unavailable (${response.status})`)
   const json = await response.json()
   return (json.features ?? []) as any[]
 }

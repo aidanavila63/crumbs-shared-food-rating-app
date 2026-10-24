@@ -32,10 +32,10 @@ export async function POST(request: Request) {
       body: new URLSearchParams({ data: matchQuery(r.latitude, r.longitude) }),
       signal: AbortSignal.timeout(12000),
     })
-    if (!response.ok) throw new Error(`Overpass ${response.status}`)
+    if (!response.ok) throw new Error(`Map data unavailable (${response.status})`)
     match = bestMatch(await response.json(), r.name, offset)
   } catch (error: any) {
-    return Response.json({ error: error?.message || 'OpenStreetMap unavailable' }, { status: 502 })
+    return Response.json({ error: error?.message || 'Map data unavailable' }, { status: 502 })
   }
   // Record the check even when there's no match, so we don't ask again for a while.
   const { error } = await supabase.rpc('merge_open_data', {

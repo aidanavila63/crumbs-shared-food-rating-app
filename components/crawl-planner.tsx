@@ -342,7 +342,7 @@ function CrawlDetail({
       </div>
       {url && (
         <a className="primary text-center" href={url} target="_blank" rel="noopener noreferrer">
-          <Footprints size={18} /> Walk it in Google Maps
+          <Footprints size={18} /> Walking directions
         </a>
       )}
       <button className="secondary text-destructive" onClick={onDelete}>

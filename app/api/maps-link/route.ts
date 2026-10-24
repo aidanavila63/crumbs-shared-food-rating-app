@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     for (let hop = 0; hop < 5; hop += 1) {
       const url = new URL(current)
       if (url.protocol !== 'https:' || !isMapsHost(url.hostname, url.pathname))
-        return Response.json({ error: 'That is not a Google Maps link' }, { status: 400 })
+        return Response.json({ error: 'That isn’t a map link Crumbs can read' }, { status: 400 })
       const parsed = parseMapsUrl(url.toString())
       if (parsed) return Response.json(parsed)
       const response = await fetch(url, {

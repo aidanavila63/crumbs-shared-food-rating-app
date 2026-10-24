@@ -176,7 +176,7 @@ export function NearbyRecs({
             <div className="rise-panel flex flex-col gap-2">
               {found.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Nothing new on OpenStreetMap within 2 km. Try another favourite.
+                  Nothing new within 2 km. Try another favourite.
                 </p>
               )}
               {found.map((item) => (
@@ -207,7 +207,7 @@ export function NearbyRecs({
                 </div>
               ))}
               <p className="text-xs text-muted-foreground">
-                From OpenStreetMap contributors. Opening hours and prices aren’t checked.
+                © OpenStreetMap contributors. Opening hours and prices aren’t checked.
               </p>
             </div>
           )}

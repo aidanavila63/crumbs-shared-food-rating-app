@@ -60,7 +60,7 @@ export function MapsLinkImport({
       setLink(url.href)
       await run(url.href)
     } catch {
-      toast.error('No Google Maps link on your clipboard. Copy one with Share → Copy link.')
+      toast.error('No map link on your clipboard. Copy one with Share → Copy link.')
     }
   }
 
@@ -70,12 +70,10 @@ export function MapsLinkImport({
         📋 {busy ? 'Reading…' : 'Paste copied Maps link'}
       </button>
       <details className="text-sm">
-        <summary className="cursor-pointer font-semibold text-primary">
-          Paste a Google Maps link
-        </summary>
+        <summary className="cursor-pointer font-semibold text-primary">Paste a map link</summary>
         <div className="mt-2 flex gap-2">
           <input
-            aria-label="Google Maps link"
+            aria-label="Map link"
             className="field min-w-0 flex-1"
             inputMode="url"
             placeholder="https://maps.app.goo.gl/…"
@@ -88,7 +86,8 @@ export function MapsLinkImport({
           </button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          In Google Maps tap Share → Copy link on a place, then paste it here. One place at a time.
+          In your maps app tap Share → Copy link on a place, then paste it here. One place at a
+          time.
         </p>
       </details>
     </>

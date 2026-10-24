@@ -760,9 +760,9 @@ begin
       values (row_id, auth.uid(), (d->>'price')::numeric, case when how = 'photo' then 'photo' else 'in_person' end)
       on conflict (dish_id, user_id) do update set price = excluded.price, evidence = excluded.evidence, created_at = now();
     end if;
-    -- New dishes from a menu photo or typed in count towards a set of 3 (points: see point_rules).
+    -- New dishes from a menu photo or typed in count towards menu points (see 13e, menu_add).
     if is_new and not manager and how in ('photo', 'manual') then
-      perform public.bundle_dish(auth.uid(), target, row_id);
+      perform public.menu_add(auth.uid(), target, row_id);
     end if;
     -- Adding a dish that's already there is a vote that it's real.
     insert into public.restaurant_dish_votes (dish_id, user_id, vote) values (row_id, auth.uid(), 'confirm')
@@ -782,7 +782,7 @@ begin
      where v.dish_id = rd.id and v.vote = 'confirm') >= 2
   where rd.restaurant_id = target;
   perform public.refresh_menu_price(target);
-  perform public.settle_menu_bundles(target);
+  perform public.menu_settle(target);
   return added;
 end $$;
 
@@ -794,7 +794,11 @@ declare
   r uuid;
 begin
   select restaurant_id into r from public.restaurant_dishes where id = target_dish;
-  if r is null or not public.my_restaurant(r) then raise exception 'Not one of your restaurants'; end if;
+  if r is null or not (public.my_restaurant(r) or public.manages_restaurant(r)) then raise exception 'Not one of your restaurants'; end if;
+  -- The owner ticking ✓ simply confirms it.
+  if choice = 'confirm' and public.manages_restaurant(r) then
+    update public.restaurant_dishes set owner_ok = true, hidden = false where id = target_dish;
+  end if;
   if choice is null then
     delete from public.restaurant_dish_votes where dish_id = target_dish and user_id = auth.uid();
   elsif choice in ('confirm', 'flag') then
@@ -817,7 +821,7 @@ begin
   where rd.id = target_dish;
   delete from public.restaurant_dishes where id = target_dish and flags >= 3 and confirms = 0 and not owner_ok;
   perform public.refresh_menu_price(r);
-  perform public.settle_menu_bundles(r);
+  perform public.menu_settle(r);
 end $$;
 
 -- Crumbs' own search, checked before Google: restaurants other groups already saved.
@@ -1126,8 +1130,8 @@ begin
                             'today', (select coalesce(sum(c.points), 0) from public.contribution_points c
                                        where c.user_id = me and c.created_at >= date_trunc('day', now())),
                             'rules', (select to_jsonb(pr) - 'id' from public.point_rules pr where pr.id = 1),
-                            'menu_waiting', (select count(*) from public.menu_bundles b where b.user_id = me and b.status = 'pending'
-                                              and b.created_at > now() - make_interval(days => public.points_window_days())),
+                            'menu_active', (select count(*) from public.menu_contributions m where m.user_id = me and m.stage = 'active'),
+                            'menu_waiting', (select count(*) from public.menu_contributions m where m.user_id = me and m.stage = 'waiting'),
                             'allowances', (select coalesce(jsonb_object_agg(b.kind, b.per_tier[least(tier, 4) + 1]), '{}')
                                              from public.usage_budgets b),
                             'manages', (select coalesce(jsonb_agg(restaurant_id), '[]') from public.restaurant_managers where user_id = me));
@@ -1166,11 +1170,14 @@ create table if not exists public.point_rules (
   detail integer not null default 2,     -- a new detail / a change that applies / a due re-check
   confirm integer not null default 1,    -- one of the first confirmations of a not-yet-claimed detail
   backed integer not null default 2,     -- once, when others back up what you said
-  menu_try integer not null default 1,   -- every 3 new menu dishes
-  menu_ok integer not null default 1,    -- when those 3 are confirmed (item + price) by 2 others
-  menu_queue integer not null default 10 -- unconfirmed sets of 3 that can wait for points at once
+  menu_try integer not null default 1,   -- every menu_set new dishes that enter your points queue
+  menu_ok integer not null default 2,    -- every menu_set of your dishes confirmed (item + price)
+  menu_queue integer not null default 50 -- dishes that can sit in your points queue at once
 );
+alter table public.point_rules add column if not exists menu_set integer not null default 5;
 insert into public.point_rules (id) values (1) on conflict (id) do nothing;
+-- (earlier test default: sets of 3, 1 + 1 points, 10 sets)
+update public.point_rules set menu_ok = 2, menu_queue = 50 where menu_ok = 1 and menu_queue = 10;
 alter table public.point_rules enable row level security;
 drop policy if exists point_rules_read on public.point_rules;
 create policy point_rules_read on public.point_rules for select to authenticated using (true);
@@ -1202,7 +1209,8 @@ begin
     window_days = least(730, greatest(14, (rules->>'window_days')::int)), tiers = t,
     detail = least(20, greatest(0, (rules->>'detail')::int)), confirm = least(20, greatest(0, (rules->>'confirm')::int)),
     backed = least(20, greatest(0, (rules->>'backed')::int)), menu_try = least(20, greatest(0, (rules->>'menu_try')::int)),
-    menu_ok = least(20, greatest(0, (rules->>'menu_ok')::int)), menu_queue = least(100, greatest(0, (rules->>'menu_queue')::int))
+    menu_ok = least(20, greatest(0, (rules->>'menu_ok')::int)), menu_queue = least(500, greatest(0, (rules->>'menu_queue')::int)),
+    menu_set = least(50, greatest(1, coalesce((rules->>'menu_set')::int, menu_set)))
   where id = 1;
 end $$;
 create table if not exists public.contribution_points (
@@ -1642,7 +1650,7 @@ begin
   end if;
   update public.restaurant_managers set last_active_at = now() where restaurant_id = rid and user_id = auth.uid();
   perform public.refresh_menu_price(rid);
-  perform public.settle_menu_bundles(rid);
+  perform public.menu_settle(rid);
 end $$;
 
 -- ---------- Menu prices members can fix (#19) ----------
@@ -1691,7 +1699,7 @@ begin
   if d.price is null or agree >= 2 then
     update public.restaurant_dishes set price = new_price, price_set_at = now(), price_checked_at = now() where id = target_dish;
     perform public.refresh_menu_price(d.restaurant_id);
-    perform public.settle_menu_bundles(d.restaurant_id);
+    perform public.menu_settle(d.restaurant_id);
     return jsonb_build_object('applied', true, 'agree', agree);
   end if;
   return jsonb_build_object('applied', false, 'agree', agree);
@@ -1759,75 +1767,142 @@ begin
   return changed;
 end $$;
 
--- ---------- Menu points in sets of 3 (point_rules.menu_try / menu_ok / menu_queue) ----------
--- Every 3 new dishes you add (menu photo or typed) earn menu_try right away, and menu_ok once
--- each of the 3 is confirmed — item and price — by 2 other people (or the owner). Only
--- menu_queue sets can wait for confirmation at once: add more and they're still saved, seen and
--- confirmable, they just don't earn until one of your waiting sets is confirmed (or expires).
-create table if not exists public.menu_bundles (
-  id uuid primary key default gen_random_uuid(),
+-- ---------- Menu points (point_rules.menu_set / menu_try / menu_ok / menu_queue) ----------
+-- Per person, across all restaurants. Every new dish you add (menu photo or typed) goes into
+-- your points queue (up to menu_queue dishes, default 50); every menu_set (5) dishes that enter it
+-- earn menu_try (1) straight away. Every 5 of your dishes that get confirmed earn menu_ok (2).
+-- Dishes added while the queue is full wait in line (no points yet) and move in automatically —
+-- earning their initial point — as soon as there's room. A waiting dish that gets confirmed
+-- before it moves in still earns the full amount (initial + confirmed).
+-- Confirmed = 2 other people tick ✓ after the dish (name/price) was last changed, or the owner.
+-- A dish leaves the queue (freeing its spot, keeping points already earned) when it's confirmed,
+-- flagged off the menu, deleted, or nobody confirmed it within the points window (90 days).
+create table if not exists public.menu_contributions (
+  dish_id uuid not null references public.restaurant_dishes(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   restaurant_id uuid not null references public.restaurants(id) on delete cascade,
-  dishes uuid[] not null default '{}',
-  status text not null default 'filling' check (status in ('filling', 'pending', 'confirmed', 'dropped')),
-  created_at timestamptz not null default now(),
-  confirmed_at timestamptz
+  stage text not null default 'waiting' check (stage in ('active', 'waiting', 'confirmed', 'dropped')),
+  credited boolean not null default false, -- counted towards the initial points
+  added_at timestamptz not null default now(),
+  queued_at timestamptz,
+  confirmed_at timestamptz,
+  primary key (dish_id, user_id)
 );
-create index if not exists menu_bundles_user_idx on public.menu_bundles (user_id, status);
-create index if not exists menu_bundles_restaurant_idx on public.menu_bundles (restaurant_id, status);
-alter table public.menu_bundles enable row level security;
-drop policy if exists menu_bundles_read on public.menu_bundles;
-create policy menu_bundles_read on public.menu_bundles for select to authenticated using (user_id = (select auth.uid()));
+create index if not exists menu_contributions_user_idx on public.menu_contributions (user_id, stage, added_at);
+create index if not exists menu_contributions_restaurant_idx on public.menu_contributions (restaurant_id, stage);
+-- Running totals per person (never go down, so points are never paid twice).
+create table if not exists public.menu_counts (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  credited integer not null default 0,
+  confirmed integer not null default 0,
+  try_paid integer not null default 0,
+  ok_paid integer not null default 0
+);
+alter table public.menu_contributions enable row level security;
+alter table public.menu_counts enable row level security;
+drop policy if exists menu_contributions_read on public.menu_contributions;
+create policy menu_contributions_read on public.menu_contributions for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists menu_counts_read on public.menu_counts;
+create policy menu_counts_read on public.menu_counts for select to authenticated using (user_id = (select auth.uid()));
 
-create or replace function public.bundle_dish(uid uuid, rid uuid, dish uuid)
+-- Pays out any whole sets reached since last time.
+create or replace function public.menu_pay(uid uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare
-  b public.menu_bundles;
-  waiting integer;
+  c public.menu_counts;
+  pr public.point_rules;
+begin
+  select * into pr from public.point_rules where id = 1;
+  select * into c from public.menu_counts where user_id = uid for update;
+  if c.user_id is null then return; end if;
+  while c.try_paid < c.credited / pr.menu_set loop
+    c.try_paid := c.try_paid + 1;
+    perform public.award_points(uid, 'menu_try', pr.menu_try, null, 'menu-try:' || c.try_paid);
+  end loop;
+  while c.ok_paid < c.confirmed / pr.menu_set loop
+    c.ok_paid := c.ok_paid + 1;
+    perform public.award_points(uid, 'menu_ok', pr.menu_ok, null, 'menu-ok:' || c.ok_paid);
+  end loop;
+  update public.menu_counts set try_paid = c.try_paid, ok_paid = c.ok_paid where user_id = uid;
+end $$;
+
+-- Moves waiting dishes into the points queue while there's room (oldest first).
+create or replace function public.menu_fill(uid uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  room integer;
+  moved integer;
+begin
+  -- Nobody confirmed it within the points window: it gives up its spot.
+  update public.menu_contributions set stage = 'dropped'
+   where user_id = uid and stage = 'active' and queued_at < now() - make_interval(days => public.points_window_days());
+  select (select menu_queue from public.point_rules where id = 1) - count(*) into room
+    from public.menu_contributions where user_id = uid and stage = 'active';
+  if room <= 0 then return; end if;
+  with next as (
+    select dish_id from public.menu_contributions
+     where user_id = uid and stage = 'waiting' order by added_at, dish_id limit room
+  )
+  update public.menu_contributions m set stage = 'active', queued_at = now(), credited = true
+    from next where m.dish_id = next.dish_id and m.user_id = uid;
+  get diagnostics moved = row_count;
+  if moved > 0 then
+    insert into public.menu_counts (user_id, credited) values (uid, moved)
+    on conflict (user_id) do update set credited = menu_counts.credited + moved;
+    perform public.menu_pay(uid);
+  end if;
+end $$;
+
+create or replace function public.menu_add(uid uuid, rid uuid, dish uuid)
+returns void language plpgsql security definer set search_path = public as $$
 begin
   if uid is null then return; end if;
-  -- Sets nobody confirmed within the points window stop waiting.
-  update public.menu_bundles set status = 'dropped'
-   where user_id = uid and status in ('filling', 'pending') and created_at < now() - make_interval(days => public.points_window_days());
-  select count(*) into waiting from public.menu_bundles where user_id = uid and status = 'pending';
-  if waiting >= (select menu_queue from public.point_rules where id = 1) then return; end if; -- queue full
-  select * into b from public.menu_bundles where user_id = uid and restaurant_id = rid and status = 'filling' limit 1;
-  if b.id is null then
-    insert into public.menu_bundles (user_id, restaurant_id) values (uid, rid) returning * into b;
-  end if;
-  update public.menu_bundles set dishes = dishes || dish where id = b.id returning * into b;
-  if cardinality(b.dishes) >= 3 then
-    update public.menu_bundles set status = 'pending' where id = b.id;
-    perform public.award_points(uid, 'menu_try', public.points_for('menu_try'), rid, 'bundle:' || b.id);
-  end if;
+  insert into public.menu_contributions (dish_id, user_id, restaurant_id) values (dish, uid, rid)
+  on conflict do nothing;
+  perform public.menu_fill(uid);
 end $$;
 
-create or replace function public.settle_menu_bundles(rid uuid)
+-- After votes, price changes or owner edits at one restaurant: confirm, drop, pay, refill.
+create or replace function public.menu_settle(rid uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare
-  b record;
+  dropped_for uuid[];
+  confirmed_for uuid[];
+  u uuid;
 begin
-  -- A set loses its place if one of its dishes was removed or flagged off the menu.
-  update public.menu_bundles mb set status = 'dropped'
-   where mb.restaurant_id = rid and mb.status in ('filling', 'pending')
-     and exists (select 1 from unnest(mb.dishes) d
-                  where not exists (select 1 from public.restaurant_dishes x where x.id = d and not x.hidden));
-  for b in
-    select mb.* from public.menu_bundles mb
-     where mb.restaurant_id = rid and mb.status = 'pending'
-       and not exists (
-         select 1 from unnest(mb.dishes) d join public.restaurant_dishes x on x.id = d
-          where not x.owner_ok
-            and (select count(*) from public.restaurant_dish_votes v
-                  where v.dish_id = x.id and v.vote = 'confirm' and v.user_id <> mb.user_id
-                    and v.created_at >= x.price_set_at) < 2)
-  loop
-    update public.menu_bundles set status = 'confirmed', confirmed_at = now() where id = b.id;
-    perform public.award_points(b.user_id, 'menu_ok', public.points_for('menu_ok'), rid, 'bundle-ok:' || b.id);
+  -- Flagged off the menu (or gone): gives up its spot, no confirmation points.
+  with gone as (
+    update public.menu_contributions m set stage = 'dropped'
+     where m.restaurant_id = rid and m.stage in ('active', 'waiting')
+       and not exists (select 1 from public.restaurant_dishes x where x.id = m.dish_id and not x.hidden)
+    returning m.user_id)
+  select array_agg(distinct user_id) into dropped_for from gone;
+  -- Confirmed: the owner checked it, or 2 other people ticked ✓ since it was last changed.
+  -- A dish confirmed while still waiting in line also gets its initial share (full value).
+  with done as (
+    update public.menu_contributions m set stage = 'confirmed', confirmed_at = now(), credited = true
+      from public.restaurant_dishes x
+     where m.restaurant_id = rid and m.stage in ('active', 'waiting') and x.id = m.dish_id and not x.hidden
+       and (x.owner_ok or (select count(*) from public.restaurant_dish_votes v
+                            where v.dish_id = x.id and v.vote = 'confirm' and v.user_id <> m.user_id
+                              and v.created_at >= x.price_set_at) >= 2)
+    returning m.user_id, (m.queued_at is null) as was_waiting),
+  counted as (
+    insert into public.menu_counts (user_id, credited, confirmed)
+    select user_id, count(*) filter (where was_waiting), count(*) from done group by user_id
+    on conflict (user_id) do update set credited = menu_counts.credited + excluded.credited,
+                                        confirmed = menu_counts.confirmed + excluded.confirmed
+    returning user_id)
+  select array_agg(user_id) into confirmed_for from counted;
+  for u in select distinct x from unnest(coalesce(dropped_for, '{}') || coalesce(confirmed_for, '{}')) x loop
+    perform public.menu_pay(u);
+    perform public.menu_fill(u);
   end loop;
 end $$;
-revoke execute on function public.bundle_dish(uuid, uuid, uuid) from public, anon, authenticated;
-revoke execute on function public.settle_menu_bundles(uuid) from public, anon, authenticated;
+revoke execute on function public.menu_pay(uuid) from public, anon, authenticated;
+revoke execute on function public.menu_fill(uuid) from public, anon, authenticated;
+revoke execute on function public.menu_add(uuid, uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.menu_settle(uuid) from public, anon, authenticated;
 
 do $$
 declare f text;

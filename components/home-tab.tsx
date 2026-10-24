@@ -79,8 +79,8 @@ export function HomeTab({
         <ChefHat size={36} className="text-primary" />
         <h3 className="font-serif text-2xl font-bold">Home cooking</h3>
         <p className="text-sm text-muted-foreground">
-          Log the meals you cook together, rate them and remember the recipes. This unlocks once the
-          one-time database update has been run in Supabase.
+          Log the meals you cook together, rate them and remember the recipes. This unlocks with the
+          next Crumbs update.
         </p>
       </div>
     )

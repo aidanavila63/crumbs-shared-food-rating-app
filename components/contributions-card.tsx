@@ -19,6 +19,7 @@ type C = {
   window_days?: number
   allowances?: Record<string, number>
   rules?: PointRules
+  menu_active?: number
   menu_waiting?: number
 }
 
@@ -135,8 +136,8 @@ export function ContributionsCard({
         </summary>
         <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
           <li>
-            A missing detail, one only Google had, a change, or a re-check that’s due:{' '}
-            <strong>{rules.detail}</strong>
+            A missing detail, a detail we don’t have our own copy of, a change, or a re-check that’s
+            due: <strong>{rules.detail}</strong>
           </li>
           <li>
             Confirming a detail someone else gave, before it’s checked:{' '}
@@ -146,10 +147,14 @@ export function ContributionsCard({
             When others back up what you said: <strong>+{rules.backed}</strong>, once
           </li>
           <li>
-            Every 3 new menu dishes (photo or typed): <strong>{rules.menu_try}</strong>, then{' '}
-            <strong>+{rules.menu_ok}</strong> when 2 other people confirm all 3 (dish and price). Up
-            to {rules.menu_queue} sets wait at once
-            {c.menu_waiting ? ` — you have ${c.menu_waiting} waiting` : ''}.
+            Menu dishes you add (photo or typed): <strong>{rules.menu_try}</strong> for every{' '}
+            {rules.menu_set}, and <strong>+{rules.menu_ok}</strong> for every {rules.menu_set} that
+            2 other people (or the restaurant) confirm — dish and price. Up to {rules.menu_queue}{' '}
+            dishes sit in your queue; extra ones wait in line and move in as spots free up
+            {c.menu_active || c.menu_waiting
+              ? ` (now: ${c.menu_active ?? 0} in your queue${c.menu_waiting ? `, ${c.menu_waiting} in line` : ''})`
+              : ''}
+            .
           </li>
           <li>
             Logging visits, receipts, website imports and ticking dishes help but earn nothing.

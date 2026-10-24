@@ -197,7 +197,7 @@ export function SettingsPanel({
             <span className="block text-sm text-muted-foreground">
               {vibrates
                 ? 'A small buzz when you tap and rate.'
-                : 'This phone’s browser can’t vibrate (iPhones can’t).'}
+                : 'This phone’s browser can’t vibrate.'}
             </span>
           </span>
           <Switch

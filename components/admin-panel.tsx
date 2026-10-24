@@ -560,9 +560,10 @@ const POINT_FIELDS: { key: Exclude<keyof PointRules, 'tiers'>; label: string }[]
   { key: 'detail', label: 'New detail' },
   { key: 'confirm', label: 'Confirm (first few)' },
   { key: 'backed', label: 'Backed up (once)' },
-  { key: 'menu_try', label: 'Each 3 new dishes' },
-  { key: 'menu_ok', label: '…when confirmed' },
-  { key: 'menu_queue', label: 'Sets waiting max' },
+  { key: 'menu_set', label: 'Menu dishes per step' },
+  { key: 'menu_try', label: 'Per step added' },
+  { key: 'menu_ok', label: 'Per step confirmed' },
+  { key: 'menu_queue', label: 'Menu queue (dishes)' },
 ]
 
 /** What earns points and the tier thresholds — tune so it stays worth it for Crumbs. */

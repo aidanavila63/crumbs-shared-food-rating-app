@@ -38,14 +38,14 @@ export async function GET(request: Request) {
       body: new URLSearchParams({ data: overpassQuery(lat, lon, cuisine, radius) }),
       signal: AbortSignal.timeout(12000),
     })
-    if (!response.ok) throw new Error(`Overpass ${response.status}`)
+    if (!response.ok) throw new Error(`Map data unavailable (${response.status})`)
     const results = overpassToPlaces(await response.json())
     if (cache.size > 500) cache.clear()
     cache.set(key, { at: Date.now(), results })
     return Response.json({ results })
   } catch (error: any) {
     return Response.json(
-      { error: error?.message || 'Could not reach OpenStreetMap' },
+      { error: error?.message || 'Could not load nearby places' },
       { status: 502 },
     )
   }

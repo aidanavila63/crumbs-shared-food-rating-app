@@ -316,7 +316,9 @@ export type Contributions = {
   allowances?: Record<string, number>
   /** what earns points right now (Admin → Points) */
   rules?: PointRules
-  /** your sets of 3 menu dishes waiting for others to confirm */
+  /** your menu dishes in the points queue (initial point given, waiting for confirmation) */
+  menu_active?: number
+  /** your menu dishes waiting in line for a spot in the points queue */
   menu_waiting?: number
   /** restaurants this person is the confirmed owner/manager of */
   manages?: string[]

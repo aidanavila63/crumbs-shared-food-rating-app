@@ -246,7 +246,7 @@ export function RestaurantInfoEditor({
           ) : null}
           {r.osm_id && (
             <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-              Some details © OpenStreetMap contributors (ODbL).
+              Some details © OpenStreetMap contributors.
             </p>
           )}
           {claims && !store.manages && supabase && (

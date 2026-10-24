@@ -20,9 +20,10 @@ export type PointRules = {
   detail: number // a missing detail, Crumbs' own copy of one, a change that applies, or a due re-check
   confirm: number // one of the first confirmations that makes a detail Crumbs' own
   backed: number // once, when others back up what you said
-  menu_try: number // every 3 new menu dishes
-  menu_ok: number // when those 3 are confirmed (item + price) by 2 other people
-  menu_queue: number // sets of 3 that can wait for confirmation at once
+  menu_set: number // dishes per menu point step (5)
+  menu_try: number // every menu_set new dishes that enter your points queue
+  menu_ok: number // every menu_set of your dishes confirmed (item + price) by 2 others or the owner
+  menu_queue: number // dishes that can sit in your points queue at once; more wait in line
 }
 export const POINTS: PointRules = {
   window_days: 90,
@@ -30,9 +31,10 @@ export const POINTS: PointRules = {
   detail: 2,
   confirm: 1,
   backed: 2,
+  menu_set: 5,
   menu_try: 1,
-  menu_ok: 1,
-  menu_queue: 10,
+  menu_ok: 2,
+  menu_queue: 50,
 }
 
 export const TIERS: Tier[] = [

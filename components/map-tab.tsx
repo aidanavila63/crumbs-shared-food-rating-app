@@ -165,7 +165,7 @@ export function MapTab({
       }
       const fresh = notYetSaved(found, places)
       setSpots(fresh)
-      if (!fresh.length) toast('Nothing new to eat around here on OpenStreetMap')
+      if (!fresh.length) toast('Nothing new to eat around here')
     } catch (error: any) {
       toast.error(error?.message || 'Could not explore right now')
     } finally {
@@ -530,7 +530,7 @@ export function MapTab({
                 ×
               </button>
             </div>
-            <p className="text-[0.6875rem] text-muted-foreground">From OpenStreetMap contributors</p>
+            <p className="text-[0.6875rem] text-muted-foreground">© OpenStreetMap contributors</p>
           </div>
         )}
         {preview && (
@@ -591,9 +591,9 @@ export function MapTab({
           >
             {useOsm
               ? googleDown && !chooseOsm
-                ? 'OpenStreetMap (Google unavailable)'
-                : 'Use Google map'
-              : 'Use OpenStreetMap'}
+                ? 'Basic map (main map unavailable)'
+                : 'Use main map'
+              : 'Use basic map'}
           </button>
         )}
         <button
