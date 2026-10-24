@@ -518,10 +518,10 @@ export function PlaceSheet({
         )}
         {(order.length > 0 || skip.length > 0) && (
           <div className="surface-soft flex flex-col gap-1">
-            <h3 className="font-serif text-xl font-bold">What to order</h3>
+            <h3 className="font-serif text-xl font-bold">Dish highlights</h3>
             {order.map((dish) => (
               <p key={dish.id} className="text-sm">
-                👍 <strong>{dish.name}</strong>
+                <span className="tag mr-1">MUST TRY</span> <strong>{dish.name}</strong>
                 {dishAverage(dish) !== null ? ` · ${dishAverage(dish)}/100` : ''}
               </p>
             ))}

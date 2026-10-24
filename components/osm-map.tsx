@@ -91,5 +91,6 @@ export function OsmMap({
     if (locateTarget) state.current?.map.setView([locateTarget.lat, locateTarget.lng], 14)
   }, [locateTarget])
 
-  return <div ref={box} className="h-[calc(100dvh-230px)] min-h-[520px] w-full" />
+  // `isolate` keeps Leaflet's own z-indexes (400-1000) inside the map so chips, cards and the tab bar stay on top.
+  return <div ref={box} className="isolate h-[calc(100dvh-230px)] min-h-[520px] w-full" />
 }
