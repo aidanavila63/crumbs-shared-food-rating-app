@@ -2,7 +2,7 @@
 // The restaurant's shared menu (#19 + #27): built from menu photos and website imports by every
 // group that saves this restaurant. ✓ / ✕ keep it honest; "+" copies a dish into your own list to rate.
 import { useState } from 'react'
-import { Check, Plus, X } from 'lucide-react'
+import { BadgeCheck, Check, Plus, X } from 'lucide-react'
 import type { Dish } from '@/hooks/use-crumbs-data'
 import type { RestaurantStore } from '@/hooks/use-restaurant'
 import { missingFromOurs, priceAge, priceIsOld, type MenuDish } from '@/lib/restaurants'
@@ -39,7 +39,9 @@ export function CommunityMenu({
         <h3 className="font-serif text-xl font-bold">Menu</h3>
         <span className="text-xs text-muted-foreground">
           {store.menu.length ? `${store.menu.length} dishes · ` : ''}
-          shared on Crumbs{others ? ` · ${others} other group${others === 1 ? '' : 's'}` : ''}
+          {store.restaurant.owner_verified
+            ? 'from the restaurant + Crumbs'
+            : `shared on Crumbs${others ? ` · ${others} other group${others === 1 ? '' : 's'}` : ''}`}
         </span>
       </div>
       {store.loading && !store.menu.length && <div className="skeleton h-16" />}
@@ -64,6 +66,13 @@ export function CommunityMenu({
               <div className="min-w-0 flex-1">
                 <p className="font-semibold leading-5">
                   {dish.name}
+                  {dish.owner_ok && (
+                    <BadgeCheck
+                      size={14}
+                      className="verified-icon ml-1 inline align-[-2px]"
+                      aria-label="Verified by Owner"
+                    />
+                  )}
                   {dish.price !== null && (
                     <span className="ml-2 font-normal text-muted-foreground">
                       ${Number(dish.price).toFixed(Number(dish.price) % 1 ? 2 : 0)}

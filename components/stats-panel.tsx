@@ -1,8 +1,24 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useCountUp } from '@/lib/motion'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
-import { BINGO_CUISINES, bestDishes, cuisineBingo, onThisDay, tasteMatch } from '@/lib/stats'
+import {
+  BINGO_CUISINES,
+  bestDishes,
+  cuisineBingo,
+  onThisDay,
+  rankedCourses,
+  tasteMatch,
+  type DishCourse,
+} from '@/lib/stats'
+
+const COURSE_LABEL: Record<DishCourse, string> = {
+  starter: 'Starters',
+  main: 'Mains',
+  side: 'Sides',
+  dessert: 'Desserts',
+  drink: 'Drinks',
+}
 
 /** Everything fun we can work out from your ratings, visits and dish scores. */
 export function StatsPanel({
@@ -20,14 +36,16 @@ export function StatsPanel({
   // Year in review, spend by month and "who rates harder" were removed (backlog #62, #64, #67 = No).
   // lib/stats.ts keeps yearInReview/spendByMonth for a future "Crumbs Wrapped" (#61).
   const partner = members.find((member) => member.id !== userId)
+  const [course, setCourse] = useState<DishCourse | null>(null)
+  const courses = useMemo(() => rankedCourses(places), [places])
   const stats = useMemo(
     () => ({
-      dishes: bestDishes(places, 10),
+      dishes: bestDishes(places, 10, course ?? undefined),
       match: userId && partner ? tasteMatch(places, userId, partner.id) : null,
       memories: onThisDay(places),
       cuisines: cuisineBreakdown(places),
     }),
-    [places, userId, partner],
+    [places, userId, partner, course],
   )
   const matchShown = useCountUp(stats.match?.percent ?? 0)
 
@@ -51,9 +69,24 @@ export function StatsPanel({
         </div>
       )}
 
-      {stats.dishes.length > 0 && (
+      {(stats.dishes.length > 0 || course) && (
         <div className="surface flex flex-col gap-3">
           <span className="tag w-fit">Best dishes</span>
+          {courses.length > 0 && (
+            <div className="chip-row" role="radiogroup" aria-label="Kind of dish">
+              {[null, ...courses].map((c) => (
+                <button
+                  key={c ?? 'all'}
+                  role="radio"
+                  aria-checked={course === c}
+                  className={`chip chip-sm ${course === c ? 'chip-active' : ''}`}
+                  onClick={() => setCourse(c)}
+                >
+                  {c ? COURSE_LABEL[c] : 'All'}
+                </button>
+              ))}
+            </div>
+          )}
           {stats.dishes.map(({ dish, place, points }, index) => (
             <button
               key={dish.id}
@@ -151,7 +184,7 @@ export function BingoCard({ places }: { places: Place[] }) {
             key={cuisine}
             role="listitem"
             aria-label={`${cuisine}: ${bingo.done[index] ? 'tried' : 'not yet'}`}
-            className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[10px] font-semibold leading-tight ${
+            className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[0.625rem] font-semibold leading-tight ${
               bingo.done[index]
                 ? 'bingo-filled bg-primary text-primary-foreground'
                 : 'surface-soft text-muted-foreground'

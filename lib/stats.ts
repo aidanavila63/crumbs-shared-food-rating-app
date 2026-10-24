@@ -10,14 +10,24 @@ export function dishAverage(dish: Dish) {
   return Math.round(total / dish.dish_ratings.length)
 }
 
-export function bestDishes(places: Place[], limit = 10) {
+export type DishCourse = NonNullable<Dish['course']>
+/** Best dishes overall, or (#18) only one kind: the best starters, mains, desserts… */
+export function bestDishes(places: Place[], limit = 10, course?: DishCourse) {
   return places
     .flatMap((place) =>
-      (place.dishes ?? []).map((dish) => ({ dish, place, points: dishAverage(dish) })),
+      (place.dishes ?? [])
+        .filter((dish) => !course || dish.course === course)
+        .map((dish) => ({ dish, place, points: dishAverage(dish) })),
     )
     .filter((row): row is typeof row & { points: number } => row.points !== null)
     .sort((a, b) => b.points - a.points || a.dish.name.localeCompare(b.dish.name))
     .slice(0, limit)
+}
+
+/** Which kinds have at least `min` rated dishes (so a per-kind ranking is worth showing). */
+export function rankedCourses(places: Place[], min = 2): DishCourse[] {
+  const order: DishCourse[] = ['starter', 'main', 'side', 'dessert', 'drink']
+  return order.filter((course) => bestDishes(places, min, course).length >= min)
 }
 
 /** How closely two people's place ratings agree (100 = identical). */

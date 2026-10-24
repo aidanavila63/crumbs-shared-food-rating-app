@@ -20,16 +20,17 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
   if (!demo && place.restaurant_id) {
     const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
     // Hours members or OpenStreetMap gave us are Crumbs' own: trust them for ~3 months.
+    // A verified owner's hours are always used (no Google call at all).
+    const byOwner = !!shared?.owner_verified || shared?.sources?.hours === 'owner'
     const owned = shared?.sources?.hours === 'crumbs' || shared?.sources?.hours === 'osm'
     if (
-      shared?.hours_checked_at &&
-      shared.opening_hours &&
-      !hoursAreStale(shared, owned ? 90 : 14)
+      shared?.opening_hours &&
+      (byOwner || (shared.hours_checked_at && !hoursAreStale(shared, owned ? 90 : 14)))
     ) {
       const reused = {
         opening_hours: shared.opening_hours,
         business_status: shared.business_status,
-        hours_checked_at: shared.hours_checked_at,
+        hours_checked_at: byOwner ? new Date().toISOString() : shared.hours_checked_at,
       }
       const { error } = await supabase.from('places').update(reused).eq('id', place.id)
       if (error) throw error

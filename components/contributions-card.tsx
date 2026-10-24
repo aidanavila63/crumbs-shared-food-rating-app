@@ -1,10 +1,10 @@
 'use client'
-// "Building Crumbs": your contributor tier, points and badges. Facts, menus and receipts you add
-// become Crumbs' own restaurant data; higher tiers get bigger daily allowances (AI ideas, Explore,
-// menu imports) — and later, perks when Crumbs has paid plans.
+// "Building Crumbs": your contributor tier, points and badges. Only NEW restaurant info earns
+// (small) points; they count for 6 months, so tiers have to be kept up. Higher tiers get somewhat
+// bigger daily allowances (AI ideas, Explore, menu imports) — and later, perks with paid plans.
 import { useEffect, useState } from 'react'
 import { myContributions } from '@/lib/restaurants'
-import { TIERS, nextTier, pointsFor, tierFor } from '@/lib/tiers'
+import { POINTS, TIERS, nextTier, pointsFor, tierFor } from '@/lib/tiers'
 
 type C = {
   facts: number
@@ -15,6 +15,9 @@ type C = {
   points?: number
   today?: number
   daily_cap?: number
+  expiring?: number
+  window_days?: number
+  allowances?: Record<string, number>
 }
 
 const BADGES = [
@@ -36,7 +39,7 @@ const BADGES = [
     id: 'menu',
     emoji: '📜',
     title: 'Menu maker',
-    how: 'Add 20 menu dishes',
+    how: 'Add 20 menu dishes (photos or receipts)',
     test: (c: C) => c.dishes >= 20,
   },
   {
@@ -72,7 +75,9 @@ export function ContributionsCard({
   v4: boolean
 }) {
   const [c, setC] = useState<C | null>(
-    demo ? { facts: 3, dishes: 12, checks: 6, restaurants: 2, verified: 1, points: 32 } : null,
+    demo
+      ? { facts: 9, dishes: 12, checks: 6, restaurants: 4, verified: 3, points: 31, expiring: 4 }
+      : null,
   )
   useEffect(() => {
     if (demo || !v4) return
@@ -110,13 +115,23 @@ export function ContributionsCard({
         </span>
       )}
       <p className="text-sm">
-        <strong>Your perks:</strong> {tier.perk} — {tier.limits.ai} AI ideas, {tier.limits.explore}{' '}
-        Explore searches and {tier.limits.menuImport} menu imports a day.
+        <strong>Your perks:</strong> {tier.perk} — {c.allowances?.ai ?? tier.limits.ai} AI ideas,{' '}
+        {c.allowances?.explore ?? tier.limits.explore} Explore searches and{' '}
+        {c.allowances?.menu_import ?? tier.limits.menuImport} menu imports a day.
       </p>
+      {!!c.expiring && (
+        <p className="text-sm font-semibold text-primary">
+          {c.expiring} point{c.expiring === 1 ? '' : 's'} stop counting this month — keep your tier
+          by adding something new.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
-        Earn points by answering quick questions, snapping menus, hours signs and receipts, and
-        checking dishes: 3 a detail, 1 a dish or check, +5 when others back you up. Up to{' '}
-        {c.daily_cap ?? 40} a day{c.today !== undefined ? ` (${c.today} today)` : ''}.
+        Points are for <strong>new</strong> info only: a missing detail or one that’s due a re-check
+        ({POINTS.detail}), when others back you up (+{POINTS.backed}), a menu photo with new dishes
+        ({POINTS.menuPhoto}). Logging visits, receipts and ticking dishes still help but don’t earn
+        points. Up to {c.daily_cap ?? POINTS.dailyCap} a day
+        {c.today !== undefined ? ` (${c.today} today)` : ''}; points count for{' '}
+        {Math.round((c.window_days ?? POINTS.windowDays) / 30)} months.
       </p>
       <div className="grid grid-cols-4 gap-2 text-center">
         {(
@@ -141,7 +156,7 @@ export function ContributionsCard({
               key={t.level}
               className={`text-sm ${t.level === tier.level ? 'font-bold' : 'text-muted-foreground'}`}
             >
-              {t.emoji} {t.name} · {t.min}+ points · {t.perk}
+              {t.emoji} {t.name} · {t.min}+ points in 6 months · {t.perk}
             </p>
           ))}
         </div>

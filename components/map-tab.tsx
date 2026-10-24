@@ -530,7 +530,7 @@ export function MapTab({
                 ×
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground">From OpenStreetMap contributors</p>
+            <p className="text-[0.6875rem] text-muted-foreground">From OpenStreetMap contributors</p>
           </div>
         )}
         {preview && (

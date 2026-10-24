@@ -555,6 +555,9 @@ function BudgetsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
 
 type Claim = {
   id: string
+  user_id: string
+  restaurant_id: string
+  status: 'pending' | 'approved' | 'rejected'
   contact_name: string
   role: string | null
   email: string | null
@@ -566,28 +569,68 @@ type Claim = {
 
 /** #100 Restaurant claims waiting for a check (call or email the restaurant, then approve). */
 function ClaimsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
-  const [claims, setClaims] = useState<Claim[]>([])
+  const [all, setAll] = useState<Claim[]>([])
   useEffect(() => {
     if (demo) return
     supabase
       .from('restaurant_claims')
       .select(
-        'id,contact_name,role,email,phone,proof,created_at,restaurants(name,formatted_address,website)',
+        'id,user_id,restaurant_id,status,contact_name,role,email,phone,proof,created_at,restaurants(name,formatted_address,website)',
       )
-      .eq('status', 'pending')
+      .in('status', ['pending', 'approved'])
       .order('created_at')
-      .then(({ data }: any) => setClaims(data ?? []))
+      .then(({ data }: any) => setAll(data ?? []))
   }, [demo, supabase])
-  if (!claims.length) return null
+  const claims = all.filter((c) => c.status === 'pending')
+  const owners = all.filter((c) => c.status === 'approved')
+  if (!all.length) return null
   async function review(id: string, approve: boolean) {
     const { error } = await supabase.rpc('review_claim', { claim: id, approve })
     if (error) return toast.error(error.message)
-    setClaims((current) => current.filter((c) => c.id !== id))
-    toast.success(approve ? 'Approved — they can now manage the page' : 'Claim declined')
+    setAll((current) =>
+      approve
+        ? current.map((c) => (c.id === id ? { ...c, status: 'approved' } : c))
+        : current.filter((c) => c.id !== id),
+    )
+    toast.success(approve ? 'Approved — the page is now Verified by Owner' : 'Claim declined')
+  }
+  async function removeOwner(c: Claim) {
+    if (
+      !window.confirm(
+        `Remove ${c.contact_name} as owner of ${c.restaurants?.name ?? 'this restaurant'}?`,
+      )
+    )
+      return
+    const { error } = await supabase.rpc('remove_manager', {
+      target: c.restaurant_id,
+      uid: c.user_id,
+    })
+    if (error) return toast.error(error.message)
+    setAll((current) => current.filter((x) => x.id !== c.id))
+    toast.success('Owner removed')
   }
   return (
     <section className="surface settings-card">
       <h3 className="settings-heading">Restaurant claims ({claims.length})</h3>
+      {owners.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-sm font-semibold text-primary">
+            Verified owners ({owners.length})
+          </summary>
+          <div className="mt-2 flex flex-col gap-1">
+            {owners.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                <span>
+                  <strong>{c.restaurants?.name ?? 'Restaurant'}</strong> · {c.contact_name}
+                </span>
+                <button className="text-xs text-primary underline" onClick={() => removeOwner(c)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <p className="text-sm text-muted-foreground">
         Check before approving: email at the restaurant’s own website, or call the restaurant’s
         listed number.

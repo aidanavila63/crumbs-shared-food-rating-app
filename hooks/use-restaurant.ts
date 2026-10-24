@@ -10,11 +10,13 @@ import {
   matchOpenData,
   loadMenu,
   loadRestaurant,
+  ownerLocked,
   shareable,
   shareDishes,
   sortMenu,
   voteDish,
   type Evidence,
+  type FactResult,
   type Insights,
   type FactField,
   type MenuDish,
@@ -42,6 +44,7 @@ const demoMenu = (restaurantId: string): MenuDish[] =>
     confirms: confirms as number,
     flags: 0,
     price_checked_at: new Date(Date.now() - (i + 1) * 20 * 864e5).toISOString(),
+    owner_ok: i < 2,
   }))
 
 export function useRestaurant({
@@ -105,6 +108,8 @@ export function useRestaurant({
               price_level: 'google',
             },
             verified: { cuisine: { n: 2, at: new Date().toISOString() } },
+            // Demo: the ramen place is run by its (verified) owner.
+            owner_verified: place.id === 'demo-ramen',
           } as Restaurant)
           setMenu(place.id === 'demo-ramen' ? demoMenu(id) : [])
           setInsights({ visits: 9, groups: 3, per_head: 24, takeout_share: 30 })
@@ -150,8 +155,14 @@ export function useRestaurant({
   }, [enabled, place.id, place.restaurant_id])
 
   /** A member adds or confirms a fact they saw themselves (#27 owning the data). */
-  async function contribute(fact: FactField, val: unknown, how: Evidence = 'in_person') {
+  async function contribute(
+    fact: FactField,
+    val: unknown,
+    how: Evidence = 'in_person',
+  ): Promise<FactResult | null> {
     if (!restaurant) return null
+    if (demo && !manages && ownerLocked(restaurant, fact))
+      return { applied: false, agree: 1, points: 0, locked: true }
     if (demo) {
       const next = { ...restaurant } as any
       const column: Record<string, string> = {
@@ -164,7 +175,8 @@ export function useRestaurant({
       const n = (restaurant.verified?.[fact]?.n ?? 0) + 1
       next.verified = { ...restaurant.verified, [fact]: { n, at: new Date().toISOString() } }
       setRestaurant(next)
-      return { applied: true, agree: n }
+      const wasOurs = ['crumbs', 'osm', 'owner'].includes(restaurant.sources?.[fact] ?? '')
+      return { applied: true, agree: n, points: wasOurs ? 0 : 2 }
     }
     const result = await contributeFact(supabase, restaurant.id, fact, val, how)
     const fresh = await loadRestaurant(supabase, restaurant.id)

@@ -7,6 +7,7 @@ import { haptic, useCountUp } from '@/lib/motion'
 import { inviteLink } from '@/lib/invite'
 import type { HomeMeal } from '@/hooks/use-crumbs-data'
 import { ActivityFeed, MemoriesCard } from './group-feed'
+import { OwnerTag } from './restaurant-profile'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -179,6 +180,11 @@ export function GroupTab({
                 <span>
                   <strong>{member.display_name}</strong>
                   {member.id === userId ? ' (you)' : ''}
+                  {member.restaurant_owner && (
+                    <span className="ml-2 align-middle">
+                      <OwnerTag />
+                    </span>
+                  )}
                   {member.id === group.created_by ? (
                     <span className="tag ml-2">owner</span>
                   ) : member.role === 'admin' ? (

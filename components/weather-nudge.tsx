@@ -79,7 +79,7 @@ export function WeatherNudge({
           </>
         )}
         <a
-          className="mt-0.5 block text-[10px] text-muted-foreground"
+          className="mt-0.5 block text-[0.625rem] text-muted-foreground"
           href="https://open-meteo.com/"
           target="_blank"
           rel="noreferrer"

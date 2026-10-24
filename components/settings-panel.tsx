@@ -4,7 +4,7 @@ import { LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, Profile } from '@/hooks/use-crumbs-data'
 import { canVibrate, haptic, setMotionPrefs, useMotionPrefs } from '@/lib/motion'
-import { ACCENTS, setThemePrefs, useThemePrefs, type ThemeMode } from '@/lib/theme'
+import { ACCENTS, TEXT_SIZES, setThemePrefs, useThemePrefs, type ThemeMode } from '@/lib/theme'
 import { Switch } from './switch'
 import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
@@ -152,6 +152,32 @@ export function SettingsPanel({
             ))}
           </div>
         </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">Text size</span>
+          <div className="segmented segmented-4" role="radiogroup" aria-label="Text size">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{
+                transform: `translateX(${TEXT_SIZES.findIndex((t) => t.id === (theme.text ?? 'default')) * 100}%)`,
+              }}
+            />
+            {TEXT_SIZES.map((size) => (
+              <button
+                key={size.id}
+                role="radio"
+                aria-checked={(theme.text ?? 'default') === size.id}
+                className={(theme.text ?? 'default') === size.id ? 'segmented-active' : ''}
+                onClick={() => {
+                  haptic('tap')
+                  setThemePrefs({ text: size.id })
+                }}
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="settings-row">
           <span>
             <span className="font-semibold">Animations</span>
@@ -242,7 +268,11 @@ export function SettingsPanel({
                 <span className="font-semibold">{label}</span>
                 <span className="block text-sm text-muted-foreground">“{example}”</span>
               </span>
-              <Switch label={label} checked={notify[key] !== false} onChange={(on) => setNotify(key, on)} />
+              <Switch
+                label={label}
+                checked={notify[key] !== false}
+                onChange={(on) => setNotify(key, on)}
+              />
             </div>
           ))}
         </section>
@@ -272,7 +302,11 @@ export function SettingsPanel({
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
           />
-          <button className="primary" disabled={!feedback.trim() || saving === 'feedback'} onClick={sendFeedback}>
+          <button
+            className="primary"
+            disabled={!feedback.trim() || saving === 'feedback'}
+            onClick={sendFeedback}
+          >
             {saving === 'feedback' ? 'Sending…' : 'Send'}
           </button>
         </section>

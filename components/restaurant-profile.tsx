@@ -3,15 +3,19 @@
 // Members add what they see (or snap the hours sign) so Crumbs owns its data instead of
 // borrowing Google's. Members' facts beat open data (OpenStreetMap), which beats Google.
 import { useState } from 'react'
+import { BadgeCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RestaurantStore } from '@/hooks/use-restaurant'
 import {
   PROFILE_FIELDS,
   claimRestaurant,
+  ownerLocked,
   type Evidence,
   type FactField,
+  type FactResult,
   type Restaurant,
 } from '@/lib/restaurants'
+import { findPhone, findWebsite } from '@/lib/fact-parse'
 import { hoursToText, localUtcOffset, parseHoursText } from '@/lib/hours-text'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
@@ -29,14 +33,24 @@ const LABEL: Record<FactField, string> = {
   cuisine: 'Cuisine',
   status: 'Open?',
 }
-/** Thank-you line after a contribution (points: fact 3, +5 when others back it up). */
-export function thanks(
-  fact: FactField,
-  result: { applied: boolean; agree: number; claimed?: boolean },
-) {
-  if (result.claimed) return `Thanks! That’s now checked by ${result.agree} people · +3 points`
-  if (result.applied) return `Thanks — ${LABEL[fact].toLowerCase()} saved for everyone · +3 points`
-  return 'Thanks — saved. One more person agreeing will update it · +3 points'
+/** Thank-you line after a contribution. Only new info earns points, so most say none. */
+export function thanks(fact: FactField, result: FactResult) {
+  if (result.locked) return 'Sent to the restaurant — they keep this page up to date'
+  const pts = result.points ? ` · +${result.points} points` : ''
+  if (result.claimed && result.agree > 1)
+    return `Thanks! That’s now checked by ${result.agree} people${pts}`
+  if (result.applied) return `Thanks — ${LABEL[fact].toLowerCase()} saved for everyone${pts}`
+  return `Thanks — saved. One more person agreeing will update it${pts}`
+}
+
+/** The blue check (like verified accounts on Instagram): an approved owner runs this page. */
+export function VerifiedBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className="verified-badge" title="Verified by Owner">
+      <BadgeCheck size={compact ? 16 : 18} aria-hidden="true" />
+      {compact ? <span className="sr-only">Verified by Owner</span> : 'Verified by Owner'}
+    </span>
+  )
 }
 
 export const STATUS: { id: string; label: string }[] = [
@@ -77,6 +91,7 @@ function show(r: Restaurant, f: FactField) {
   if (v === null || v === undefined || v === '') return null
   if (f === 'hours') return hoursToText(v as Hours) || null
   if (f === 'price_level') return '$'.repeat(Math.max(1, Number(v)))
+  if (f === 'phone') return String(v)
   if (f === 'status') return STATUS.find((s) => s.id === v)?.label ?? String(v)
   if (f === 'website') {
     try {
@@ -111,7 +126,7 @@ export function RestaurantInfoEditor({
       if (!result) return
       haptic('success')
       track('fact_added', { fact, how, applied: result.applied })
-      if (fact === 'hours') onHours(val as Hours)
+      if (fact === 'hours' && !result.locked) onHours(val as Hours)
       toast.success(thanks(fact, result))
       setEditing(null)
     } catch (error: any) {
@@ -123,15 +138,25 @@ export function RestaurantInfoEditor({
     <div className="flex flex-col gap-2">
       {
         <div className="flex flex-col">
+          {r.owner_verified && (
+            <div className="mb-2">
+              <VerifiedBadge />
+            </div>
+          )}
           {store.manages ? (
             <p className="mb-2 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
               <strong>🏪 You manage {r.name}.</strong> Your changes go live straight away for
-              everyone and show as confirmed by the restaurant.
+              everyone. Your restaurants (in your profile) has the menu and what members suggest.
+            </p>
+          ) : r.owner_verified ? (
+            <p className="mb-2 text-sm text-muted-foreground">
+              The restaurant keeps these details up to date. Spot something wrong? Tell them below —
+              they’ll see it.
             </p>
           ) : (
             <p className="mb-2 text-sm text-muted-foreground">
               Fix or add anything you’ve seen yourself. It helps everyone who saves this place, and
-              earns you Crumbs points.
+              new info earns you Crumbs points.
             </p>
           )}
           {store.insights && store.insights.visits > 0 && (
@@ -149,6 +174,7 @@ export function RestaurantInfoEditor({
             const text = show(r, f)
             const owned =
               r.sources?.[f] === 'owner' || r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'
+            const locked = !store.manages && ownerLocked(r, f)
             return (
               <div key={f} className="profile-row flex flex-col gap-1 py-2">
                 <div className="flex items-start gap-2">
@@ -156,22 +182,29 @@ export function RestaurantInfoEditor({
                   <span className="min-w-0 flex-1 text-sm">
                     {text ?? <span className="text-muted-foreground">Not known yet</span>}
                   </span>
-                  {r.verified?.[f]?.claimed && (
-                    <span
-                      className="text-xs font-bold text-[#2f7d4f]"
-                      title={
-                        r.sources?.[f] === 'owner'
-                          ? 'Confirmed by the restaurant'
-                          : 'Checked by several people'
-                      }
-                    >
-                      {r.sources?.[f] === 'owner' ? '✓ Restaurant' : '✓'}
-                    </span>
+                  {r.sources?.[f] === 'owner' && text ? (
+                    <VerifiedBadge compact />
+                  ) : (
+                    r.verified?.[f]?.claimed && (
+                      <span
+                        className="text-xs font-bold text-[#2f7d4f]"
+                        title="Checked by several people"
+                      >
+                        ✓
+                      </span>
+                    )
                   )}
                 </div>
-                {editing !== f && (
+                {editing !== f && locked && (
                   <div className="flex gap-3 pl-[72px] text-xs font-semibold">
-                    {owned && text && (
+                    <button className="text-primary underline" onClick={() => setEditing(f)}>
+                      {text ? 'Tell the restaurant it’s changed' : 'Tell the restaurant'}
+                    </button>
+                  </div>
+                )}
+                {editing !== f && !locked && (
+                  <div className="flex gap-3 pl-[72px] text-xs font-semibold">
+                    {owned && text && !store.manages && (
                       <button
                         className="text-[#2f7d4f] underline"
                         onClick={() => save(f, valueOf(r, f), 'in_person')}
@@ -190,6 +223,7 @@ export function RestaurantInfoEditor({
                     // Google's value isn't offered as a starting point: members enter what they see.
                     initial={owned ? valueOf(r, f) : null}
                     utc={(r.opening_hours as Hours | null)?.utc ?? localUtcOffset()}
+                    saveLabel={locked ? 'Send to the restaurant' : undefined}
                     onCancel={() => setEditing(null)}
                     onSave={(val, how) => save(f, val, how)}
                   />
@@ -197,8 +231,21 @@ export function RestaurantInfoEditor({
               </div>
             )
           })}
+          {r.price_level ? (
+            <div className="profile-row flex items-start gap-2 py-2">
+              <span className="w-16 shrink-0 text-sm font-semibold">Price</span>
+              <span className="min-w-0 flex-1 text-sm">
+                {'$'.repeat(r.price_level)}
+                {r.sources?.price_level === 'owner' || r.sources?.price_level === 'crumbs' ? (
+                  <span className="text-muted-foreground"> · from menu prices</span>
+                ) : (
+                  <span className="text-muted-foreground"> · snap the menu to keep this right</span>
+                )}
+              </span>
+            </div>
+          ) : null}
           {r.osm_id && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-[0.6875rem] text-muted-foreground">
               Some details © OpenStreetMap contributors (ODbL).
             </p>
           )}
@@ -217,12 +264,20 @@ export function FactEditor({
   utc,
   onCancel,
   onSave,
+  saveLabel = 'Save for everyone',
+  initialHow,
+  hideHow = false,
 }: {
   field: FactField
   initial: unknown
   utc: number
   onCancel: () => void
   onSave: (val: unknown, how: Evidence) => void
+  saveLabel?: string
+  /** e.g. 'photo' when the value was just read off a picture */
+  initialHow?: Evidence
+  /** the restaurant's own owner doesn't need to say how they know */
+  hideHow?: boolean
 }) {
   const [text, setText] = useState(
     field === 'hours'
@@ -234,7 +289,9 @@ export function FactEditor({
   const [choice, setChoice] = useState<string | number | null>(
     field === 'price_level' || field === 'status' ? (initial as string | number | null) : null,
   )
-  const [how, setHow] = useState<Evidence>(field === 'website' ? 'website' : 'in_person')
+  const [how, setHow] = useState<Evidence>(
+    initialHow ?? (field === 'website' ? 'website' : 'in_person'),
+  )
   const hours = field === 'hours' ? parseHoursText(text, utc) : null
   let val: unknown = null
   if (field === 'hours') val = hours
@@ -319,7 +376,22 @@ export function FactEditor({
           onChange={(event) => setText(event.target.value)}
         />
       )}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {(field === 'phone' || field === 'website') && (
+        <ReadPhotoButton
+          label="Snap a picture"
+          className="secondary self-start !min-h-9 !px-3 text-sm"
+          onText={(read) => {
+            const found = field === 'phone' ? findPhone(read) : findWebsite(read)
+            if (!found)
+              return toast(
+                `Couldn’t spot a ${field === 'phone' ? 'number' : 'website'} — type it in`,
+              )
+            setText(found)
+            setHow('photo')
+          }}
+        />
+      )}
+      <div className={`flex flex-wrap items-center gap-1.5 ${hideHow ? 'hidden' : ''}`}>
         <span className="text-xs text-muted-foreground">How do you know?</span>
         {EVIDENCE.map((e) => (
           <button
@@ -341,7 +413,7 @@ export function FactEditor({
           disabled={val === null || val === ''}
           onClick={() => onSave(val, how)}
         >
-          Save for everyone
+          {saveLabel}
         </button>
       </div>
     </div>
@@ -453,5 +525,15 @@ function ClaimForm({
         </button>
       </div>
     </div>
+  )
+}
+
+/** "Restaurant owner" on a person — never says which restaurant. */
+export function OwnerTag() {
+  return (
+    <span className="owner-tag" title="Runs a restaurant on Crumbs">
+      <BadgeCheck size={14} aria-hidden="true" />
+      Restaurant owner
+    </span>
   )
 }

@@ -131,6 +131,8 @@ export type Profile = {
   // v4
   is_admin?: boolean | null
   notify?: Record<string, boolean> | null
+  /** Runs a restaurant page as its verified owner (which one is never shown). */
+  restaurant_owner?: boolean | null
   role?: 'owner' | 'admin' | 'member' | null
 }
 export type List = {
@@ -183,49 +185,47 @@ const demoPlaces: Place[] = [
       ['demo-taco', 'Taquería Sol', 'Mexican', 37.7651, -122.4219, 4, 5, 1],
       ['demo-thai', 'Baan Thai', 'Thai', 37.7849, -122.4094, 3, 4, 2],
     ] as const
-  ).map(
-    ([id, name, cuisine, latitude, longitude, mine, theirs, price], index): Place => ({
-      id,
-      group_id: demoGroup.id,
-      name,
-      formatted_address: `${10 + index * 7} Valencia Street`,
-      latitude,
-      longitude,
-      google_place_id: id,
-      price_level: price,
-      cuisine,
-      website: null,
-      google_maps_url: 'https://maps.google.com',
-      status: 'Been',
-      pinned: false,
-      tags: [],
-      created_at: new Date(Date.now() - (index + 1) * 864e5).toISOString(),
-      place_visits: [
-        {
-          id: `${id}-v`,
-          place_id: id,
-          visited_on: new Date(Date.now() - (index + 1) * 864e5).toISOString().slice(0, 10),
-          spend: 40 + index * 15,
-        },
-      ],
-      place_ratings: [
-        { user_id: 'demo-user', score: mine, notes: null },
-        { user_id: 'demo-partner', score: theirs, notes: null },
-      ],
-      dishes: [
-        {
-          id: `${id}-dish`,
-          place_id: id,
-          name: ['Tonkotsu', 'Al pastor', 'Khao soi'][index],
-          price: null,
-          description: null,
-          is_ai_suggestion: false,
-          verdict: 'again',
-          dish_ratings: [{ user_id: 'demo-user', score: 5, notes: null, points: 92 - index * 6 }],
-        },
-      ],
-    }),
-  ),
+  ).map(([id, name, cuisine, latitude, longitude, mine, theirs, price], index): Place => ({
+    id,
+    group_id: demoGroup.id,
+    name,
+    formatted_address: `${10 + index * 7} Valencia Street`,
+    latitude,
+    longitude,
+    google_place_id: id,
+    price_level: price,
+    cuisine,
+    website: null,
+    google_maps_url: 'https://maps.google.com',
+    status: 'Been',
+    pinned: false,
+    tags: [],
+    created_at: new Date(Date.now() - (index + 1) * 864e5).toISOString(),
+    place_visits: [
+      {
+        id: `${id}-v`,
+        place_id: id,
+        visited_on: new Date(Date.now() - (index + 1) * 864e5).toISOString().slice(0, 10),
+        spend: 40 + index * 15,
+      },
+    ],
+    place_ratings: [
+      { user_id: 'demo-user', score: mine, notes: null },
+      { user_id: 'demo-partner', score: theirs, notes: null },
+    ],
+    dishes: [
+      {
+        id: `${id}-dish`,
+        place_id: id,
+        name: ['Tonkotsu', 'Al pastor', 'Khao soi'][index],
+        price: null,
+        description: null,
+        is_ai_suggestion: false,
+        verdict: 'again',
+        dish_ratings: [{ user_id: 'demo-user', score: 5, notes: null, points: 92 - index * 6 }],
+      },
+    ],
+  })),
 ]
 const demoMeals: HomeMeal[] = [
   {
@@ -246,7 +246,12 @@ const demoMeals: HomeMeal[] = [
       { user_id: 'demo-partner', score: 4, notes: null },
     ],
     home_meal_cooks: [
-      { id: 'demo-cook-1', meal_id: 'demo-meal-1', cooked_on: '2026-10-19', cooked_by: 'demo-partner' },
+      {
+        id: 'demo-cook-1',
+        meal_id: 'demo-meal-1',
+        cooked_on: '2026-10-19',
+        cooked_by: 'demo-partner',
+      },
     ],
   },
   {
@@ -274,6 +279,7 @@ const demoMembers: Profile[] = [
     avoid: [],
     blind_ratings: false,
     is_admin: true,
+    restaurant_owner: true,
     role: 'owner',
   },
   {
@@ -335,7 +341,9 @@ export function useCrumbsData() {
     // Is the v4 database update in? (home_meals only exists after it.)
     const meals = await supabase
       .from('home_meals')
-      .select('*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by)')
+      .select(
+        '*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by)',
+      )
       .eq('group_id', group.id)
       .order('created_at', { ascending: false })
     setV4(!meals.error)
@@ -435,18 +443,38 @@ export function useCrumbsData() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meals', filter: `group_id=eq.${group.id}` }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meal_ratings' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meal_cooks' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${group.id}` }, scheduleLoad)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'home_meals', filter: `group_id=eq.${group.id}` },
+        scheduleLoad,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'home_meal_ratings' },
+        scheduleLoad,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'home_meal_cooks' },
+        scheduleLoad,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${group.id}` },
+        scheduleLoad,
+      )
       // Group settings / look changed by the owner or an admin: apply straight away.
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'groups', filter: `id=eq.${group.id}` },
         (payload: any) => {
           const next = payload.new as Group
-          setGroup((current) => (current && current.id === next.id ? { ...current, ...next } : current))
-          setGroups((current) => current.map((item) => (item.id === next.id ? { ...item, ...next } : item)))
+          setGroup((current) =>
+            current && current.id === next.id ? { ...current, ...next } : current,
+          )
+          setGroups((current) =>
+            current.map((item) => (item.id === next.id ? { ...item, ...next } : item)),
+          )
         },
       )
       .subscribe()

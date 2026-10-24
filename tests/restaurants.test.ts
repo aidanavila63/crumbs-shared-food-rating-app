@@ -57,6 +57,14 @@ test('owned share counts member + open data, not Google', async () => {
       status: 'google',
     },
   }
-  assert.equal(ownedShare(r), 43) // 3 of 7
-  assert.deepEqual(needsHelp(r), ['phone', 'website', 'price_level', 'status'])
+  assert.equal(ownedShare(r), 50) // 3 of 6 (price comes from the menu)
+  assert.deepEqual(needsHelp(r), ['phone', 'website', 'status'])
+})
+
+test('Verified by Owner locks most details', async () => {
+  const { ownerLocked } = await import('../lib/restaurants.ts')
+  const r: any = { owner_verified: true }
+  assert.equal(ownerLocked(r, 'hours'), true)
+  assert.equal(ownerLocked(r, 'status'), false)
+  assert.equal(ownerLocked({ owner_verified: false } as any, 'hours'), false)
 })

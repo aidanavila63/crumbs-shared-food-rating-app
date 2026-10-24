@@ -1,6 +1,6 @@
 'use client'
 import { useMemo } from 'react'
-import { BarChart3, Globe2, Settings, ShieldCheck, Trophy } from 'lucide-react'
+import { BarChart3, Globe2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
 import { haptic } from '@/lib/motion'
@@ -11,8 +11,11 @@ import { PhotoTimeline } from './photo-timeline'
 import { SettingsPanel } from './settings-panel'
 import { AdminPanel } from './admin-panel'
 import { ContributionsCard } from './contributions-card'
+import { OwnerPanel } from './owner-panel'
+import { OwnerTag } from './restaurant-profile'
 
-export type HubPage = 'menu' | 'achievements' | 'passport' | 'stats' | 'settings' | 'admin'
+export type HubPage =
+  'menu' | 'achievements' | 'passport' | 'stats' | 'settings' | 'admin' | 'restaurants'
 
 const initial = (name?: string | null) => (name?.trim()?.[0] ?? '?').toUpperCase()
 
@@ -81,6 +84,10 @@ export function ProfileHub({
     },
     { page: 'passport', label: 'Passport', icon: <Globe2 /> },
     { page: 'stats', label: 'Stats & memories', icon: <BarChart3 /> },
+    // #100 Verified restaurant owners get their own area.
+    ...(profile?.restaurant_owner
+      ? [{ page: 'restaurants' as const, label: 'Your restaurants', icon: <Store /> }]
+      : []),
     { page: 'settings', label: 'Settings', icon: <Settings /> },
     // #21 Only Crumbs admins (profiles.is_admin) see this.
     ...(profile?.is_admin
@@ -116,6 +123,7 @@ export function ProfileHub({
                 )}
               </span>
               <p className="font-serif text-3xl font-bold">{profile?.display_name ?? 'You'}</p>
+              {profile?.restaurant_owner && <OwnerTag />}
               <p className="text-sm text-muted-foreground">{group.name}</p>
             </div>
             <div className="hub-grid">
@@ -140,7 +148,11 @@ export function ProfileHub({
         <Overlay label="Achievements" title="Achievements" onClose={closeTop}>
           <div className="stagger flex flex-col gap-4">
             <StreakCard places={allPlaces} />
-            <ContributionsCard supabase={settings.supabase} demo={settings.demo} v4={!!settings.v4} />
+            <ContributionsCard
+              supabase={settings.supabase}
+              demo={settings.demo}
+              v4={!!settings.v4}
+            />
             <div className="badge-grid">
               {earned.map((badge) => (
                 <div
@@ -199,6 +211,12 @@ export function ProfileHub({
       {pages.at(-1) === 'admin' && profile?.is_admin && (
         <Overlay label="Admin" title="Admin" onClose={closeTop}>
           <AdminPanel supabase={settings.supabase} demo={settings.demo} />
+        </Overlay>
+      )}
+
+      {pages.at(-1) === 'restaurants' && profile?.restaurant_owner && (
+        <Overlay label="Your restaurants" title="Your restaurants" onClose={closeTop}>
+          <OwnerPanel supabase={settings.supabase} demo={settings.demo} />
         </Overlay>
       )}
 

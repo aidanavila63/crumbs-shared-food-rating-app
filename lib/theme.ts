@@ -1,10 +1,18 @@
 'use client'
-// #79 Theme (Auto / Light / Dark) and accent colour, saved on this phone.
+// #79 Theme (Auto / Light / Dark), accent colour and #84 text size, saved on this phone.
 import { useSyncExternalStore } from 'react'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 export type Accent = 'plum' | 'tomato' | 'ocean' | 'forest' | 'saffron'
-export type ThemePrefs = { theme: ThemeMode; accent: Accent }
+export type TextSize = 'small' | 'default' | 'large' | 'xl'
+export type ThemePrefs = { theme: ThemeMode; accent: Accent; text: TextSize }
+
+export const TEXT_SIZES: { id: TextSize; label: string }[] = [
+  { id: 'small', label: 'Small' },
+  { id: 'default', label: 'Default' },
+  { id: 'large', label: 'Large' },
+  { id: 'xl', label: 'Largest' },
+]
 
 export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
   { id: 'plum', label: 'Plum', swatch: '#7b2d5b' },
@@ -15,7 +23,7 @@ export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
 ]
 
 export const THEME_KEY = 'crumbs-theme'
-const DEFAULTS: ThemePrefs = { theme: 'auto', accent: 'plum' }
+const DEFAULTS: ThemePrefs = { theme: 'auto', accent: 'plum', text: 'default' }
 let current = DEFAULTS
 let loaded = false
 const listeners = new Set<() => void>()
@@ -35,6 +43,8 @@ function apply() {
   else root.dataset.theme = current.theme
   if (current.accent === 'plum') delete root.dataset.accent
   else root.dataset.accent = current.accent
+  if (current.text === 'default') delete root.dataset.text
+  else root.dataset.text = current.text
 }
 
 export function setThemePrefs(changes: Partial<ThemePrefs>) {

@@ -27,6 +27,8 @@ export type Restaurant = {
   phone?: string | null
   osm_id?: string | null
   osm_checked_at?: string | null
+  /** An approved owner manages this page ("Verified by Owner"). */
+  owner_verified?: boolean
 }
 
 export type FactField =
@@ -42,16 +44,32 @@ export type FactField =
 export type FactSource = 'owner' | 'crumbs' | 'osm' | 'google'
 export type Evidence = 'in_person' | 'photo' | 'website' | 'receipt' | 'phone_call'
 
-/** The facts a profile is scored on (name/location come with the place). */
+/**
+ * The facts members can add or fix (name/location come with the place; price comes from the
+ * menu's prices, see refresh_menu_price).
+ */
 export const PROFILE_FIELDS: FactField[] = [
   'address',
   'hours',
   'phone',
   'website',
-  'price_level',
   'cuisine',
   'status',
 ]
+
+/** Details only the restaurant can change once its page is Verified by Owner (same as owner_locked()). */
+export const OWNER_LOCKED: FactField[] = [
+  'name',
+  'address',
+  'location',
+  'hours',
+  'phone',
+  'website',
+  'cuisine',
+  'price_level',
+]
+export const ownerLocked = (r: Restaurant | null, f: FactField) =>
+  !!r?.owner_verified && OWNER_LOCKED.includes(f)
 
 const has = (r: Restaurant, f: FactField) => {
   switch (f) {
@@ -101,6 +119,10 @@ export type MenuDish = {
   course: 'starter' | 'main' | 'side' | 'dessert' | 'drink' | null
   dietary: string[]
   source: 'photo' | 'website' | 'manual' | 'receipt'
+  /** Added or checked by the restaurant's verified owner. */
+  owner_ok?: boolean
+  /** flagged off the menu by members (only the owner and admins still see these) */
+  hidden?: boolean
   confirms: number
   flags: number
   price_checked_at: string
@@ -223,13 +245,23 @@ export async function shareHours(
   })
 }
 
+export type FactResult = {
+  applied: boolean
+  agree: number
+  claimed?: boolean
+  /** points this earned (only new info earns any) */
+  points?: number
+  /** Verified-by-Owner page: sent to the owner as a suggestion instead */
+  locked?: boolean
+}
+
 export async function contributeFact(
   supabase: any,
   restaurantId: string,
   fact: FactField,
   val: unknown,
   how: Evidence = 'in_person',
-): Promise<{ applied: boolean; agree: number }> {
+): Promise<FactResult> {
   const { data, error } = await supabase.rpc('contribute_fact', {
     target: restaurantId,
     fact,
@@ -274,6 +306,13 @@ export type Contributions = {
   tier: number
   today?: number
   daily_cap?: number
+  /** all points ever (only the last `window_days` count towards the tier) */
+  lifetime?: number
+  /** points that stop counting in the next 30 days */
+  expiring?: number
+  window_days?: number
+  /** today's allowances at this tier, from the server (ai, explore, menu_import, google) */
+  allowances?: Record<string, number>
   /** restaurants this person is the confirmed owner/manager of */
   manages?: string[]
 }
@@ -334,4 +373,51 @@ export async function findRestaurant(supabase: any, sourceKey: string): Promise<
     .eq('source_key', sourceKey)
     .maybeSingle()
   return data ?? null
+}
+
+// ---------- "Your restaurants" (verified owners) ----------
+export type OwnedRestaurant = {
+  id: string
+  name: string
+  address: string | null
+  saves: number
+  dishes: number
+  flagged: number
+  suggestions: number
+}
+export type Suggestion = {
+  field: FactField
+  value: unknown
+  people: number
+  photo: boolean
+  latest: string
+}
+
+export async function myRestaurants(supabase: any): Promise<OwnedRestaurant[]> {
+  const { data, error } = await supabase.rpc('my_restaurants')
+  return error ? [] : (data ?? [])
+}
+export async function ownerSuggestions(supabase: any, restaurantId: string): Promise<Suggestion[]> {
+  const { data, error } = await supabase.rpc('owner_suggestions', { target: restaurantId })
+  if (error) throw error
+  return data ?? []
+}
+/** The owner looked at what members suggested and their own detail stands. */
+export async function keepOwnerValue(supabase: any, restaurantId: string, fact: FactField) {
+  const { error } = await supabase.rpc('keep_owner_value', { target: restaurantId, fact })
+  if (error) throw error
+}
+export async function ownerEditDish(
+  supabase: any,
+  dishId: string,
+  change: { name?: string; price?: number | null; course?: MenuDish['course'] } | 'remove',
+) {
+  const { error } = await supabase.rpc('owner_edit_dish', {
+    target_dish: dishId,
+    new_name: change === 'remove' ? null : (change.name ?? null),
+    new_price: change === 'remove' ? null : (change.price ?? null),
+    new_course: change === 'remove' ? null : (change.course ?? null),
+    remove: change === 'remove',
+  })
+  if (error) throw error
 }

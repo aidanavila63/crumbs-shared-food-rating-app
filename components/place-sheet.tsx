@@ -25,7 +25,7 @@ import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
 import { ReadPhotoButton } from './photo-reader'
 import { MenuReview } from './menu-review'
 import { CommunityMenu } from './community-menu'
-import { RestaurantInfoEditor } from './restaurant-profile'
+import { RestaurantInfoEditor, VerifiedBadge } from './restaurant-profile'
 import { QuickCheck } from './quick-check'
 import { Overlay } from './overlay'
 import type { Hours } from '@/lib/place-info'
@@ -99,7 +99,9 @@ function DishRow({
             )}
           </p>
           {dietary.length > 0 && (
-            <p className="text-xs font-semibold text-[var(--success,#2f6b4a)]">{dietary.join(' · ')}</p>
+            <p className="text-xs font-semibold text-[var(--success,#2f6b4a)]">
+              {dietary.join(' · ')}
+            </p>
           )}
           {dish.description && <p className="text-sm text-muted-foreground">{dish.description}</p>}
           {dish.price !== null && dish.price !== undefined && (
@@ -147,7 +149,14 @@ function DishRow({
             onBlur={() => addTag(tag)}
           />
           <div className="chip-row">
-            {['spicy', 'shareable', 'vegetarian', 'dessert', 'drink', ...ALLERGENS.map((a) => a.toLowerCase())]
+            {[
+              'spicy',
+              'shareable',
+              'vegetarian',
+              'dessert',
+              'drink',
+              ...ALLERGENS.map((a) => a.toLowerCase()),
+            ]
               .filter((item) => !tags.includes(item))
               .map((item) => (
                 <button key={item} className="chip chip-sm" onClick={() => addTag(item)}>
@@ -179,7 +188,9 @@ function DishRow({
                 className={`chip chip-sm ${dietary.includes(item) ? 'chip-active' : ''}`}
                 onClick={() =>
                   onMeta({
-                    dietary: dietary.includes(item) ? dietary.filter((d) => d !== item) : [...dietary, item],
+                    dietary: dietary.includes(item)
+                      ? dietary.filter((d) => d !== item)
+                      : [...dietary, item],
                   })
                 }
               >
@@ -243,7 +254,11 @@ function DishRow({
           {tagsOpen ? 'Done with tags' : 'Tags'}
         </button>
         {v4 && (
-          <button className="underline" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
+          <button
+            className="underline"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen(!moreOpen)}
+          >
             {moreOpen ? 'Done' : 'Course & diet'}
           </button>
         )}
@@ -255,7 +270,9 @@ function DishRow({
   )
 }
 
-type DishMeta = Partial<Pick<Dish, 'verdict' | 'tags' | 'course' | 'dietary' | 'spice' | 'wishlist'>>
+type DishMeta = Partial<
+  Pick<Dish, 'verdict' | 'tags' | 'course' | 'dietary' | 'spice' | 'wishlist'>
+>
 const COURSES = ['starter', 'main', 'side', 'dessert', 'drink'] as const
 const COURSE_LABEL: Record<(typeof COURSES)[number], string> = {
   starter: 'Starters',
@@ -343,7 +360,12 @@ export function PlaceSheet({
   }
   /** Copies dishes into this group's own list (to rate them). Returns how many were added. */
   async function addOurDishes(
-    lines: { name: string; price: number | null; description: string | null; course?: Dish['course'] }[],
+    lines: {
+      name: string
+      price: number | null
+      description: string | null
+      course?: Dish['course']
+    }[],
   ) {
     const rows = lines.map((line) => ({
       place_id: place.id,
@@ -376,7 +398,9 @@ export function PlaceSheet({
     const added = await addOurDishes(menuDishes)
     if (!added) return
     haptic('success')
-    toast.success(added === 1 ? `Added ${menuDishes[0].name} to your dishes` : `Added ${added} dishes to rate`)
+    toast.success(
+      added === 1 ? `Added ${menuDishes[0].name} to your dishes` : `Added ${added} dishes to rate`,
+    )
   }
   async function addMenuDishes(lines: MenuLine[]) {
     setMenuDraft(null)
@@ -398,7 +422,12 @@ export function PlaceSheet({
   }, [place.dishes])
   /** Saves your rating row with whatever changed (overall, categories, would-go-back, notes). */
   async function saveMine(changes: Partial<Rating>) {
-    const next: Rating = { ...(mine ?? { user_id: userId!, score: 0, notes: null }), notes, ...changes, user_id: userId! }
+    const next: Rating = {
+      ...(mine ?? { user_id: userId!, score: 0, notes: null }),
+      notes,
+      ...changes,
+      user_id: userId!,
+    }
     if (!next.score) {
       const fromCats = overallFromCategories(next)
       if (fromCats === null) return toast('Give it an overall score first')
@@ -409,7 +438,12 @@ export function PlaceSheet({
       place_ratings: [...place.place_ratings.filter((rating) => rating.user_id !== userId), next],
     })
     if (demo) return
-    const row: Record<string, unknown> = { place_id: place.id, user_id: userId, score: next.score, notes: next.notes }
+    const row: Record<string, unknown> = {
+      place_id: place.id,
+      user_id: userId,
+      score: next.score,
+      notes: next.notes,
+    }
     if (v4)
       Object.assign(row, {
         points: next.points ?? null,
@@ -426,7 +460,8 @@ export function PlaceSheet({
       notifyMates({ type: 'place_rating', placeId: place.id, value: next.score })
     }
   }
-  const rate = (value: number) => saveMine(scale === '5' ? { score: value, points: null } : fromInput(value, scale))
+  const rate = (value: number) =>
+    saveMine(scale === '5' ? { score: value, points: null } : fromInput(value, scale))
   async function toggleVibe(tag: string) {
     haptic('select')
     const has = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
@@ -620,7 +655,9 @@ export function PlaceSheet({
   }
   async function setDishMeta(dishId: string, changes: DishMeta) {
     const before = dishes
-    setDishes((current) => current.map((item) => (item.id === dishId ? { ...item, ...changes } : item)))
+    setDishes((current) =>
+      current.map((item) => (item.id === dishId ? { ...item, ...changes } : item)),
+    )
     if (demo) return
     const { error } = await supabase.from('dishes').update(changes).eq('id', dishId)
     if (error) {
@@ -710,12 +747,14 @@ export function PlaceSheet({
   }
   const warnings = placeWarnings(normaliseFacts(place.place_facts), members)
   const order = dishes.filter(
-    (dish) => dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
+    (dish) =>
+      dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
   )
   const skip = dishes.filter((dish) => dish.verdict === 'never')
   const average = average5(place.place_ratings)
   const offsets = raterOffsets(allPlaces)
-  const balancedRaw = place.place_ratings.length >= 2 ? balancedAverage(place.place_ratings, offsets) : 0
+  const balancedRaw =
+    place.place_ratings.length >= 2 ? balancedAverage(place.place_ratings, offsets) : 0
   const balanced = balancedRaw && Math.abs(balancedRaw - average) >= 0.05 ? balancedRaw : null
   const cats = categoryAverages(place.place_ratings)
   // #18 Dishes grouped by course once any dish has one; best-rated first inside each group.
@@ -726,7 +765,13 @@ export function PlaceSheet({
   )
   const dishGroups: [Dish['course'] | null, Dish[]][] = dishes.some((dish) => dish.course)
     ? [
-        ...COURSES.map((course) => [course, sortedDishes.filter((dish) => dish.course === course)] as [Dish['course'], Dish[]]),
+        ...COURSES.map(
+          (course) =>
+            [course, sortedDishes.filter((dish) => dish.course === course)] as [
+              Dish['course'],
+              Dish[],
+            ],
+        ),
         [null, sortedDishes.filter((dish) => !dish.course)] as [null, Dish[]],
       ].filter(([, list]) => list.length)
     : [[null, sortedDishes]]
@@ -735,6 +780,7 @@ export function PlaceSheet({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-serif text-3xl font-bold">{place.name}</h2>
+          {restaurant.restaurant?.owner_verified && <VerifiedBadge />}
           <p className="mt-1 text-sm text-muted-foreground">
             {place.formatted_address || 'Address not added'}
           </p>
@@ -788,7 +834,9 @@ export function PlaceSheet({
             <p className="text-sm text-muted-foreground">Group average</p>
             <p className="font-serif text-5xl text-primary">
               {formatScore(average, scale)}
-              {scale === '10' && average > 0 && <span className="text-xl text-muted-foreground">/10</span>}
+              {scale === '10' && average > 0 && (
+                <span className="text-xl text-muted-foreground">/10</span>
+              )}
             </p>
             {balanced !== null && (
               <button
@@ -814,9 +862,14 @@ export function PlaceSheet({
                 <RatingStars
                   value={mine?.[key] ?? 0}
                   label={`Your ${label.toLowerCase()} score`}
-                  onChange={(value) => saveMine({ [key]: value } as Partial<Record<CategoryKey, number>>)}
+                  onChange={(value) =>
+                    saveMine({ [key]: value } as Partial<Record<CategoryKey, number>>)
+                  }
                 />
-                <span className="w-10 text-right text-sm text-muted-foreground" aria-label={`Group ${label}`}>
+                <span
+                  className="w-10 text-right text-sm text-muted-foreground"
+                  aria-label={`Group ${label}`}
+                >
                   {cats[key] !== null ? cats[key]!.toFixed(1) : '—'}
                 </span>
               </div>
@@ -901,8 +954,20 @@ export function PlaceSheet({
             </div>
           </div>
         )}
-        <QuickCheck place={place} store={restaurant} supabase={supabase} demo={demo} onHours={saveHours} />
-        <FactsEditor place={place} supabase={supabase} demo={demo} userId={userId} onUpdate={onUpdate} />
+        <QuickCheck
+          place={place}
+          store={restaurant}
+          supabase={supabase}
+          demo={demo}
+          onHours={saveHours}
+        />
+        <FactsEditor
+          place={place}
+          supabase={supabase}
+          demo={demo}
+          userId={userId}
+          onUpdate={onUpdate}
+        />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         <div className="flex flex-col gap-2">
           <h3 className="font-serif text-xl font-bold">Ratings</h3>
@@ -944,13 +1009,13 @@ export function PlaceSheet({
           <div className="flex items-center justify-between">
             <h3 className="font-serif text-xl font-bold">Dishes</h3>
             {menuImport && (
-            <button
-              className="secondary !min-h-10 !px-3 text-sm"
-              disabled={saving}
-              onClick={suggestMenu}
-            >
-              {saving ? 'Reading website…' : 'Import menu from website'}
-            </button>
+              <button
+                className="secondary !min-h-10 !px-3 text-sm"
+                disabled={saving}
+                onClick={suggestMenu}
+              >
+                {saving ? 'Reading website…' : 'Import menu from website'}
+              </button>
             )}
           </div>
           <ReadPhotoButton
@@ -958,7 +1023,8 @@ export function PlaceSheet({
             className="secondary self-start !min-h-10 !px-3 text-sm"
             onText={(text) => {
               const found = menuDishes(text)
-              if (!found.length) return toast('Couldn’t spot dishes with prices — try a closer photo')
+              if (!found.length)
+                return toast('Couldn’t spot dishes with prices — try a closer photo')
               setMenuDraft(found)
             }}
           />
@@ -988,7 +1054,10 @@ export function PlaceSheet({
           )}
           {dishGroups.map(([course, group]) => [
             course && (
-              <h4 key={`h-${course}`} className="mt-1 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+              <h4
+                key={`h-${course}`}
+                className="mt-1 text-sm font-bold uppercase tracking-wide text-muted-foreground"
+              >
                 {COURSE_LABEL[course]}
               </h4>
             ),

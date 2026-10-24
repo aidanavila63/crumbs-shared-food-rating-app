@@ -157,7 +157,7 @@
   background: var(--card);
   color: var(--foreground);
   padding: 0 16px;
-  font-size: 16px;
+  font-size: max(16px, 1rem);
 }
 textarea.field {
   padding: 12px 16px;
@@ -194,7 +194,7 @@ textarea.field {
   padding: 0 18px;
   border-radius: 16px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 0.9375rem;
   transition:
     transform 0.12s ease,
     opacity 0.12s ease;
@@ -224,7 +224,7 @@ textarea.field {
   background: var(--card);
   color: var(--foreground);
   border: 1px solid var(--border);
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1;
   box-shadow: var(--shadow);
 }
@@ -250,12 +250,12 @@ textarea.field {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 .chip-sm {
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .chip-active {
   background: var(--primary);
@@ -270,7 +270,7 @@ textarea.field {
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 14%, transparent);
   color: var(--primary);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -348,7 +348,7 @@ textarea.field {
   background: transparent;
   border-radius: 14px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   padding-inline: 2px;
   transition: color 0.2s ease;
@@ -385,7 +385,7 @@ textarea.field {
   border-radius: 999px;
   text-align: center;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 0.8125rem;
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
 }
@@ -572,7 +572,7 @@ html[data-motion='off'] *::after {
   background: var(--primary);
   color: var(--primary-foreground);
   font-weight: 800;
-  font-size: 18px;
+  font-size: 1.125rem;
   box-shadow: var(--shadow);
   transition: transform 0.15s ease;
 }
@@ -587,7 +587,7 @@ button.avatar-btn:active {
 .avatar-lg {
   width: 96px;
   height: 96px;
-  font-size: 40px;
+  font-size: 2.5rem;
   border-width: 4px;
 }
 
@@ -730,12 +730,12 @@ button.avatar-btn:active {
   transform: scale(0.9);
 }
 .hub-label {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 .hub-note {
   margin-top: -6px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
 }
 @keyframes bubble-in {
@@ -752,7 +752,7 @@ button.avatar-btn:active {
   gap: 12px;
 }
 .settings-heading {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -829,7 +829,7 @@ button.avatar-btn:active {
   text-align: center;
 }
 .badge-emoji {
-  font-size: 34px;
+  font-size: 2.125rem;
   line-height: 1.1;
   filter: grayscale(1);
   opacity: 0.45;
@@ -1011,6 +1011,12 @@ button.avatar-btn:active {
 .segmented-3 .segmented-thumb {
   width: calc((100% - 8px) / 3);
 }
+.segmented-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.segmented-4 .segmented-thumb {
+  width: calc((100% - 8px) / 4);
+}
 .swatch {
   position: relative;
   width: 40px;
@@ -1035,7 +1041,7 @@ button.avatar-btn:active {
   place-items: center;
   color: #fff;
   font-weight: 900;
-  font-size: 16px;
+  font-size: 1rem;
   animation: pop 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 /* Theme/accent changes fade instead of snapping. */
@@ -1058,7 +1064,7 @@ body,
   border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
 }
 .weather-emoji {
-  font-size: 28px;
+  font-size: 1.75rem;
   animation: float 3.2s ease-in-out infinite;
 }
 @keyframes float {
@@ -1090,7 +1096,7 @@ body,
   height: 40px;
   border-radius: 14px;
   background: var(--primary);
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1;
   box-shadow: var(--shadow);
   animation: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
@@ -1110,7 +1116,7 @@ body,
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
   transition: transform 0.15s ease, background 0.2s ease;
 }
@@ -1139,7 +1145,7 @@ body,
 .reaction-picker button {
   min-width: 34px;
   min-height: 32px;
-  font-size: 18px;
+  font-size: 1.125rem;
   animation: pop-in 0.25s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
   transition: transform 0.12s ease;
 }
@@ -1166,7 +1172,7 @@ body,
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 800;
   transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease;
 }
@@ -1186,7 +1192,7 @@ body,
   align-self: flex-start;
   padding: 4px 12px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 700;
   animation: pop-in 0.3s ease backwards;
 }
@@ -1209,12 +1215,12 @@ body,
   height: 38px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--primary) 12%, var(--card));
-  font-size: 19px;
+  font-size: 1.1875rem;
 }
 .turn-avatar {
   width: 46px;
   height: 46px;
-  font-size: 24px;
+  font-size: 1.5rem;
   animation: float 3s ease-in-out infinite;
 }
 .feed-item {
@@ -1264,13 +1270,13 @@ body,
   height: 48px;
   border-radius: 16px;
   background: color-mix(in srgb, var(--primary) 12%, var(--card));
-  font-size: 26px;
+  font-size: 1.625rem;
 }
 .category-together .category-emoji {
   width: 56px;
   height: 56px;
   background: rgb(255 255 255 / 22%);
-  font-size: 30px;
+  font-size: 1.875rem;
   animation: float 3s ease-in-out infinite;
 }
 .category-badge {
@@ -1283,7 +1289,7 @@ body,
   border-radius: 999px;
   background: #fff;
   color: var(--primary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 800;
   line-height: 24px;
   text-align: center;
@@ -1325,7 +1331,7 @@ body,
   padding: 4px 12px;
   border: 3px solid currentColor;
   border-radius: 10px;
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   pointer-events: none;
@@ -1392,7 +1398,7 @@ body,
   background: linear-gradient(160deg, color-mix(in srgb, var(--primary) 16%, var(--card)), var(--card));
 }
 .match-burst {
-  font-size: 48px;
+  font-size: 3rem;
   animation: pop 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) backwards, float 3s ease-in-out 0.6s infinite;
 }
 
@@ -1410,7 +1416,7 @@ body,
   padding: 6px 0 6px 14px;
   border-left: 3px dashed color-mix(in srgb, var(--primary) 45%, transparent);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 .crawl-num {
@@ -1422,7 +1428,7 @@ body,
   border-radius: 999px;
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 .heat-legend {
@@ -1430,7 +1436,7 @@ body,
   border-radius: 999px;
   background: color-mix(in srgb, var(--card) 92%, transparent);
   box-shadow: var(--shadow);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   animation: pop-in 0.25s ease backwards;
 }
@@ -1449,7 +1455,7 @@ body,
   background: var(--card);
   color: var(--primary);
   border: 2px dashed color-mix(in srgb, var(--primary) 70%, transparent);
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 800;
   opacity: 0.92;
 }
@@ -1476,7 +1482,7 @@ body,
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   transition: transform 0.15s ease, background 0.2s ease;
 }
@@ -1533,7 +1539,7 @@ body,
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -1567,6 +1573,72 @@ body,
   height: 56px;
   border-radius: 18px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, var(--card)), var(--card));
-  font-size: 30px;
+  font-size: 1.875rem;
   animation: pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
+}
+
+/* Verified by Owner: the blue check, like verified accounts. */
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #1d6fe0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.verified-badge svg,
+.verified-icon {
+  fill: #1d9bf0;
+  color: #fff;
+  flex-shrink: 0;
+}
+:root[data-theme='dark'] .verified-badge {
+  color: #5aa9ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .verified-badge {
+    color: #5aa9ff;
+  }
+}
+/* "Restaurant owner" tag on a person (never says which restaurant). */
+.owner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #1d9bf0 14%, transparent);
+  color: #1d6fe0;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.owner-tag svg {
+  fill: #1d9bf0;
+  color: #fff;
+}
+.owner-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--card);
+  text-align: left;
+  transition: transform 0.15s ease;
+}
+.owner-row:active {
+  transform: scale(0.98);
+}
+
+/* #84 Text size (Settings → Look & feel). Everything sized in rem follows it. */
+html[data-text='small'] {
+  font-size: 93.75%;
+}
+html[data-text='large'] {
+  font-size: 112.5%;
+}
+html[data-text='xl'] {
+  font-size: 125%;
 }

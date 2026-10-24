@@ -1,14 +1,25 @@
-// Contributor tiers: the more you help build Crumbs' own restaurant data, the more you get.
-// Points: fact 3 · menu dish 1 · check 1 · +5 when others back up your fact (it becomes Crumbs' own).
-// Max 40 points a day, and repeat answers within a detail's refresh window earn nothing.
+// Contributor tiers: the more NEW restaurant info you add to Crumbs, the bigger your daily
+// allowances. Points are deliberately small and only for new info (see POINTS); just using the app
+// (logging visits, receipts, imports, ticking dishes) feeds the data but earns nothing. Points
+// count for 6 months, so a tier has to be kept up. Mirrors the database (tier_for_points,
+// usage_budgets) — the server's numbers win when they differ.
 export type Tier = {
   level: number
   name: string
   emoji: string
   min: number
-  /** Daily allowances on things that cost Crumbs money or shared quota. */
+  /** Daily allowances on things that cost Crumbs money or shared quota (usage_budgets.per_tier). */
   limits: { ai: number; explore: number; menuImport: number }
   perk: string
+}
+
+/** What earns points (and nothing else does). */
+export const POINTS = {
+  detail: 2, // a missing detail, Crumbs' own copy of one, a change that applies, or a due re-check
+  backed: 2, // others independently said the same thing
+  menuPhoto: 3, // a menu photo that adds 3+ new dishes (once a quarter per restaurant)
+  dailyCap: 20,
+  windowDays: 180,
 }
 
 export const TIERS: Tier[] = [
@@ -17,7 +28,7 @@ export const TIERS: Tier[] = [
     name: 'Taster',
     emoji: '🌱',
     min: 0,
-    limits: { ai: 5, explore: 15, menuImport: 3 },
+    limits: { ai: 3, explore: 15, menuImport: 2 },
     perk: 'The basics',
   },
   {
@@ -25,31 +36,31 @@ export const TIERS: Tier[] = [
     name: 'Regular',
     emoji: '🍴',
     min: 25,
-    limits: { ai: 10, explore: 30, menuImport: 6 },
-    perk: '2× AI ideas, Explore and menu imports',
+    limits: { ai: 4, explore: 20, menuImport: 2 },
+    perk: 'A few more AI ideas and Explore searches',
   },
   {
     level: 2,
     name: 'Local guide',
     emoji: '🧭',
-    min: 100,
-    limits: { ai: 20, explore: 60, menuImport: 12 },
-    perk: '4× daily allowances',
+    min: 75,
+    limits: { ai: 5, explore: 25, menuImport: 3 },
+    perk: 'More of everything',
   },
   {
     level: 3,
     name: 'Insider',
     emoji: '⭐',
-    min: 300,
-    limits: { ai: 40, explore: 120, menuImport: 25 },
-    perk: '8× allowances + early features',
+    min: 200,
+    limits: { ai: 6, explore: 30, menuImport: 3 },
+    perk: 'Bigger allowances + early features',
   },
   {
     level: 4,
     name: 'Legend',
     emoji: '👑',
-    min: 1000,
-    limits: { ai: 80, explore: 250, menuImport: 50 },
+    min: 500,
+    limits: { ai: 8, explore: 40, menuImport: 4 },
     perk: 'The most of everything + a say in what’s next',
   },
 ]
@@ -69,9 +80,6 @@ export function nextTier(points: number) {
   }
 }
 
-export const pointsFor = (c: {
-  facts: number
-  dishes: number
-  checks: number
-  verified?: number
-}) => c.facts * 3 + c.dishes + c.checks + (c.verified ?? 0) * 5
+/** Rough points when the server ledger isn't there (demo): details + backed-up details. */
+export const pointsFor = (c: { facts: number; verified?: number }) =>
+  c.facts * POINTS.detail + (c.verified ?? 0) * POINTS.backed
