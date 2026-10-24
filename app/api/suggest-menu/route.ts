@@ -2,6 +2,7 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
+import { flagAllows } from '@/lib/flags-server'
 import { readMenuText } from '@/lib/menu-fetch'
 
 export const maxDuration = 30
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
       { error: 'Slow down a little and try again in a few minutes' },
       { status: 429 },
     )
+  if (!(await flagAllows(supabase, 'menu_import', data.user.id)))
+    return Response.json({ error: 'Menu import is switched off for now' }, { status: 403 })
 
   const { placeId } = await request.json()
   if (!placeId || typeof placeId !== 'string') {

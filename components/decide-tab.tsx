@@ -1,4 +1,5 @@
 'use client'
+import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { Dices, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,6 +9,8 @@ import { TonightCard } from './tonight-card'
 import { CravingButton } from './craving-button'
 import { ChallengesCard } from './goals-cards'
 import { WeatherNudge } from './weather-nudge'
+import { TurnCard } from './turn-card'
+import type { HomeMeal } from '@/hooks/use-crumbs-data'
 
 type Idea = { title: string; why: string }
 
@@ -22,7 +25,20 @@ export function DecideTab({
   onSelect,
   onSurprise,
   home = null,
+  meals = [],
+  userId,
+  turns = false,
+  weather = true,
+  aiIdeas = true,
 }: {
+  /** #109 admin switch */
+  aiIdeas?: boolean
+  meals?: HomeMeal[]
+  userId?: string
+  /** #37 group setting */
+  turns?: boolean
+  /** #35 group setting */
+  weather?: boolean
   places: Place[]
   /** Unmasked places (blind ratings) for challenges, which only count visits. */
   allPlaces: Place[]
@@ -34,6 +50,7 @@ export function DecideTab({
   onSurprise: () => void
   home?: { lat: number; lng: number } | null
 }) {
+  const show = useShowScore()
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
 
@@ -114,9 +131,18 @@ export function DecideTab({
         <CravingButton groupId={groupId} />
       </div>
 
-      {!loading && <WeatherNudge places={places} home={home} onSelect={onSelect} />}
+      {!loading && weather && <WeatherNudge places={places} home={home} onSelect={onSelect} />}
 
       {!loading && <TonightCard places={places} members={members} onOpen={onSelect} />}
+      {!loading && turns && (
+        <TurnCard
+          places={allPlaces}
+          meals={meals}
+          members={members}
+          userId={userId}
+          names={names}
+        />
+      )}
 
       {!places.length && (
         <div className="empty">
@@ -158,9 +184,7 @@ export function DecideTab({
               onClick={() => onSelect?.(place)}
             >
               <span className="font-semibold">{place.name}</span>
-              <span className="font-serif text-xl text-primary">
-                {placeAverage(place).toFixed(1)}
-              </span>
+              <span className="font-serif text-xl text-primary">{show(placeAverage(place))}</span>
             </button>
           ))}
         </div>
@@ -188,32 +212,34 @@ export function DecideTab({
 
       <ChallengesCard places={allPlaces} />
 
-      <div className="surface flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <span className="tag">AI ideas</span>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Cuisines and dishes to try next. These are ideas, not verified restaurants.
-            </p>
+      {aiIdeas && (
+        <div className="surface flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <span className="tag">AI ideas</span>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Cuisines and dishes to try next. These are ideas, not verified restaurants.
+              </p>
+            </div>
+            <button
+              className="primary shrink-0"
+              disabled={thinking || !insights.rated.length}
+              onClick={getIdeas}
+            >
+              {thinking ? 'Thinking…' : ideas.length ? 'Refresh' : 'Get ideas'}
+            </button>
           </div>
-          <button
-            className="primary shrink-0"
-            disabled={thinking || !insights.rated.length}
-            onClick={getIdeas}
-          >
-            {thinking ? 'Thinking…' : ideas.length ? 'Refresh' : 'Get ideas'}
-          </button>
+          {!insights.rated.length && (
+            <p className="text-sm text-muted-foreground">Rate a place first to unlock ideas.</p>
+          )}
+          {ideas.map((idea) => (
+            <div className="surface-soft" key={idea.title}>
+              <p className="font-semibold">{idea.title}</p>
+              <p className="text-sm text-muted-foreground">{idea.why}</p>
+            </div>
+          ))}
         </div>
-        {!insights.rated.length && (
-          <p className="text-sm text-muted-foreground">Rate a place first to unlock ideas.</p>
-        )}
-        {ideas.map((idea) => (
-          <div className="surface-soft" key={idea.title}>
-            <p className="font-semibold">{idea.title}</p>
-            <p className="text-sm text-muted-foreground">{idea.why}</p>
-          </div>
-        ))}
-      </div>
+      )}
     </section>
   )
 }

@@ -1,4 +1,5 @@
 'use client'
+import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { undoableDelete } from '@/lib/undoable'
@@ -29,6 +30,7 @@ export function ListsTab({
   onShowOnMap?: (listId: string) => void
   onSelect?: (place: Place) => void
 }) {
+  const show = useShowScore()
   const smart = useMemo(() => smartLists(places), [places])
   const [smartId, setSmartId] = useState<string | null>(null)
   const openSmart = smart.find((list) => list.id === smartId) ?? null
@@ -175,7 +177,7 @@ export function ListsTab({
                   >
                     <span className="min-w-0 truncate font-semibold">{place.name}</span>
                     <span className="shrink-0 font-serif text-lg text-primary">
-                      {placeAverage(place) ? placeAverage(place).toFixed(1) : '—'}
+                      {show(placeAverage(place))}
                     </span>
                   </button>
                 ))

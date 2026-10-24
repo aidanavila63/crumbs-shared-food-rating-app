@@ -1,4 +1,5 @@
 'use client'
+import { useShowScore } from './score-input'
 import { MapPin, Pin } from 'lucide-react'
 import { average5 } from '@/lib/ratings'
 import type { Place } from '@/hooks/use-crumbs-data'
@@ -25,6 +26,7 @@ export function PlaceCard({
   hidden?: boolean
   onSelect: (place: Place) => void
 }) {
+  const show = useShowScore()
   const average = placeAverage(place)
   const warnings = placeWarnings(normaliseFacts(place.place_facts), members)
   const hours = openStatus(place.opening_hours)
@@ -73,7 +75,7 @@ export function PlaceCard({
           )}
         </div>
         <strong className="font-serif text-3xl leading-8 text-primary">
-          {average ? average.toFixed(1) : '—'}
+          {show(average)}
         </strong>
       </div>
       <div className="flex items-center justify-between gap-3">

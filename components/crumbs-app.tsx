@@ -31,6 +31,12 @@ import { useUserLocation } from '@/lib/use-user-location'
 import { QuickLogSheet } from './quick-log-sheet'
 import { captureJoinCode, clearJoinCode, pendingJoinCode, stripJoinParam } from '@/lib/invite'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
+import { SocialContext, useSocialStore } from '@/hooks/use-social'
+import { ScaleContext } from './score-input'
+import { HomeTab } from './home-tab'
+import { useFlags } from '@/hooks/use-flags'
+import { installErrorReporter } from '@/lib/report-errors'
+import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
   { id: 'Places', label: 'Places', icon: UtensilsCrossed },
@@ -52,6 +58,20 @@ export function CrumbsApp() {
 
 function CrumbsShell() {
   const data = useCrumbsData()
+  const social = useSocialStore({
+    groupId: data.group?.id,
+    userId: data.user?.id,
+    supabase: data.supabase,
+    demo: data.demo,
+    v4: data.v4,
+  })
+  const isAdmin = !!data.members.find((member) => member.id === data.user?.id)?.is_admin
+  const flag = useFlags({ supabase: data.supabase, demo: data.demo, v4: data.v4, isAdmin })
+  // #110 Send a few browser errors to the admin error log (only once the table exists).
+  useEffect(() => {
+    if (data.demo || !data.v4 || !data.user?.id) return
+    return installErrorReporter(data.supabase, data.user.id)
+  }, [data.demo, data.v4, data.user?.id, data.supabase])
   useMotionPrefs() // applies the Animations setting to the page
   const [tab, setTabState] = useState<Tab>(() => {
     if (typeof window === 'undefined') return 'Places'
@@ -59,7 +79,7 @@ function CrumbsShell() {
     return OLD_TABS[saved] ?? (tabs.some((item) => item.id === saved) ? (saved as Tab) : 'Places')
   })
   const [direction, setDirection] = useState<'left' | 'right'>('right')
-  const [placesView, setPlacesView] = useState<'places' | 'lists'>(() =>
+  const [placesView, setPlacesView] = useState<'places' | 'lists' | 'home'>(() =>
     typeof window !== 'undefined' && sessionStorage.getItem('crumbs-tab') === 'Lists'
       ? 'lists'
       : 'places',
@@ -377,7 +397,13 @@ function CrumbsShell() {
         </div>
       </main>
     )
+  // #77 Home cooking sits next to Places and Lists (a group can switch it off).
+  const views = (
+    settingsOf(data.group).home ? ['places', 'lists', 'home'] : ['places', 'lists']
+  ) as ('places' | 'lists' | 'home')[]
   return (
+    <SocialContext.Provider value={social}>
+    <ScaleContext.Provider value={data.v4 ? settingsOf(data.group).scale : '5'}>
     <main className="min-h-screen bg-background pb-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <header className="flex items-center justify-between py-5">
@@ -427,13 +453,17 @@ function CrumbsShell() {
         <div key={tab} className={`tab-pane tab-from-${direction}`}>
           {tab === 'Places' && (
             <section className="flex flex-col gap-4">
-              <div className="segmented" role="tablist" aria-label="Places or lists">
+              <div
+                className={`segmented ${views.length === 3 ? 'segmented-3' : ''}`}
+                role="tablist"
+                aria-label="Places, lists or home cooking"
+              >
                 <span
                   className="segmented-thumb"
                   aria-hidden="true"
-                  style={{ transform: placesView === 'lists' ? 'translateX(100%)' : 'none' }}
+                  style={{ transform: `translateX(${Math.max(0, views.indexOf(placesView)) * 100}%)` }}
                 />
-                {(['places', 'lists'] as const).map((view) => (
+                {views.map((view) => (
                   <button
                     key={view}
                     role="tab"
@@ -445,11 +475,25 @@ function CrumbsShell() {
                       setPlacesView(view)
                     }}
                   >
-                    {view === 'places' ? 'Places' : 'Lists'}
+                    {view === 'places' ? 'Places' : view === 'lists' ? 'Lists' : 'Home'}
                   </button>
                 ))}
               </div>
-              {placesView === 'lists' ? (
+              {placesView === 'home' && views.includes('home') ? (
+                <div className="tab-pane tab-from-right">
+                  <HomeTab
+                    meals={data.homeMeals}
+                    setMeals={data.setHomeMeals}
+                    groupId={data.group.id}
+                    userId={userId}
+                    names={names}
+                    members={data.members}
+                    supabase={data.supabase}
+                    demo={data.demo}
+                    v4={data.v4}
+                  />
+                </div>
+              ) : placesView === 'lists' ? (
                 <div className="tab-pane tab-from-right">
                   <ListsTab
                     lists={data.lists}
@@ -597,6 +641,11 @@ function CrumbsShell() {
               onSelect={setSelected}
               onSurprise={() => setSurprising(true)}
               home={home}
+              meals={data.homeMeals}
+              userId={userId}
+              turns={data.v4 && settingsOf(data.group).turns}
+              weather={settingsOf(data.group).weather}
+              aiIdeas={flag('ai_ideas')}
             />
           )}
           {tab === 'Group' && (
@@ -609,6 +658,10 @@ function CrumbsShell() {
               supabase={data.supabase}
               demo={data.demo}
               onGroup={data.setGroup}
+              view={view}
+              meals={data.homeMeals}
+              names={names}
+              onSelect={setSelected}
               onLeft={(id) => {
                 const rest = data.groups.filter((g) => g.id !== id)
                 data.setGroups(rest)
@@ -694,6 +747,18 @@ function CrumbsShell() {
           demo={data.demo}
           supabase={data.supabase}
           onClose={() => setQuickLog(false)}
+          v4={data.v4}
+          scale={data.v4 ? settingsOf(data.group).scale : '5'}
+          members={data.members}
+          turns={data.v4 && settingsOf(data.group).turns}
+          onCookedAtHome={
+            views.includes('home')
+              ? () => {
+                  setQuickLog(false)
+                  setPlacesView('home')
+                }
+              : undefined
+          }
           onAddNew={() => {
             setQuickLog(false)
             setAdding(true)
@@ -728,6 +793,10 @@ function CrumbsShell() {
           onLists={data.setLists}
           demo={data.demo}
           supabase={data.supabase}
+          group={data.group}
+          v4={data.v4}
+          allPlaces={data.places}
+          menuImport={flag('menu_import')}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(
@@ -760,5 +829,7 @@ function CrumbsShell() {
         />
       )}
     </main>
+    </ScaleContext.Provider>
+    </SocialContext.Provider>
   )
 }

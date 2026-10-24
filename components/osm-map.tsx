@@ -1,4 +1,5 @@
 'use client'
+import { useShowScore } from './score-input'
 import { useEffect, useRef } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
@@ -25,6 +26,7 @@ export function OsmMap({
   pinMode?: PinMode
   selectedId?: string | null
 }) {
+  const show = useShowScore()
   const box = useRef<HTMLDivElement>(null)
   const state = useRef<{ L: any; map: any; layer: any; fitted: string; drawn?: boolean } | null>(
     null,
@@ -71,7 +73,7 @@ export function OsmMap({
       const icon = L.divIcon({
         className: '',
         html: `<div class="marker ${markerClass(place, average, pinMode)}${place.id === selectedId ? ' marker-selected' : ''}${still}">${
-          average ? average.toFixed(1) : '+'
+          average ? show(average) : '+'
         }</div>`,
         iconSize: [44, 30],
         iconAnchor: [22, 15],

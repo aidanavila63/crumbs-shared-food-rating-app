@@ -1,4 +1,5 @@
 'use client'
+import { useShowScore } from './score-input'
 import { useEffect, useMemo, useState } from 'react'
 import { LocateFixed, MapPin, SlidersHorizontal } from 'lucide-react'
 import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
@@ -49,6 +50,7 @@ export function MapTab({
   apiKey?: string
   onSelect: (place: Place) => void
 }) {
+  const show = useShowScore()
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'All' | Status | 'Pinned'>('All')
   // #22 extra filters + #21 pin colours (pin colours are remembered on this phone).
@@ -292,7 +294,7 @@ export function MapTab({
                     <div
                       className={`marker ${markerClass(place, placeAverage(place), pinMode)} ${previewId === place.id ? 'marker-selected' : ''}`}
                     >
-                      {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
+                      {placeAverage(place) ? show(placeAverage(place)) : '+'}
                     </div>
                   </AdvancedMarker>
                 ))}
@@ -319,7 +321,7 @@ export function MapTab({
                 </p>
               </div>
               <strong className="font-serif text-2xl text-primary">
-                {placeAverage(preview) ? placeAverage(preview).toFixed(1) : '—'}
+                {show(placeAverage(preview))}
               </strong>
             </div>
             <div className="flex gap-2">

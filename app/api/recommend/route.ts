@@ -2,6 +2,7 @@ import { generateObject } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
+import { flagAllows } from '@/lib/flags-server'
 
 const schema = z.object({
   ideas: z
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
       { error: 'Slow down a little and try again in a few minutes' },
       { status: 429 },
     )
+  if (!(await flagAllows(supabase, 'ai_ideas', data.user.id)))
+    return Response.json({ error: 'AI ideas are switched off for now' }, { status: 403 })
 
   const { taste } = await request.json()
   if (!taste || typeof taste !== 'string') {

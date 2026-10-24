@@ -118,7 +118,7 @@ alter table public.dishes add column if not exists wishlist boolean not null def
 -- ============================================================================================
 -- 4. Visit details (#5 score per visit, #6 people, #78 kind, #37 who picked, #69/#70 memories)
 -- ============================================================================================
-alter table public.place_visits add column if not exists score smallint check (score between 1 and 5);
+alter table public.place_visits add column if not exists score numeric(2,1) check (score between 0.5 and 5);
 alter table public.place_visits add column if not exists people smallint check (people between 1 and 50);
 alter table public.place_visits add column if not exists kind text not null default 'dine_in'
   check (kind in ('dine_in', 'takeout', 'delivery'));
@@ -447,6 +447,11 @@ drop policy if exists flags_write on public.feature_flags;
 create policy flags_read on public.feature_flags for select to authenticated using (true);
 create policy flags_write on public.feature_flags for all to authenticated
   using (public.is_crumbs_admin()) with check (public.is_crumbs_admin());
+-- The two AI features start on for everyone (as today); switch them to "Admin" on the admin page.
+insert into public.feature_flags (key, state, note) values
+  ('ai_ideas', 'everyone', 'AI dinner ideas on Decide & Plan'),
+  ('menu_import', 'everyone', 'Import menu from website (AI)')
+on conflict (key) do nothing;
 
 create table if not exists public.client_errors (
   id bigint generated always as identity primary key,

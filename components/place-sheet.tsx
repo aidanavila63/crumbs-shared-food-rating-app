@@ -2,8 +2,24 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes, undoableDelete } from '@/lib/undoable'
-import type { Dish, List, Place, Profile, Status } from '@/hooks/use-crumbs-data'
+import type { Dish, Group, List, Place, Profile, Rating, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
+import { ScoreDisplay, ScoreInput } from './score-input'
+import { ReactionBar } from './social'
+import {
+  CATEGORIES,
+  average5,
+  balancedAverage,
+  categoryAverages,
+  formatScore,
+  fromInput,
+  inputValue,
+  overallFromCategories,
+  raterOffsets,
+  settingsOf,
+  type CategoryKey,
+} from '@/lib/ratings'
+import { haptic } from '@/lib/motion'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
@@ -13,7 +29,6 @@ import { PlaceHours } from './place-hours'
 import { FactsEditor } from './facts-editor'
 import { notifyMates } from '@/lib/push'
 import { Sheet } from './sheet'
-import { placeAverage } from './place-card'
 import { PlaceEditor } from './place-editor'
 function DishRow({
   dish,
@@ -28,6 +43,7 @@ function DishRow({
   onPhoto,
   onMeta,
   onRemove,
+  v4 = false,
 }: {
   dish: Dish
   userId?: string
@@ -39,15 +55,18 @@ function DishRow({
   onNote: (note: string) => void
   members: Profile[]
   onPhoto: (path: string | null) => Promise<boolean>
-  onMeta: (changes: { verdict?: 'again' | 'never' | null; tags?: string[] }) => void
+  onMeta: (changes: DishMeta) => void
   onRemove: () => void
+  v4?: boolean
 }) {
   const mine = dish.dish_ratings.find((rating) => rating.user_id === userId)
   const [note, setNote] = useState(mine?.notes ?? '')
   const [open, setOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tag, setTag] = useState('')
+  const [moreOpen, setMoreOpen] = useState(false)
   const warnings = dishWarnings(dish, members)
+  const dietary = dish.dietary ?? []
   const tags = dish.tags ?? []
   function addTag(value: string) {
     const clean = value.trim().toLowerCase().slice(0, 20)
@@ -61,7 +80,16 @@ function DishRow({
         <div>
           <p className="font-semibold">
             {dish.name} {dish.is_ai_suggestion && <span className="tag">Auto-added</span>}
+            {dish.wishlist && <span className="tag ml-1">⭐ Want to try</span>}
+            {!!dish.spice && (
+              <span className="ml-1" aria-label={`Spice ${dish.spice} of 3`}>
+                {'🌶️'.repeat(dish.spice)}
+              </span>
+            )}
           </p>
+          {dietary.length > 0 && (
+            <p className="text-xs font-semibold text-[var(--success,#2f6b4a)]">{dietary.join(' · ')}</p>
+          )}
           {dish.description && <p className="text-sm text-muted-foreground">{dish.description}</p>}
           {dish.price !== null && dish.price !== undefined && (
             <p className="text-xs text-muted-foreground">~${Number(dish.price).toFixed(2)}</p>
@@ -118,6 +146,58 @@ function DishRow({
           </div>
         </div>
       )}
+      {moreOpen && v4 && (
+        <div className="dish-more flex flex-col gap-2">
+          <div className="chip-row" role="group" aria-label="Course">
+            {COURSES.map((course) => (
+              <button
+                key={course}
+                aria-pressed={dish.course === course}
+                className={`chip chip-sm ${dish.course === course ? 'chip-active' : ''}`}
+                onClick={() => onMeta({ course: dish.course === course ? null : course })}
+              >
+                {COURSE_LABEL[course]}
+              </button>
+            ))}
+          </div>
+          <div className="chip-row" role="group" aria-label="Dietary">
+            {DIETARY.map((item) => (
+              <button
+                key={item}
+                aria-pressed={dietary.includes(item)}
+                className={`chip chip-sm ${dietary.includes(item) ? 'chip-active' : ''}`}
+                onClick={() =>
+                  onMeta({
+                    dietary: dietary.includes(item) ? dietary.filter((d) => d !== item) : [...dietary, item],
+                  })
+                }
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Spice</span>
+            {[0, 1, 2, 3].map((level) => (
+              <button
+                key={level}
+                aria-pressed={(dish.spice ?? 0) === level}
+                className={`chip chip-sm ${(dish.spice ?? 0) === level ? 'chip-active' : ''}`}
+                onClick={() => onMeta({ spice: level || null })}
+              >
+                {level ? '🌶️'.repeat(level) : 'None'}
+              </button>
+            ))}
+            <button
+              aria-pressed={!!dish.wishlist}
+              className={`chip chip-sm ${dish.wishlist ? 'chip-active' : ''}`}
+              onClick={() => onMeta({ wishlist: !dish.wishlist })}
+            >
+              ⭐ Want to try
+            </button>
+          </div>
+        </div>
+      )}
       {others.map((rating) => (
         <p className="text-sm" key={rating.user_id}>
           <strong>{names[rating.user_id] ?? 'Partner'}</strong>: {dishPoints(rating)}/100
@@ -151,6 +231,11 @@ function DishRow({
         <button className="underline" onClick={() => setTagsOpen(!tagsOpen)}>
           {tagsOpen ? 'Done with tags' : 'Tags'}
         </button>
+        {v4 && (
+          <button className="underline" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
+            {moreOpen ? 'Done' : 'Course & diet'}
+          </button>
+        )}
         <button className="underline" onClick={onRemove}>
           Remove
         </button>
@@ -158,6 +243,22 @@ function DishRow({
     </div>
   )
 }
+
+type DishMeta = Partial<Pick<Dish, 'verdict' | 'tags' | 'course' | 'dietary' | 'spice' | 'wishlist'>>
+const COURSES = ['starter', 'main', 'side', 'dessert', 'drink'] as const
+const COURSE_LABEL: Record<(typeof COURSES)[number], string> = {
+  starter: 'Starters',
+  main: 'Mains',
+  side: 'Sides',
+  dessert: 'Desserts',
+  drink: 'Drinks',
+}
+const DIETARY = ['Vegetarian', 'Vegan', 'Gluten-free', 'Dairy-free', 'Halal']
+const RETURN = [
+  { id: 'yes', label: '👍 Would go back' },
+  { id: 'maybe', label: '🤷 Maybe' },
+  { id: 'no', label: '👎 Once was enough' },
+] as const
 
 export function PlaceSheet({
   place,
@@ -172,7 +273,17 @@ export function PlaceSheet({
   onUpdate,
   onDelete,
   onRestore,
+  group = null,
+  v4 = false,
+  allPlaces = [],
+  menuImport = true,
 }: {
+  /** #109 admin switch */
+  menuImport?: boolean
+  group?: Group | null
+  v4?: boolean
+  /** Everyone's real ratings (for the balanced score). */
+  allPlaces?: Place[]
   place: Place
   userId?: string
   names?: Record<string, string>
@@ -191,27 +302,55 @@ export function PlaceSheet({
   const [saving, setSaving] = useState(false)
   const [dishName, setDishName] = useState('')
   const score = mine?.score ?? 0
+  const s = settingsOf(group)
+  const scale = v4 ? s.scale : '5'
   const status = place.status
   const [dishes, setDishes] = useState(place.dishes ?? [])
   // Pick up a partner's dishes/ratings when the data reloads (skipping ones mid-undo).
   useEffect(() => {
     setDishes((place.dishes ?? []).filter((dish) => !pendingDeletes.has(dish.id)))
   }, [place.dishes])
-  async function rate(next: number) {
-    const optimistic = {
-      ...place,
-      place_ratings: [
-        ...place.place_ratings.filter((rating) => rating.user_id !== userId),
-        { user_id: userId!, score: next, notes },
-      ],
+  /** Saves your rating row with whatever changed (overall, categories, would-go-back, notes). */
+  async function saveMine(changes: Partial<Rating>) {
+    const next: Rating = { ...(mine ?? { user_id: userId!, score: 0, notes: null }), notes, ...changes, user_id: userId! }
+    if (!next.score) {
+      const fromCats = overallFromCategories(next)
+      if (fromCats === null) return toast('Give it an overall score first')
+      Object.assign(next, fromInput(fromCats, 'half'))
     }
-    onUpdate(optimistic)
-    if (!demo) {
-      const { error } = await supabase
-        .from('place_ratings')
-        .upsert({ place_id: place.id, user_id: userId, score: next, notes })
-      if (error) toast.error(error.message)
-      else notifyMates({ type: 'place_rating', placeId: place.id, value: next })
+    onUpdate({
+      ...place,
+      place_ratings: [...place.place_ratings.filter((rating) => rating.user_id !== userId), next],
+    })
+    if (demo) return
+    const row: Record<string, unknown> = { place_id: place.id, user_id: userId, score: next.score, notes: next.notes }
+    if (v4)
+      Object.assign(row, {
+        points: next.points ?? null,
+        food: next.food ?? null,
+        service: next.service ?? null,
+        vibe: next.vibe ?? null,
+        value: next.value ?? null,
+        would_return: next.would_return ?? null,
+      })
+    const { error } = await supabase.from('place_ratings').upsert(row)
+    if (error) toast.error(error.message)
+    else if (next.score !== mine?.score)
+      notifyMates({ type: 'place_rating', placeId: place.id, value: next.score })
+  }
+  const rate = (value: number) => saveMine(scale === '5' ? { score: value, points: null } : fromInput(value, scale))
+  async function toggleVibe(tag: string) {
+    haptic('select')
+    const has = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
+    const tags = has
+      ? place.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+      : [...(place.tags ?? []), tag]
+    onUpdate({ ...place, tags })
+    if (demo) return
+    const { error } = await supabase.from('places').update({ tags }).eq('id', place.id)
+    if (error) {
+      onUpdate(place)
+      toast.error(error.message)
     }
   }
   async function updateStatus(next: Status) {
@@ -389,7 +528,7 @@ export function PlaceSheet({
     }
     return true
   }
-  async function setDishMeta(dishId: string, changes: { verdict?: 'again' | 'never' | null; tags?: string[] }) {
+  async function setDishMeta(dishId: string, changes: DishMeta) {
     const before = dishes
     setDishes((current) => current.map((item) => (item.id === dishId ? { ...item, ...changes } : item)))
     if (demo) return
@@ -484,6 +623,23 @@ export function PlaceSheet({
     (dish) => dish.verdict === 'again' || (dish.verdict !== 'never' && (dishAverage(dish) ?? 0) >= 85),
   )
   const skip = dishes.filter((dish) => dish.verdict === 'never')
+  const average = average5(place.place_ratings)
+  const offsets = raterOffsets(allPlaces)
+  const balancedRaw = place.place_ratings.length >= 2 ? balancedAverage(place.place_ratings, offsets) : 0
+  const balanced = balancedRaw && Math.abs(balancedRaw - average) >= 0.05 ? balancedRaw : null
+  const cats = categoryAverages(place.place_ratings)
+  // #18 Dishes grouped by course once any dish has one; best-rated first inside each group.
+  const sortedDishes = [...dishes].sort(
+    (a, b) =>
+      b.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0) -
+      a.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0),
+  )
+  const dishGroups: [Dish['course'] | null, Dish[]][] = dishes.some((dish) => dish.course)
+    ? [
+        ...COURSES.map((course) => [course, sortedDishes.filter((dish) => dish.course === course)] as [Dish['course'], Dish[]]),
+        [null, sortedDishes.filter((dish) => !dish.course)] as [null, Dish[]],
+      ].filter(([, list]) => list.length)
+    : [[null, sortedDishes]]
   return (
     <Sheet label={place.name} onClose={onClose}>
       <div className="flex items-start justify-between gap-3">
@@ -532,14 +688,77 @@ export function PlaceSheet({
             ))}
           </div>
         )}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm text-muted-foreground">Group average</p>
             <p className="font-serif text-5xl text-primary">
-              {placeAverage(place) ? placeAverage(place).toFixed(1) : '—'}
+              {formatScore(average, scale)}
+              {scale === '10' && average > 0 && <span className="text-xl text-muted-foreground">/10</span>}
             </p>
+            {balanced !== null && (
+              <button
+                className="text-xs text-muted-foreground underline decoration-dotted"
+                onClick={() =>
+                  toast('Balanced score', {
+                    description:
+                      'Adjusts for how each person usually rates, so a tough rater’s 4 counts like a generous rater’s 4.5.',
+                  })
+                }
+              >
+                Balanced: {formatScore(balanced, scale)}
+              </button>
+            )}
           </div>
-          <RatingStars value={score} onChange={rate} label="Your rating" />
+          <ScoreInput value={inputValue(mine, scale)} scale={scale} onChange={rate} />
+        </div>
+        {v4 && s.categories && (
+          <div className="surface-soft flex flex-col gap-1">
+            {CATEGORIES.map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between gap-2">
+                <span className="w-16 text-sm font-semibold">{label}</span>
+                <RatingStars
+                  value={mine?.[key] ?? 0}
+                  label={`Your ${label.toLowerCase()} score`}
+                  onChange={(value) => saveMine({ [key]: value } as Partial<Record<CategoryKey, number>>)}
+                />
+                <span className="w-10 text-right text-sm text-muted-foreground" aria-label={`Group ${label}`}>
+                  {cats[key] !== null ? cats[key]!.toFixed(1) : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {v4 && s.wouldReturn && (
+          <div className="chip-row" role="group" aria-label="Would you go back?">
+            {RETURN.map((item) => (
+              <button
+                key={item.id}
+                aria-pressed={mine?.would_return === item.id}
+                className={`chip chip-sm ${mine?.would_return === item.id ? 'chip-active' : ''}`}
+                onClick={() => {
+                  haptic('select')
+                  saveMine({ would_return: mine?.would_return === item.id ? null : item.id })
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="chip-row" role="group" aria-label="Vibe tags">
+          {[...new Set([...s.tags, ...(place.tags ?? [])])].map((tag) => {
+            const on = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
+            return (
+              <button
+                key={tag}
+                aria-pressed={on}
+                className={`chip chip-sm ${on ? 'chip-active' : ''}`}
+                onClick={() => toggleVibe(tag)}
+              >
+                {tag}
+              </button>
+            )
+          })}
         </div>
         <div className="flex flex-wrap gap-2">
           {(['Been', 'Want to try'] as Status[]).map((item) => (
@@ -560,6 +779,11 @@ export function PlaceSheet({
             supabase={supabase}
             demo={demo}
             onUpdate={onUpdate}
+            v4={v4}
+            scale={scale}
+            members={members}
+            names={names}
+            turns={v4 && s.turns}
           />
         )}
         {lists.length > 0 && (
@@ -588,16 +812,24 @@ export function PlaceSheet({
           <h3 className="font-serif text-xl font-bold">Ratings</h3>
           {place.place_ratings.length ? (
             place.place_ratings.map((rating) => (
-              <div className="surface-soft flex items-center justify-between" key={rating.user_id}>
-                <span>
-                  {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
-                </span>
-                <span className="flex items-center gap-2">
-                  <RatingStars value={rating.score} />
-                  {rating.notes && (
-                    <span className="text-xs text-muted-foreground">{rating.notes}</span>
-                  )}
-                </span>
+              <div className="surface-soft flex flex-col gap-1" key={rating.user_id}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">
+                    {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
+                  </span>
+                  <ScoreDisplay rating={rating} scale={scale} />
+                </div>
+                {(rating.would_return || rating.notes) && (
+                  <p className="text-sm text-muted-foreground">
+                    {rating.would_return && (
+                      <span className="tag mr-1">
+                        {RETURN.find((item) => item.id === rating.would_return)?.label}
+                      </span>
+                    )}
+                    {rating.notes}
+                  </p>
+                )}
+                <ReactionBar target={`rating:${place.id}:${rating.user_id}`} names={names} />
               </div>
             ))
           ) : (
@@ -609,12 +841,13 @@ export function PlaceSheet({
             placeholder="Your notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            onBlur={() => score && rate(score)}
+            onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
           />
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="font-serif text-xl font-bold">Dishes</h3>
+            {menuImport && (
             <button
               className="secondary !min-h-10 !px-3 text-sm"
               disabled={saving}
@@ -622,6 +855,7 @@ export function PlaceSheet({
             >
               {saving ? 'Reading website…' : 'Import menu from website'}
             </button>
+            )}
           </div>
           {place.website && (
             <a
@@ -639,14 +873,15 @@ export function PlaceSheet({
               check the site.
             </p>
           )}
-          {[...dishes]
-            .sort(
-              (a, b) =>
-                b.dish_ratings.reduce((s, r) => s + dishPoints(r), 0) -
-                a.dish_ratings.reduce((s, r) => s + dishPoints(r), 0),
-            )
-            .map((dish) => (
+          {dishGroups.map(([course, group]) => [
+            course && (
+              <h4 key={`h-${course}`} className="mt-1 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                {COURSE_LABEL[course]}
+              </h4>
+            ),
+            ...group.map((dish) => (
               <DishRow
+                v4={v4}
                 key={dish.id}
                 dish={dish}
                 userId={userId}
@@ -661,7 +896,8 @@ export function PlaceSheet({
                 onNote={(note) => saveDishNote(dish.id, note)}
                 onRemove={() => removeDish(dish.id)}
               />
-            ))}
+            )),
+          ])}
           <div className="flex gap-2">
             <input
               aria-label="Add a dish"

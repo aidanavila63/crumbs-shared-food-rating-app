@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 import { haptic, useCountUp } from '@/lib/motion'
 import { inviteLink } from '@/lib/invite'
+import type { HomeMeal } from '@/hooks/use-crumbs-data'
+import { ActivityFeed, MemoriesCard } from './group-feed'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -27,7 +29,16 @@ export function GroupTab({
   demo = false,
   onGroup,
   onLeft,
+  view,
+  meals = [],
+  names = {},
+  onSelect = () => {},
 }: {
+  /** What you can see (blind ratings applied). */
+  view?: Place[]
+  meals?: HomeMeal[]
+  names?: Record<string, string>
+  onSelect?: (place: Place) => void
   group: Group
   groups: Group[]
   places?: Place[]
@@ -137,6 +148,14 @@ export function GroupTab({
           </div>
         )}
       </div>
+      <MemoriesCard places={view ?? places} meals={meals} onSelect={onSelect} />
+      <ActivityFeed
+        places={view ?? places}
+        meals={meals}
+        names={names}
+        userId={userId}
+        onSelect={onSelect}
+      />
       <div className="surface">
         <h2 className="font-serif text-2xl font-bold">Together so far</h2>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">

@@ -1,6 +1,6 @@
 'use client'
 import { useMemo } from 'react'
-import { BarChart3, Globe2, Settings, Trophy } from 'lucide-react'
+import { BarChart3, Globe2, Settings, ShieldCheck, Trophy } from 'lucide-react'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
 import { haptic } from '@/lib/motion'
@@ -9,8 +9,9 @@ import { StreakCard } from './goals-cards'
 import { BingoCard, StatsPanel } from './stats-panel'
 import { PhotoTimeline } from './photo-timeline'
 import { SettingsPanel } from './settings-panel'
+import { AdminPanel } from './admin-panel'
 
-export type HubPage = 'menu' | 'achievements' | 'passport' | 'stats' | 'settings'
+export type HubPage = 'menu' | 'achievements' | 'passport' | 'stats' | 'settings' | 'admin'
 
 const initial = (name?: string | null) => (name?.trim()?.[0] ?? '?').toUpperCase()
 
@@ -80,6 +81,10 @@ export function ProfileHub({
     { page: 'passport', label: 'Passport', icon: <Globe2 /> },
     { page: 'stats', label: 'Stats & memories', icon: <BarChart3 /> },
     { page: 'settings', label: 'Settings', icon: <Settings /> },
+    // #21 Only Crumbs admins (profiles.is_admin) see this.
+    ...(profile?.is_admin
+      ? [{ page: 'admin' as const, label: 'Admin', icon: <ShieldCheck /> }]
+      : []),
   ]
 
   return (
@@ -186,6 +191,12 @@ export function ProfileHub({
               </p>
             )}
           </div>
+        </Overlay>
+      )}
+
+      {pages.at(-1) === 'admin' && profile?.is_admin && (
+        <Overlay label="Admin" title="Admin" onClose={closeTop}>
+          <AdminPanel supabase={settings.supabase} demo={settings.demo} />
         </Overlay>
       )}
 
