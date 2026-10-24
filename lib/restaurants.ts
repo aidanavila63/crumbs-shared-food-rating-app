@@ -2,6 +2,7 @@
 // community menu fed by menu photos and website imports (#19). Only facts about the restaurant
 // live here — ratings, notes and who goes where stay inside each group.
 import type { Hours } from './place-info'
+import type { PointRules } from './tiers'
 
 export type Restaurant = {
   id: string
@@ -313,18 +314,33 @@ export type Contributions = {
   window_days?: number
   /** today's allowances at this tier, from the server (ai, explore, menu_import, google) */
   allowances?: Record<string, number>
+  /** what earns points right now (Admin → Points) */
+  rules?: PointRules
+  /** your sets of 3 menu dishes waiting for others to confirm */
+  menu_waiting?: number
   /** restaurants this person is the confirmed owner/manager of */
   manages?: string[]
 }
 
 export type Question = {
   field: FactField
-  reason: 'missing' | 'unowned' | 'stale'
+  /**
+   * missing · unowned (only Google's — can't be kept) · unclaimed (one member said it, needs a
+   * cross-check) · open_data (OpenStreetMap: fine to use, better to own) · stale (ours, due a re-check)
+   */
+  reason: 'missing' | 'unowned' | 'unclaimed' | 'open_data' | 'stale'
   checked_at: string | null
 }
-/** The one quick question for this person about this restaurant (rotates per person). */
-export async function nextQuestion(supabase: any, restaurantId: string): Promise<Question | null> {
-  const { data, error } = await supabase.rpc('next_question', { target: restaurantId })
+/**
+ * The one quick question for this person about this restaurant (rotates per person).
+ * `skip` = details this phone can't answer right now (the map pin when you're not there).
+ */
+export async function nextQuestion(
+  supabase: any,
+  restaurantId: string,
+  skip: FactField[] = [],
+): Promise<Question | null> {
+  const { data, error } = await supabase.rpc('next_question', { target: restaurantId, skip })
   return error ? null : (data ?? null)
 }
 /** "Not now" (a week) / "Not sure" (three months): don't ask this person again for a while. */
@@ -386,11 +402,15 @@ export type OwnedRestaurant = {
   suggestions: number
 }
 export type Suggestion = {
-  field: FactField
+  field: FactField | 'dish_price'
   value: unknown
   people: number
   photo: boolean
   latest: string
+  /** dish_price only */
+  dish_id?: string
+  dish?: string
+  current?: number | null
 }
 
 export async function myRestaurants(supabase: any): Promise<OwnedRestaurant[]> {
@@ -420,4 +440,36 @@ export async function ownerEditDish(
     remove: change === 'remove',
   })
   if (error) throw error
+}
+
+/**
+ * A member says a dish costs something else. Used straight away if there was no price, once two
+ * people say the same new price, or sent to the owner on a dish the owner checked.
+ */
+export async function suggestDishPrice(
+  supabase: any,
+  dishId: string,
+  price: number,
+  how: 'in_person' | 'photo' = 'in_person',
+): Promise<{ applied: boolean; agree?: number; sent?: boolean }> {
+  const { data, error } = await supabase.rpc('suggest_dish_price', {
+    target_dish: dishId,
+    new_price: price,
+    how,
+  })
+  if (error) throw error
+  return data
+}
+/** The owner keeps their own price for a dish members suggested a different one for. */
+export async function keepDishPrice(supabase: any, dishId: string) {
+  const { error } = await supabase.rpc('keep_dish_price', { target_dish: dishId })
+  if (error) throw error
+}
+/**
+ * Owner away 30+ days and 3+ people (2+ groups) said the same thing for 2+ weeks → it's applied.
+ * Cheap; runs when someone opens a Verified-by-Owner page. Returns how many things changed.
+ */
+export async function settleOwnerSuggestions(supabase: any, restaurantId: string) {
+  const { data, error } = await supabase.rpc('settle_owner_suggestions', { target: restaurantId })
+  return error ? 0 : Number(data ?? 0)
 }

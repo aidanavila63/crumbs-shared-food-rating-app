@@ -1,10 +1,11 @@
 'use client'
 // "Building Crumbs": your contributor tier, points and badges. Only NEW restaurant info earns
-// (small) points; they count for 6 months, so tiers have to be kept up. Higher tiers get somewhat
-// bigger daily allowances (AI ideas, Explore, menu imports) — and later, perks with paid plans.
+// (small) points, with no daily cap; points expire (90 days by default), so tiers have to be kept
+// up. Higher tiers get somewhat bigger daily allowances (AI ideas, Explore, menu imports) — and
+// later, perks with paid plans. The numbers come from the server (Admin → Points).
 import { useEffect, useState } from 'react'
 import { myContributions } from '@/lib/restaurants'
-import { POINTS, TIERS, nextTier, pointsFor, tierFor } from '@/lib/tiers'
+import { POINTS, nextTier, pointsFor, tierFor, tiersWith, type PointRules } from '@/lib/tiers'
 
 type C = {
   facts: number
@@ -14,10 +15,11 @@ type C = {
   verified?: number
   points?: number
   today?: number
-  daily_cap?: number
   expiring?: number
   window_days?: number
   allowances?: Record<string, number>
+  rules?: PointRules
+  menu_waiting?: number
 }
 
 const BADGES = [
@@ -88,9 +90,11 @@ export function ContributionsCard({
     }
   }, [demo, v4, supabase])
   if (!c) return null
+  const rules = c.rules ?? POINTS
   const points = c.points ?? pointsFor(c)
-  const tier = tierFor(points)
-  const next = nextTier(points)
+  const tier = tierFor(points, rules.tiers)
+  const next = nextTier(points, rules.tiers)
+  const months = Math.round((c.window_days ?? rules.window_days) / 30)
   const earned = BADGES.filter((b) => b.test(c)).length
   return (
     <div className="surface flex flex-col gap-3">
@@ -125,14 +129,36 @@ export function ContributionsCard({
           by adding something new.
         </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        Points are for <strong>new</strong> info only: a missing detail or one that’s due a re-check
-        ({POINTS.detail}), when others back you up (+{POINTS.backed}), a menu photo with new dishes
-        ({POINTS.menuPhoto}). Logging visits, receipts and ticking dishes still help but don’t earn
-        points. Up to {c.daily_cap ?? POINTS.dailyCap} a day
-        {c.today !== undefined ? ` (${c.today} today)` : ''}; points count for{' '}
-        {Math.round((c.window_days ?? POINTS.windowDays) / 30)} months.
-      </p>
+      <details className="tier-ladder">
+        <summary className="cursor-pointer text-sm font-semibold text-primary">
+          How points work
+        </summary>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+          <li>
+            A missing detail, one only Google had, a change, or a re-check that’s due:{' '}
+            <strong>{rules.detail}</strong>
+          </li>
+          <li>
+            Confirming a detail someone else gave, before it’s checked:{' '}
+            <strong>{rules.confirm}</strong> (only the first few people)
+          </li>
+          <li>
+            When others back up what you said: <strong>+{rules.backed}</strong>, once
+          </li>
+          <li>
+            Every 3 new menu dishes (photo or typed): <strong>{rules.menu_try}</strong>, then{' '}
+            <strong>+{rules.menu_ok}</strong> when 2 other people confirm all 3 (dish and price). Up
+            to {rules.menu_queue} sets wait at once
+            {c.menu_waiting ? ` — you have ${c.menu_waiting} waiting` : ''}.
+          </li>
+          <li>
+            Logging visits, receipts, website imports and ticking dishes help but earn nothing.
+          </li>
+          <li>
+            No daily limit{c.today ? ` (${c.today} today)` : ''}. Points count for {months} months.
+          </li>
+        </ul>
+      </details>
       <div className="grid grid-cols-4 gap-2 text-center">
         {(
           [
@@ -151,12 +177,12 @@ export function ContributionsCard({
       <details className="tier-ladder">
         <summary className="cursor-pointer text-sm font-semibold text-primary">All tiers</summary>
         <div className="mt-2 flex flex-col gap-1">
-          {TIERS.map((t) => (
+          {tiersWith(rules.tiers).map((t) => (
             <p
               key={t.level}
               className={`text-sm ${t.level === tier.level ? 'font-bold' : 'text-muted-foreground'}`}
             >
-              {t.emoji} {t.name} · {t.min}+ points in 6 months · {t.perk}
+              {t.emoji} {t.name} · {t.min}+ points in {months} months · {t.perk}
             </p>
           ))}
         </div>

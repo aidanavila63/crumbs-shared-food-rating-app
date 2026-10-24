@@ -1,9 +1,11 @@
 'use client'
 // One small question at a time on places you've been — Crumbs' own "ad slot", spent on keeping
-// restaurant info right instead of selling it. Missing details first, then details only Google
-// has, then whatever is oldest and due a re-check (hours ~4 months, phone/website ~6).
-// Each person gets a different question order. Always the same three answers: Yes, No, or
-// Snap a picture. Price comes from menu prices, so it's never asked; nor is "still open?".
+// restaurant info right instead of selling it. It asks about everything Crumbs can't call its
+// own yet (picked by the database, see next_question): missing details, details only Google has
+// (can't be kept), details one member gave (need a cross-check), open data (fine, but better to
+// own), then our own details when a re-check is due. Each person gets a different order.
+// Always the same three answers: Yes, No, or Snap a picture. Price comes from menu prices, so it's
+// never asked; nor is "still open?". The map pin is only asked when you're standing there.
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -17,17 +19,29 @@ import {
   type Evidence,
   type FactField,
   type Question,
+  type Restaurant,
 } from '@/lib/restaurants'
 import { localUtcOffset, parseHoursText, hoursToText } from '@/lib/hours-text'
 import { findPhone, findWebsite } from '@/lib/fact-parse'
+import { hereNow, nearEnough, type Here } from '@/lib/here'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { track } from '@/lib/analytics'
 import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, thanks } from './restaurant-profile'
 
-export const ASKABLE: FactField[] = ['hours', 'website', 'phone', 'cuisine', 'address']
+export const ASKABLE: FactField[] = [
+  'hours',
+  'website',
+  'phone',
+  'cuisine',
+  'address',
+  'name',
+  'location',
+]
 const SNAPPABLE: FactField[] = ['hours', 'phone', 'website']
+/** Reasons where the value is Crumbs' own or open data, so it can be shown back to confirm. */
+const SHOW_VALUE: Question['reason'][] = ['unclaimed', 'open_data', 'stale']
 
 /** Reads the answer off a photo's text, or null. */
 export function readFact(field: FactField, text: string, utc: number): unknown {
@@ -45,17 +59,27 @@ const host = (url: string) => {
   }
 }
 
-/** The question in words: a yes/no confirmation when Crumbs has its own value, else "Know …?". */
+function valueOf(r: Restaurant, field: FactField): unknown {
+  if (field === 'hours') return r.opening_hours
+  if (field === 'address') return r.formatted_address
+  if (field === 'location')
+    return r.latitude === null ? null : { lat: r.latitude, lng: r.longitude }
+  return (r as any)[field] ?? null
+}
+
+/** The question in words: a yes/no confirmation when there's a value we can show, else "Know …?". */
 export function questionText(field: FactField, placeName: string, current: string | null) {
+  if (field === 'location') return `Are you at ${placeName} right now?`
   if (current) {
     const confirm: Partial<Record<FactField, string>> = {
       hours: `Still these hours? ${current}`,
       phone: `Is ${current} still their number?`,
       website: `Is ${host(current)} still their website?`,
-      cuisine: `Still ${current} food?`,
-      address: `Still at ${current}?`,
+      cuisine: `Is it ${current} food?`,
+      address: `Is it at ${current}?`,
+      name: `Is it called “${current}” on the sign?`,
     }
-    return confirm[field] ?? 'Is this still right?'
+    return confirm[field] ?? 'Is this right?'
   }
   const ask: Partial<Record<FactField, string>> = {
     hours: `Know ${placeName}’s hours?`,
@@ -82,6 +106,7 @@ export function QuickCheck({
 }) {
   const r = store.restaurant
   const [q, setQ] = useState<Question | null>(null)
+  const [here, setHere] = useState<Here | null>(null)
   const [typing, setTyping] = useState<null | { initial: unknown; how?: Evidence }>(null)
   const [round, setRound] = useState(0)
 
@@ -95,7 +120,12 @@ export function QuickCheck({
         if (!cancelled) setQ(field ? { field, reason: 'missing', checked_at: null } : null)
         return
       }
-      const next = await nextQuestion(supabase, r.id)
+      // The map pin is only asked when this phone is at the restaurant (location already allowed).
+      const now = await hereNow()
+      const near = nearEnough(now, { lat: r.latitude, lng: r.longitude })
+      if (cancelled) return
+      setHere(near ? now : null)
+      const next = await nextQuestion(supabase, r.id, near ? [] : ['location'])
       if (!cancelled) setQ(next && ASKABLE.includes(next.field) ? next : null)
     })()
     return () => {
@@ -130,18 +160,15 @@ export function QuickCheck({
     setTimeout(() => setRound((n) => n + 1), 60_000)
   }
 
-  // Only Crumbs' own values are shown back (never Google's: members tell us what they see).
-  const ownValue =
-    q.reason === 'stale'
-      ? field === 'hours'
-        ? r.opening_hours
-        : (r as any)[field === 'address' ? 'formatted_address' : field]
-      : null
-  const current = ownValue
-    ? field === 'hours'
-      ? hoursToText(ownValue as Hours) || null
-      : String(ownValue)
-    : null
+  // Only Crumbs' own values and open data are shown back — never Google's (members tell us
+  // what they see). The name is the exception: it's on the sign and on your own list anyway.
+  const ownValue = SHOW_VALUE.includes(q.reason) || field === 'name' ? valueOf(r, field) : null
+  const current =
+    ownValue === null || field === 'location'
+      ? null
+      : field === 'hours'
+        ? hoursToText(ownValue as Hours) || null
+        : String(ownValue)
   const confirming = !!current
 
   return (
@@ -173,14 +200,23 @@ export function QuickCheck({
         <div className="mt-2 flex flex-wrap gap-2">
           <button
             className="chip chip-sm chip-active"
-            onClick={() => (confirming ? answer(ownValue) : setTyping({ initial: null }))}
+            onClick={() =>
+              field === 'location'
+                ? here && answer({ lat: here.lat, lng: here.lng })
+                : confirming
+                  ? answer(ownValue)
+                  : setTyping({ initial: null })
+            }
           >
             Yes
           </button>
           <button
             className="chip chip-sm"
-            // "No" to a confirmation = it changed: say what it is now. "No" to "Know …?" = skip it.
-            onClick={() => (confirming ? setTyping({ initial: null }) : skip(90))}
+            // "No" to a confirmation = it changed: say what it is now. "No" to "Know …?" or
+            // "Are you there?" = skip it for a while.
+            onClick={() =>
+              field === 'location' ? skip(30) : confirming ? setTyping({ initial: null }) : skip(90)
+            }
           >
             No
           </button>

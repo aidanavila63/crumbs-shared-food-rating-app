@@ -12,8 +12,10 @@ import {
   loadRestaurant,
   ownerLocked,
   shareable,
+  settleOwnerSuggestions,
   shareDishes,
   sortMenu,
+  suggestDishPrice,
   voteDish,
   type Evidence,
   type FactResult,
@@ -121,6 +123,13 @@ export function useRestaurant({
           : await linkRestaurant(supabase, place.id)
         if (cancelled || !r) return
         setRestaurant(r)
+        // Owner away a long time and members agree on a change? It's applied now (rare, cheap).
+        if (r.owner_verified)
+          settleOwnerSuggestions(supabase, r.id).then(async (changed) => {
+            if (!changed || cancelled) return
+            const fresh = await loadRestaurant(supabase, r.id)
+            if (fresh && !cancelled) setRestaurant(fresh)
+          })
         if (!place.restaurant_id) onLinked(r.id)
         await reload(r.id)
         loadInsights(supabase, r.id).then((data) => !cancelled && setInsights(data))
@@ -235,7 +244,32 @@ export function useRestaurant({
     }
   }
 
-  return { enabled, restaurant, menu, mine, loading, insights, manages, share, vote, contribute }
+  /** #19 a member says a dish costs something else (see suggest_dish_price). */
+  async function setPrice(dish: MenuDish, price: number) {
+    if (demo || !restaurant) {
+      const sent = !!restaurant?.owner_verified && !!dish.owner_ok
+      const applied = !sent && (dish.price === null || dish.price === undefined)
+      if (applied) setMenu(menu.map((d) => (d.id === dish.id ? { ...d, price } : d)))
+      return { applied, sent }
+    }
+    const result = await suggestDishPrice(supabase, dish.id, price)
+    if (result.applied) await reload(restaurant.id)
+    return result
+  }
+
+  return {
+    enabled,
+    restaurant,
+    menu,
+    mine,
+    loading,
+    insights,
+    manages,
+    share,
+    vote,
+    contribute,
+    setPrice,
+  }
 }
 
 export type RestaurantStore = ReturnType<typeof useRestaurant>

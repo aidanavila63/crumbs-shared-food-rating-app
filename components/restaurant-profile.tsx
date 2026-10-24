@@ -369,9 +369,11 @@ export function FactEditor({
                 ? '+1 555 123 4567'
                 : field === 'website'
                   ? 'theirsite.com'
-                  : 'e.g. Thai'
+                  : field === 'name'
+                    ? 'The name on the sign'
+                    : 'e.g. Thai'
           }
-          maxLength={field === 'cuisine' ? 60 : 300}
+          maxLength={field === 'cuisine' ? 60 : field === 'name' ? 160 : 300}
           value={text}
           onChange={(event) => setText(event.target.value)}
         />

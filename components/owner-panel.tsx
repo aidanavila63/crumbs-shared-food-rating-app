@@ -7,6 +7,7 @@ import { ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   contributeFact,
+  keepDishPrice,
   keepOwnerValue,
   loadInsights,
   loadMenu,
@@ -59,6 +60,7 @@ function valueOf(r: Restaurant, f: FactField): unknown {
 }
 function showValue(f: FactField, v: unknown) {
   if (v === null || v === undefined || v === '') return null
+  if (f === 'location') return 'Map pin in a different spot'
   if (f === 'hours') return hoursToText(v as Hours) || null
   if (f === 'status') return STATUS.find((s) => s.id === v)?.label ?? String(v)
   return String(v)
@@ -230,6 +232,16 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
             photo: true,
             latest: new Date().toISOString(),
           },
+          {
+            field: 'dish_price',
+            dish_id: 'demo-owned-0',
+            dish: 'Brisket Sandwich',
+            current: 17,
+            value: 18.5,
+            people: 3,
+            photo: true,
+            latest: new Date().toISOString(),
+          },
         ]
       : [],
   )
@@ -278,13 +290,43 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       toast.error(error?.message || 'Could not save that')
     }
   }
-  async function keep(fact: FactField) {
+  async function keep(s: Suggestion) {
     try {
-      if (!demo) await keepOwnerValue(supabase, id, fact)
-      setSuggestions((cur) => cur.filter((s) => s.field !== fact))
+      if (!demo) {
+        if (s.field === 'dish_price') await keepDishPrice(supabase, s.dish_id!)
+        else await keepOwnerValue(supabase, id, s.field)
+      }
+      setSuggestions((cur) =>
+        cur.filter((x) =>
+          s.field === 'dish_price' ? x.dish_id !== s.dish_id : x.field !== s.field,
+        ),
+      )
       toast.success('Kept yours')
     } catch (error: any) {
       toast.error(error?.message || 'Could not do that')
+    }
+  }
+  async function use(s: Suggestion) {
+    if (s.field !== 'dish_price') return setFact(s.field, s.value)
+    try {
+      const dish = menu.find((d) => d.id === s.dish_id)
+      if (demo) {
+        setMenu((cur) =>
+          cur.map((d) => (d.id === s.dish_id ? { ...d, price: Number(s.value) } : d)),
+        )
+      } else {
+        await ownerEditDish(supabase, s.dish_id!, {
+          name: dish?.name ?? s.dish,
+          price: Number(s.value),
+          course: dish?.course ?? null,
+        })
+        await reload()
+      }
+      setSuggestions((cur) => cur.filter((x) => x.dish_id !== s.dish_id))
+      haptic('success')
+      toast.success(`${s.dish} is now $${s.value}`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
     }
   }
 
@@ -310,25 +352,32 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         <section className="surface flex flex-col gap-2">
           <h3 className="font-serif text-xl font-bold">Members suggest</h3>
           <p className="text-xs text-muted-foreground">
-            What people who saved your restaurant say is different. Use it, or keep yours.
+            What people who saved your restaurant say is different. Use it, or keep yours. If you’re
+            away for 30+ days, something 3+ people agree on for 2 weeks updates by itself.
           </p>
           {suggestions.map((s, i) => (
             <div key={i} className="surface-soft flex flex-col gap-1 text-sm">
-              <p>
-                <strong>{LABEL[s.field] ?? s.field}:</strong> {showValue(s.field, s.value)}
-              </p>
+              {s.field === 'dish_price' ? (
+                <p>
+                  <strong>{s.dish}:</strong> ${Number(s.value).toFixed(Number(s.value) % 1 ? 2 : 0)}
+                  {s.current !== null && s.current !== undefined && (
+                    <span className="text-muted-foreground"> (yours: ${Number(s.current)})</span>
+                  )}
+                </p>
+              ) : (
+                <p>
+                  <strong>{LABEL[s.field] ?? s.field}:</strong> {showValue(s.field, s.value)}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {s.people} {s.people === 1 ? 'person' : 'people'}
                 {s.photo ? ' · from a photo' : ''}
               </p>
               <div className="flex gap-2">
-                <button className="secondary !min-h-9 flex-1 text-sm" onClick={() => keep(s.field)}>
+                <button className="secondary !min-h-9 flex-1 text-sm" onClick={() => keep(s)}>
                   Keep mine
                 </button>
-                <button
-                  className="primary !min-h-9 flex-1 text-sm"
-                  onClick={() => setFact(s.field, s.value)}
-                >
+                <button className="primary !min-h-9 flex-1 text-sm" onClick={() => use(s)}>
                   Use this
                 </button>
               </div>

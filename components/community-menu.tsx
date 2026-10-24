@@ -7,6 +7,7 @@ import type { Dish } from '@/hooks/use-crumbs-data'
 import type { RestaurantStore } from '@/hooks/use-restaurant'
 import { missingFromOurs, priceAge, priceIsOld, type MenuDish } from '@/lib/restaurants'
 import { haptic } from '@/lib/motion'
+import { toast } from 'sonner'
 
 const COURSE: Record<string, string> = {
   starter: 'Starters',
@@ -28,6 +29,26 @@ export function CommunityMenu({
   onAddToOurs: (dishes: MenuDish[]) => void
 }) {
   const [all, setAll] = useState(false)
+  // #19 members can fix prices: tap a price (or "add price") to say what it costs now.
+  const [pricing, setPricing] = useState<{ id: string; text: string } | null>(null)
+  async function savePrice(dish: MenuDish) {
+    const n = Number(pricing?.text.replace(/[^0-9.]/g, ''))
+    if (!pricing?.text.trim() || !Number.isFinite(n) || n <= 0 || n >= 10000) return
+    try {
+      const result = await store.setPrice(dish, Math.round(n * 100) / 100)
+      haptic('success')
+      toast.success(
+        result.sent
+          ? 'Sent to the restaurant — they keep their menu prices'
+          : result.applied
+            ? 'Price updated for everyone'
+            : 'Thanks — one more person saying the same price will update it',
+      )
+      setPricing(null)
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
+    }
+  }
   if (!store.enabled || !store.restaurant) return null
   const missing = missingFromOurs(store.menu, ours)
   const missingIds = new Set(missing.map((d) => d.id))
@@ -73,12 +94,50 @@ export function CommunityMenu({
                       aria-label="Verified by Owner"
                     />
                   )}
-                  {dish.price !== null && (
-                    <span className="ml-2 font-normal text-muted-foreground">
+                  {dish.price !== null ? (
+                    <button
+                      className="menu-price ml-2 font-normal text-muted-foreground"
+                      aria-label={`${dish.name} price $${dish.price} — tap if it’s different`}
+                      onClick={() => setPricing({ id: dish.id, text: String(dish.price) })}
+                    >
                       ${Number(dish.price).toFixed(Number(dish.price) % 1 ? 2 : 0)}
-                    </span>
+                    </button>
+                  ) : (
+                    <button
+                      className="ml-2 text-xs font-semibold text-primary underline"
+                      onClick={() => setPricing({ id: dish.id, text: '' })}
+                    >
+                      add price
+                    </button>
                   )}
                 </p>
+                {pricing?.id === dish.id && (
+                  <form
+                    className="rise-panel mt-1 flex items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      savePrice(dish)
+                    }}
+                  >
+                    <input
+                      className="field !min-h-9 w-24 text-sm"
+                      aria-label={`${dish.name} price now`}
+                      inputMode="decimal"
+                      placeholder="$"
+                      autoFocus
+                      value={pricing.text}
+                      onChange={(event) => setPricing({ id: dish.id, text: event.target.value })}
+                    />
+                    <button className="primary !min-h-9 !px-3 text-sm">Save</button>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline"
+                      onClick={() => setPricing(null)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
                 {dish.description && (
                   <p className="text-xs text-muted-foreground">{dish.description}</p>
                 )}
@@ -91,7 +150,7 @@ export function CommunityMenu({
               <span className="flex shrink-0 items-center gap-1">
                 <button
                   className={`menu-vote ${vote === 'confirm' ? 'menu-vote-yes' : ''}`}
-                  aria-label={`${dish.name} is on the menu`}
+                  aria-label={`${dish.name} is on the menu at this price`}
                   aria-pressed={vote === 'confirm'}
                   onClick={() => {
                     haptic('select')

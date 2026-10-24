@@ -1,8 +1,8 @@
 // Contributor tiers: the more NEW restaurant info you add to Crumbs, the bigger your daily
-// allowances. Points are deliberately small and only for new info (see POINTS); just using the app
-// (logging visits, receipts, imports, ticking dishes) feeds the data but earns nothing. Points
-// count for 6 months, so a tier has to be kept up. Mirrors the database (tier_for_points,
-// usage_budgets) — the server's numbers win when they differ.
+// allowances. Points are small and only for new info (see POINTS); just using the app (logging
+// visits, receipts, imports, ticking dishes) feeds the data but earns nothing. No daily cap —
+// instead points expire (90 days), so a tier has to be kept up. Defaults mirror the database's
+// point_rules / usage_budgets; the server's numbers (Admin → Points) win when they differ.
 export type Tier = {
   level: number
   name: string
@@ -13,13 +13,26 @@ export type Tier = {
   perk: string
 }
 
-/** What earns points (and nothing else does). */
-export const POINTS = {
-  detail: 2, // a missing detail, Crumbs' own copy of one, a change that applies, or a due re-check
-  backed: 2, // others independently said the same thing
-  menuPhoto: 3, // a menu photo that adds 3+ new dishes (once a quarter per restaurant)
-  dailyCap: 20,
-  windowDays: 180,
+/** What earns points (and nothing else does). Same names as the database's point_rules. */
+export type PointRules = {
+  window_days: number
+  tiers: number[] // points for tiers 1..4
+  detail: number // a missing detail, Crumbs' own copy of one, a change that applies, or a due re-check
+  confirm: number // one of the first confirmations that makes a detail Crumbs' own
+  backed: number // once, when others back up what you said
+  menu_try: number // every 3 new menu dishes
+  menu_ok: number // when those 3 are confirmed (item + price) by 2 other people
+  menu_queue: number // sets of 3 that can wait for confirmation at once
+}
+export const POINTS: PointRules = {
+  window_days: 90,
+  tiers: [30, 100, 250, 600],
+  detail: 2,
+  confirm: 1,
+  backed: 2,
+  menu_try: 1,
+  menu_ok: 1,
+  menu_queue: 10,
 }
 
 export const TIERS: Tier[] = [
@@ -35,7 +48,7 @@ export const TIERS: Tier[] = [
     level: 1,
     name: 'Regular',
     emoji: '🍴',
-    min: 25,
+    min: 30,
     limits: { ai: 4, explore: 20, menuImport: 2 },
     perk: 'A few more AI ideas and Explore searches',
   },
@@ -43,7 +56,7 @@ export const TIERS: Tier[] = [
     level: 2,
     name: 'Local guide',
     emoji: '🧭',
-    min: 75,
+    min: 100,
     limits: { ai: 5, explore: 25, menuImport: 3 },
     perk: 'More of everything',
   },
@@ -51,7 +64,7 @@ export const TIERS: Tier[] = [
     level: 3,
     name: 'Insider',
     emoji: '⭐',
-    min: 200,
+    min: 250,
     limits: { ai: 6, explore: 30, menuImport: 3 },
     perk: 'Bigger allowances + early features',
   },
@@ -59,19 +72,24 @@ export const TIERS: Tier[] = [
     level: 4,
     name: 'Legend',
     emoji: '👑',
-    min: 500,
+    min: 600,
     limits: { ai: 8, explore: 40, menuImport: 4 },
     perk: 'The most of everything + a say in what’s next',
   },
 ]
 
-export const tierFor = (points: number) =>
-  [...TIERS].reverse().find((t) => points >= t.min) ?? TIERS[0]
+/** The tiers with the server's thresholds (Admin can change them). */
+export const tiersWith = (mins: number[] = POINTS.tiers) =>
+  TIERS.map((t) => ({ ...t, min: t.level === 0 ? 0 : (mins[t.level - 1] ?? t.min) }))
+
+export const tierFor = (points: number, mins?: number[]) =>
+  [...tiersWith(mins)].reverse().find((t) => points >= t.min) ?? TIERS[0]
 
 /** Progress (0-100) towards the next tier, and how many points that needs. */
-export function nextTier(points: number) {
-  const now = tierFor(points)
-  const next = TIERS[now.level + 1]
+export function nextTier(points: number, mins?: number[]) {
+  const list = tiersWith(mins)
+  const now = tierFor(points, mins)
+  const next = list[now.level + 1]
   if (!next) return { next: null, pct: 100, need: 0 }
   return {
     next,

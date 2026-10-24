@@ -7,6 +7,7 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { haptic } from '@/lib/motion'
 import { timeAgo } from './social'
 import { analyticsOn } from '@/lib/analytics'
+import { POINTS, type PointRules } from '@/lib/tiers'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -270,6 +271,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       </section>
 
       <BudgetsCard supabase={supabase} demo={demo} />
+      <PointsCard supabase={supabase} demo={demo} />
       <ClaimsCard supabase={supabase} demo={demo} />
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
@@ -549,6 +551,76 @@ function BudgetsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </div>
         )
       })}
+    </section>
+  )
+}
+
+const POINT_FIELDS: { key: Exclude<keyof PointRules, 'tiers'>; label: string }[] = [
+  { key: 'window_days', label: 'Points last (days)' },
+  { key: 'detail', label: 'New detail' },
+  { key: 'confirm', label: 'Confirm (first few)' },
+  { key: 'backed', label: 'Backed up (once)' },
+  { key: 'menu_try', label: 'Each 3 new dishes' },
+  { key: 'menu_ok', label: '…when confirmed' },
+  { key: 'menu_queue', label: 'Sets waiting max' },
+]
+
+/** What earns points and the tier thresholds — tune so it stays worth it for Crumbs. */
+function PointsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [rules, setRules] = useState<PointRules | null>(demo ? POINTS : null)
+  useEffect(() => {
+    if (demo) return
+    supabase
+      .from('point_rules')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle()
+      .then(({ data }: any) => data && setRules(data))
+  }, [demo, supabase])
+  if (!rules) return null
+  async function save(next: PointRules) {
+    setRules(next)
+    if (demo) return
+    const { error } = await supabase.rpc('set_point_rules', { rules: next })
+    if (error) toast.error(error.message)
+    else toast.success('Points saved')
+  }
+  const int = (v: string) => Math.max(0, Math.round(Number(v)) || 0)
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Points</h3>
+      <p className="text-sm text-muted-foreground">
+        Only new info earns points, with no daily cap — points expire instead, so tiers have to be
+        kept up. Tiers decide the per-person allowances in the Spending guard.
+      </p>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        {POINT_FIELDS.map((f) => (
+          <label key={f.key} className="flex flex-col gap-1">
+            {f.label}
+            <input
+              className="field !min-h-9 !py-1 text-sm"
+              inputMode="numeric"
+              defaultValue={rules[f.key]}
+              onBlur={(e) =>
+                int(e.target.value) !== rules[f.key] &&
+                save({ ...rules, [f.key]: int(e.target.value) })
+              }
+            />
+          </label>
+        ))}
+        <label className="col-span-2 flex flex-col gap-1">
+          Tiers (Regular, Local guide, Insider, Legend)
+          <input
+            className="field !min-h-9 !py-1 text-sm"
+            defaultValue={rules.tiers.join(',')}
+            onBlur={(e) => {
+              const tiers = e.target.value.split(',').map(int)
+              if (tiers.length === 4 && tiers.join(',') !== rules.tiers.join(','))
+                save({ ...rules, tiers })
+            }}
+          />
+        </label>
+      </div>
     </section>
   )
 }
