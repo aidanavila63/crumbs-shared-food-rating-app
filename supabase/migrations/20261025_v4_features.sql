@@ -508,7 +508,14 @@ begin
     'waitlist', (select count(*) from public.waitlist),
     'feedback', (select count(*) from public.feedback),
     'restaurants', (select count(*) from public.restaurants),
-    'menu_dishes', (select count(*) from public.restaurant_dishes where hidden = false)
+    'menu_dishes', (select count(*) from public.restaurant_dishes where hidden = false),
+    -- How much of the restaurant data Crumbs owns (from members or open data, not Google).
+    'owned_hours', (select count(*) from public.restaurants where sources->>'hours' in ('crumbs', 'osm')),
+    'owned_address', (select count(*) from public.restaurants where sources->>'address' in ('crumbs', 'osm')),
+    'facts', (select count(*) from public.restaurant_facts),
+    -- Free-tier meters: database (500 MB) and photo storage (1 GB).
+    'db_bytes', pg_database_size(current_database()),
+    'storage_bytes', (select coalesce(sum((metadata->>'size')::bigint), 0) from storage.objects where bucket_id = 'crumbs-photos')
   );
 end $$;
 revoke execute on function public.admin_stats() from public, anon;
@@ -764,6 +771,207 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ============================================================================================
+-- 13c. Owning the data: where each fact came from, member contributions, open data
+-- ============================================================================================
+-- Every profile field remembers its source: 'crumbs' (seen by members), 'osm' (OpenStreetMap,
+-- free to keep), or 'google' (temporary — Google's terms don't let us keep it). Members' own
+-- observations beat open data, and open data beats Google. Before going public the 'google'
+-- fields can be dropped without losing anything Crumbs owns.
+alter table public.restaurants add column if not exists sources jsonb not null default '{}'::jsonb;
+alter table public.restaurants add column if not exists verified jsonb not null default '{}'::jsonb;
+alter table public.restaurants add column if not exists phone text check (phone is null or char_length(phone) <= 40);
+alter table public.restaurants add column if not exists google_place_id text;
+alter table public.restaurants add column if not exists osm_id text;
+alter table public.restaurants add column if not exists osm_checked_at timestamptz;
+
+-- Fields we know the source of, from how the profile was first made.
+create or replace function public.default_sources(r public.restaurants)
+returns jsonb language sql immutable as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'name', case when r.name is not null then src end,
+    'address', case when r.formatted_address is not null then src end,
+    'location', case when r.latitude is not null then src end,
+    'cuisine', case when r.cuisine is not null then src end,
+    'price_level', case when r.price_level is not null then src end,
+    'website', case when r.website is not null then src end,
+    'hours', case when r.opening_hours is not null then src end,
+    'status', case when r.business_status is not null then src end
+  ))
+  from (select case when r.source_key like 'osm:%' then 'osm' else 'google' end as src) s
+$$;
+create or replace function public.fill_restaurant_sources()
+returns trigger language plpgsql as $$
+begin
+  new.sources := public.default_sources(new) || coalesce(new.sources, '{}'::jsonb);
+  if new.google_place_id is null and new.source_key not like 'osm:%' then new.google_place_id := new.source_key; end if;
+  return new;
+end $$;
+drop trigger if exists restaurants_sources on public.restaurants;
+create trigger restaurants_sources before insert or update on public.restaurants
+  for each row execute function public.fill_restaurant_sources();
+
+-- What members told us. One row per person per fact (their latest answer).
+create table if not exists public.restaurant_facts (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  field text not null check (field in ('name', 'address', 'location', 'hours', 'phone', 'website', 'price_level', 'cuisine', 'status')),
+  value jsonb not null,
+  evidence text not null check (evidence in ('in_person', 'photo', 'website', 'receipt', 'phone_call')),
+  user_id uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (restaurant_id, field, user_id)
+);
+create index if not exists restaurant_facts_restaurant_idx on public.restaurant_facts (restaurant_id, field);
+alter table public.restaurant_facts enable row level security;
+drop policy if exists restaurant_facts_read on public.restaurant_facts;
+create policy restaurant_facts_read on public.restaurant_facts for select to authenticated using (user_id = (select auth.uid()));
+
+-- A member adds or confirms a fact they saw themselves. Applied straight away over Google or
+-- open data; changing something members already set needs two people to agree.
+create or replace function public.contribute_fact(target uuid, fact text, val jsonb, how text default 'in_person')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  r public.restaurants;
+  v jsonb := val;
+  current jsonb;
+  agree integer;
+  src text;
+  applied boolean := false;
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  select * into r from public.restaurants where id = target;
+  -- Validate + tidy each kind of fact.
+  if fact in ('name', 'address', 'phone', 'website', 'cuisine') then
+    if jsonb_typeof(v) <> 'string' or length(trim(v #>> '{}')) = 0 or length(v #>> '{}') > 300 then raise exception 'Bad value'; end if;
+    v := to_jsonb(trim(v #>> '{}'));
+    if fact = 'website' and (v #>> '{}') !~* '^https?://' then raise exception 'Website must start with http'; end if;
+  elsif fact = 'price_level' then
+    if jsonb_typeof(v) <> 'number' or (v::text)::int not between 0 and 4 then raise exception 'Bad price'; end if;
+  elsif fact = 'status' then
+    if (v #>> '{}') not in ('OPERATIONAL', 'CLOSED_TEMPORARILY', 'CLOSED_PERMANENTLY') then raise exception 'Bad status'; end if;
+  elsif fact = 'location' then
+    if jsonb_typeof(v->'lat') <> 'number' or jsonb_typeof(v->'lng') <> 'number' then raise exception 'Bad location'; end if;
+    v := jsonb_build_object('lat', (v->>'lat')::float8, 'lng', (v->>'lng')::float8);
+  elsif fact = 'hours' then
+    if jsonb_typeof(v->'periods') <> 'array' or jsonb_array_length(v->'periods') > 30 or jsonb_typeof(v->'utc') <> 'number' then
+      raise exception 'Bad hours';
+    end if;
+  else
+    raise exception 'Unknown field';
+  end if;
+
+  insert into public.restaurant_facts (restaurant_id, field, value, evidence, user_id)
+  values (target, fact, v, how, auth.uid())
+  on conflict (restaurant_id, field, user_id) do update set value = excluded.value, evidence = excluded.evidence, created_at = now();
+
+  select count(*) into agree from public.restaurant_facts f where f.restaurant_id = target and f.field = fact and f.value = v;
+  src := r.sources->>fact;
+  current := case fact
+    when 'name' then to_jsonb(r.name) when 'address' then to_jsonb(r.formatted_address)
+    when 'phone' then to_jsonb(r.phone) when 'website' then to_jsonb(r.website)
+    when 'cuisine' then to_jsonb(r.cuisine) when 'price_level' then to_jsonb(r.price_level)
+    when 'status' then to_jsonb(r.business_status) when 'hours' then r.opening_hours
+    when 'location' then case when r.latitude is null then null else jsonb_build_object('lat', r.latitude, 'lng', r.longitude) end
+  end;
+
+  if src is distinct from 'crumbs' or current is null or agree >= 2 or current = v then
+    applied := current is distinct from v or src is distinct from 'crumbs';
+    update public.restaurants set
+      name = case when fact = 'name' then left(v #>> '{}', 160) else name end,
+      formatted_address = case when fact = 'address' then v #>> '{}' else formatted_address end,
+      phone = case when fact = 'phone' then left(v #>> '{}', 40) else phone end,
+      website = case when fact = 'website' then v #>> '{}' else website end,
+      cuisine = case when fact = 'cuisine' then left(v #>> '{}', 60) else cuisine end,
+      price_level = case when fact = 'price_level' then (v::text)::smallint else price_level end,
+      business_status = case when fact = 'status' then v #>> '{}' else business_status end,
+      opening_hours = case when fact = 'hours' then v else opening_hours end,
+      hours_checked_at = case when fact in ('hours', 'status') then now() else hours_checked_at end,
+      latitude = case when fact = 'location' then (v->>'lat')::float8 else latitude end,
+      longitude = case when fact = 'location' then (v->>'lng')::float8 else longitude end,
+      sources = sources || jsonb_build_object(fact, 'crumbs'),
+      verified = verified || jsonb_build_object(fact, jsonb_build_object('n', agree, 'at', now())),
+      updated_at = now()
+    where id = target;
+  end if;
+  return jsonb_build_object('applied', applied, 'agree', agree);
+end $$;
+
+-- OpenStreetMap facts (free to keep forever, with credit). Fill only what's missing or from Google.
+create or replace function public.merge_open_data(target uuid, data jsonb, osm text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  r public.restaurants;
+  can_use boolean;
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  select * into r from public.restaurants where id = target;
+  update public.restaurants set
+    osm_id = coalesce(left(osm, 40), osm_id),
+    osm_checked_at = now(),
+    formatted_address = case when data ? 'address' and coalesce(sources->>'address', 'google') = 'google' then left(data->>'address', 300) else formatted_address end,
+    phone = case when data ? 'phone' and coalesce(sources->>'phone', 'google') = 'google' then left(data->>'phone', 40) else phone end,
+    website = case when data ? 'website' and (data->>'website') ~* '^https?://' and coalesce(sources->>'website', 'google') = 'google' then left(data->>'website', 300) else website end,
+    cuisine = case when data ? 'cuisine' and coalesce(sources->>'cuisine', 'google') = 'google' then left(data->>'cuisine', 60) else cuisine end,
+    opening_hours = case when jsonb_typeof(data->'hours'->'periods') = 'array' and coalesce(sources->>'hours', 'google') = 'google' then data->'hours' else opening_hours end,
+    hours_checked_at = case when jsonb_typeof(data->'hours'->'periods') = 'array' and coalesce(sources->>'hours', 'google') = 'google' then now() else hours_checked_at end,
+    sources = sources || jsonb_strip_nulls(jsonb_build_object(
+      'address', case when data ? 'address' and coalesce(sources->>'address', 'google') = 'google' then 'osm' end,
+      'phone', case when data ? 'phone' and coalesce(sources->>'phone', 'google') = 'google' then 'osm' end,
+      'website', case when data ? 'website' and (data->>'website') ~* '^https?://' and coalesce(sources->>'website', 'google') = 'google' then 'osm' end,
+      'cuisine', case when data ? 'cuisine' and coalesce(sources->>'cuisine', 'google') = 'google' then 'osm' end,
+      'hours', case when jsonb_typeof(data->'hours'->'periods') = 'array' and coalesce(sources->>'hours', 'google') = 'google' then 'osm' end
+    )),
+    updated_at = now()
+  where id = target;
+end $$;
+
+-- What Crumbs itself knows about a restaurant from all groups' visits — only as totals, and only
+-- once there are enough visits that no single group can be picked out.
+create or replace function public.restaurant_insights(target uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  result jsonb;
+begin
+  if not public.my_restaurant(target) then raise exception 'Not one of your restaurants'; end if;
+  select jsonb_build_object(
+    'visits', count(*),
+    'groups', count(distinct p.group_id),
+    'per_head', case when count(*) filter (where v.spend > 0 and v.people > 0) >= 3
+                  then round(avg(v.spend / v.people) filter (where v.spend > 0 and v.people > 0), 0) end,
+    'takeout_share', case when count(*) >= 5
+                  then round(100.0 * count(*) filter (where v.kind in ('takeout', 'delivery')) / count(*)) end
+  ) into result
+  from public.place_visits v join public.places p on p.id = v.place_id
+  where p.restaurant_id = target;
+  return result;
+end $$;
+revoke execute on function public.restaurant_insights(uuid) from public, anon;
+grant execute on function public.restaurant_insights(uuid) to authenticated;
+
+-- Your contributions (for the profile page and badges).
+create or replace function public.my_contributions()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'facts', (select count(*) from public.restaurant_facts where user_id = auth.uid()),
+    'dishes', (select count(*) from public.restaurant_dishes where added_by = auth.uid()),
+    'checks', (select count(*) from public.restaurant_dish_votes where user_id = auth.uid()),
+    'restaurants', (select count(distinct restaurant_id) from (
+        select restaurant_id from public.restaurant_facts where user_id = auth.uid()
+        union all select restaurant_id from public.restaurant_dishes where added_by = auth.uid()) x)
+  )
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['contribute_fact(uuid, text, jsonb, text)', 'merge_open_data(uuid, jsonb, text)', 'my_contributions()'] loop
+    execute format('revoke execute on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+update public.restaurants set sources = sources where true; -- backfill sources on existing rows
 
 -- ============================================================================================
 -- 13b. Your data (#88 delete account, #89 backups)

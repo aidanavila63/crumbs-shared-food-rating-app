@@ -3,18 +3,25 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Place } from './use-crumbs-data'
 import {
+  contributeFact,
   dishKey,
   linkRestaurant,
+  loadInsights,
+  matchOpenData,
   loadMenu,
   loadRestaurant,
   shareable,
   shareDishes,
   sortMenu,
   voteDish,
+  type Evidence,
+  type Insights,
+  type FactField,
   type MenuDish,
   type NewMenuDish,
   type Restaurant,
 } from '@/lib/restaurants'
+import { localUtcOffset } from '@/lib/hours-text'
 
 const demoMenu = (restaurantId: string): MenuDish[] =>
   [
@@ -56,6 +63,7 @@ export function useRestaurant({
   const [menu, setMenu] = useState<MenuDish[]>([])
   const [mine, setMine] = useState<Record<string, 'confirm' | 'flag'>>({})
   const [loading, setLoading] = useState(false)
+  const [insights, setInsights] = useState<Insights | null>(null)
   const enabled = (v4 || demo) && shareable(place.google_place_id)
 
   const reload = useCallback(
@@ -81,8 +89,24 @@ export function useRestaurant({
             source_key: place.google_place_id,
             name: place.name,
             places_count: 2,
+            formatted_address: place.formatted_address,
+            opening_hours: place.opening_hours ?? null,
+            business_status: 'OPERATIONAL',
+            price_level: place.price_level,
+            cuisine: place.cuisine,
+            website: null,
+            phone: null,
+            sources: {
+              address: 'osm',
+              hours: 'google',
+              cuisine: 'crumbs',
+              status: 'google',
+              price_level: 'google',
+            },
+            verified: { cuisine: { n: 2, at: new Date().toISOString() } },
           } as Restaurant)
           setMenu(place.id === 'demo-ramen' ? demoMenu(id) : [])
+          setInsights({ visits: 9, groups: 3, per_head: 24, takeout_share: 30 })
           return
         }
         // Link once (creates the shared profile the first time anyone saves this restaurant).
@@ -93,6 +117,17 @@ export function useRestaurant({
         setRestaurant(r)
         if (!place.restaurant_id) onLinked(r.id)
         await reload(r.id)
+        loadInsights(supabase, r.id).then((data) => !cancelled && setInsights(data))
+        // Fill gaps from OpenStreetMap (free data we can keep) — at most every ~3 months.
+        const stale =
+          !r.osm_checked_at || Date.now() - new Date(r.osm_checked_at).getTime() > 90 * 864e5
+        if (stale && r.latitude !== null) {
+          const result = await matchOpenData(r.id, localUtcOffset()).catch(() => null)
+          if (!cancelled && result?.matched) {
+            const fresh = await loadRestaurant(supabase, r.id)
+            if (fresh && !cancelled) setRestaurant(fresh)
+          }
+        }
       } catch {
         // The menu is a bonus; the place page works without it.
       } finally {
@@ -104,6 +139,29 @@ export function useRestaurant({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, place.id, place.restaurant_id])
+
+  /** A member adds or confirms a fact they saw themselves (#27 owning the data). */
+  async function contribute(fact: FactField, val: unknown, how: Evidence = 'in_person') {
+    if (!restaurant) return null
+    if (demo) {
+      const next = { ...restaurant } as any
+      const column: Record<string, string> = {
+        address: 'formatted_address',
+        hours: 'opening_hours',
+        status: 'business_status',
+      }
+      next[column[fact] ?? fact] = val
+      next.sources = { ...restaurant.sources, [fact]: 'crumbs' }
+      const n = (restaurant.verified?.[fact]?.n ?? 0) + 1
+      next.verified = { ...restaurant.verified, [fact]: { n, at: new Date().toISOString() } }
+      setRestaurant(next)
+      return { applied: true, agree: n }
+    }
+    const result = await contributeFact(supabase, restaurant.id, fact, val, how)
+    const fresh = await loadRestaurant(supabase, restaurant.id)
+    if (fresh) setRestaurant(fresh)
+    return result
+  }
 
   async function share(dishes: NewMenuDish[], how: 'photo' | 'website' | 'manual') {
     if (!restaurant) return 0
@@ -156,7 +214,7 @@ export function useRestaurant({
     }
   }
 
-  return { enabled, restaurant, menu, mine, loading, share, vote }
+  return { enabled, restaurant, menu, mine, loading, insights, share, vote, contribute }
 }
 
 export type RestaurantStore = ReturnType<typeof useRestaurant>

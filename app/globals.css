@@ -1497,3 +1497,59 @@ body,
   color: var(--primary);
   border-color: color-mix(in srgb, var(--primary) 50%, transparent);
 }
+
+/* Owning the data (#27): profile sources, meters */
+.owned-bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.owned-bar .bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: grow-x 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+  transform-origin: left;
+}
+.meter-green .bar-fill {
+  background: #2f7d4f;
+}
+.meter-amber .bar-fill {
+  background: #d9931c;
+}
+.meter-red .bar-fill {
+  background: #b23a26;
+}
+.restaurant-profile {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.profile-row + .profile-row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.src-tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.src-crumbs {
+  background: color-mix(in srgb, #2f7d4f 16%, transparent);
+  color: #2f7d4f;
+}
+.src-osm {
+  background: color-mix(in srgb, #1f5f8b 14%, transparent);
+  color: #1f5f8b;
+}
+.src-google {
+  background: color-mix(in srgb, #8f5a06 14%, transparent);
+  color: #8f5a06;
+}
+.src-missing {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}

@@ -37,3 +37,26 @@ test('menu helpers', () => {
   assert.equal(priceAge('2026-06-01T08:00:00Z', now), '4 months ago')
   assert.equal(priceAge('2024-06-01T08:00:00Z', now), '2 years ago')
 })
+
+test('owned share counts member + open data, not Google', async () => {
+  const { ownedShare, needsHelp } = await import('../lib/restaurants.ts')
+  const r: any = {
+    formatted_address: '1 Main',
+    opening_hours: { utc: 0, periods: [] },
+    phone: '555',
+    website: null,
+    price_level: 2,
+    cuisine: 'Thai',
+    business_status: 'OPERATIONAL',
+    sources: {
+      address: 'osm',
+      hours: 'crumbs',
+      phone: 'google',
+      price_level: 'google',
+      cuisine: 'crumbs',
+      status: 'google',
+    },
+  }
+  assert.equal(ownedShare(r), 43) // 3 of 7
+  assert.deepEqual(needsHelp(r), ['phone', 'website', 'price_level', 'status'])
+})

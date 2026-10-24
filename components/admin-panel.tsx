@@ -41,6 +41,11 @@ const demoData = {
     feedback: 1,
     restaurants: 4,
     menu_dishes: 4,
+    owned_hours: 1,
+    owned_address: 3,
+    facts: 5,
+    db_bytes: 38 * 1024 ** 2,
+    storage_bytes: 120 * 1024 ** 2,
   },
   feedback: [
     {
@@ -53,6 +58,41 @@ const demoData = {
   flags: [{ key: 'ai_ideas', state: 'admin', note: 'AI dinner ideas' }] as Flag[],
   errors: [] as ClientError[],
   waitlist: [{ id: 'w1', email: 'friend@example.com', created_at: new Date().toISOString() }],
+}
+
+const mb = (bytes: number) =>
+  bytes >= 1024 ** 3
+    ? `${(bytes / 1024 ** 3).toFixed(2)} GB`
+    : `${Math.round(bytes / 1024 ** 2)} MB`
+
+/** Free-tier meter: green → amber at 60% → red at 80%. */
+function Meter({
+  label,
+  used,
+  limit,
+  hint,
+}: {
+  label: string
+  used: number
+  limit: number
+  hint: string
+}) {
+  const pct = Math.min(100, Math.round((used / limit) * 100))
+  const tone = pct >= 80 ? 'meter-red' : pct >= 60 ? 'meter-amber' : 'meter-green'
+  return (
+    <div>
+      <div className="flex justify-between text-sm">
+        <span className="font-semibold">{label}</span>
+        <span>
+          {mb(used)} · {pct}%
+        </span>
+      </div>
+      <span className={`owned-bar mt-1 ${tone}`}>
+        <span className="bar-fill" style={{ width: `${Math.max(2, pct)}%` }} />
+      </span>
+      {pct >= 60 && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
 }
 
 export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean }) {
@@ -154,6 +194,48 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
           </div>
         ) : (
           <div className="skeleton h-24" />
+        )}
+        {stats && (
+          <div className="flex flex-col gap-3">
+            <Meter
+              label="Database (free: 500 MB)"
+              used={stats.db_bytes ?? 0}
+              limit={500 * 1024 ** 2}
+              hint="Move shared restaurant tables to Cloudflare D1 (5 GB free) or go Supabase Pro ($25/mo, 8 GB) before this fills."
+            />
+            <Meter
+              label="Photos (free: 1 GB)"
+              used={stats.storage_bytes ?? 0}
+              limit={1024 ** 3}
+              hint="Move photos to Cloudflare R2 (10 GB free, no download fees) when this passes ~80%."
+            />
+            <div>
+              <p className="text-sm font-semibold">Data Crumbs owns</p>
+              <p className="text-xs text-muted-foreground">
+                Restaurants whose hours / address came from members or OpenStreetMap (kept forever),
+                not Google (borrowed).
+              </p>
+              {(['owned_hours', 'owned_address'] as const).map((key) => {
+                const pct = stats.restaurants
+                  ? Math.round(((stats[key] ?? 0) / stats.restaurants) * 100)
+                  : 0
+                return (
+                  <div key={key} className="mt-1 flex items-center gap-2 text-sm">
+                    <span className="w-16 shrink-0">
+                      {key === 'owned_hours' ? 'Hours' : 'Address'}
+                    </span>
+                    <span className="owned-bar flex-1">
+                      <span className="bar-fill" style={{ width: `${pct}%` }} />
+                    </span>
+                    <span className="w-10 text-right font-semibold">{pct}%</span>
+                  </div>
+                )
+              })}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {stats.facts ?? 0} facts added by members so far.
+              </p>
+            </div>
+          </div>
         )}
         <p className="text-xs text-muted-foreground">
           Counts only — no personal data. Supabase and Vercel dashboards show storage and bandwidth.

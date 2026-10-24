@@ -19,7 +19,73 @@ export type Restaurant = {
   hours_checked_at: string | null
   details_checked_at: string | null
   places_count: number
+  // Data ownership (#27): where each field came from, and how many members confirmed it.
+  sources?: Partial<Record<FactField, FactSource>>
+  verified?: Partial<Record<FactField, { n: number; at: string }>>
+  phone?: string | null
+  osm_id?: string | null
+  osm_checked_at?: string | null
 }
+
+export type FactField =
+  | 'name'
+  | 'address'
+  | 'location'
+  | 'hours'
+  | 'phone'
+  | 'website'
+  | 'price_level'
+  | 'cuisine'
+  | 'status'
+export type FactSource = 'crumbs' | 'osm' | 'google'
+export type Evidence = 'in_person' | 'photo' | 'website' | 'receipt' | 'phone_call'
+
+/** The facts a profile is scored on (name/location come with the place). */
+export const PROFILE_FIELDS: FactField[] = [
+  'address',
+  'hours',
+  'phone',
+  'website',
+  'price_level',
+  'cuisine',
+  'status',
+]
+
+const has = (r: Restaurant, f: FactField) => {
+  switch (f) {
+    case 'address':
+      return !!r.formatted_address
+    case 'hours':
+      return !!r.opening_hours
+    case 'phone':
+      return !!r.phone
+    case 'website':
+      return !!r.website
+    case 'price_level':
+      return r.price_level !== null && r.price_level !== undefined
+    case 'cuisine':
+      return !!r.cuisine
+    case 'status':
+      return !!r.business_status
+    default:
+      return true
+  }
+}
+
+/**
+ * How much of a profile Crumbs owns: fields that came from members or open data count fully,
+ * Google-only or missing fields don't. 0-100.
+ */
+export function ownedShare(r: Restaurant) {
+  const owned = PROFILE_FIELDS.filter(
+    (f) => has(r, f) && (r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'),
+  )
+  return Math.round((owned.length / PROFILE_FIELDS.length) * 100)
+}
+
+/** Fields that still need a member's eyes: missing, or only known from Google. */
+export const needsHelp = (r: Restaurant) =>
+  PROFILE_FIELDS.filter((f) => !has(r, f) || !r.sources?.[f] || r.sources?.[f] === 'google')
 
 export type MenuDish = {
   id: string
@@ -65,7 +131,8 @@ export function priceAge(iso: string, now = new Date()) {
 }
 
 /** Prices older than ~6 months get a "price from …" note. */
-export const priceIsOld = (iso: string, now = Date.now()) => now - new Date(iso).getTime() > 180 * 864e5
+export const priceIsOld = (iso: string, now = Date.now()) =>
+  now - new Date(iso).getTime() > 180 * 864e5
 
 /** Menu dishes not already in the group's own dish list. */
 export function missingFromOurs(menu: MenuDish[], ours: { name: string }[]) {
@@ -150,6 +217,53 @@ export async function shareHours(
     hours,
     status: status ?? '',
   })
+}
+
+export async function contributeFact(
+  supabase: any,
+  restaurantId: string,
+  fact: FactField,
+  val: unknown,
+  how: Evidence = 'in_person',
+): Promise<{ applied: boolean; agree: number }> {
+  const { data, error } = await supabase.rpc('contribute_fact', {
+    target: restaurantId,
+    fact,
+    val,
+    how,
+  })
+  if (error) throw error
+  return data
+}
+
+/** Asks the server to fill the profile from OpenStreetMap (at most every ~3 months per restaurant). */
+export async function matchOpenData(restaurantId: string, utc: number) {
+  const response = await fetch('/api/osm/match', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ restaurantId, utc }),
+  })
+  return response.ok
+    ? ((await response.json()) as { matched: string | null; fields?: string[] })
+    : null
+}
+
+export type Insights = {
+  visits: number
+  groups: number
+  per_head: number | null
+  takeout_share: number | null
+}
+/** Totals from every group's visits (never per group). */
+export async function loadInsights(supabase: any, restaurantId: string): Promise<Insights | null> {
+  const { data, error } = await supabase.rpc('restaurant_insights', { target: restaurantId })
+  return error ? null : data
+}
+
+export async function myContributions(supabase: any) {
+  const { data, error } = await supabase.rpc('my_contributions')
+  if (error) return null
+  return data as { facts: number; dishes: number; checks: number; restaurants: number }
 }
 
 export async function searchRestaurants(

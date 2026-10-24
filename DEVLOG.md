@@ -177,3 +177,20 @@ Still one SQL step (same v4 file; new section 13a). Aidan's direction: menu-phot
 - **Explore on the map** (🔭 button above Locate): everything to eat around where the map is looking (~1.2 km, OpenStreetMap via Overpass, free, cached a day), dashed "+" pins for places you haven't saved, tap → "+ Want to try" (linked to the shared profile). Shared helper `lib/add-found.ts`.
 - Admin counts: shared restaurants + menu dishes.
 - Tests 52/52 (new: restaurants). SQL tested on Postgres 16: cross-group sharing, non-members blocked (read-only, direct writes refused), flag hiding, Google/OSM collation, delete account with links. Production build passes; demo tours clean.
+
+## Round 14 - owning the data (Oct 24, Claude in Cowork)
+Aidan: "do what we can to build up our own data as much as possible — everything geared to making this self-sustaining." Google's terms only let us keep place IDs forever and coordinates for 30 days; names, addresses, hours etc. can't be stored. So every profile fact now records where it came from, and members + open data replace Google's copy over time. Still one SQL step (same v4 file, new section 13c).
+- **Sources on every fact** (`restaurants.sources`, `verified`): `crumbs` (members saw it) beats `osm` (OpenStreetMap, free to keep forever with credit) beats `google` (borrowed). A trigger fills sources for new profiles. Before going public the `google` fields can be dropped without losing anything Crumbs owns.
+- **Members add facts** (`restaurant_facts`, `contribute_fact`): address, hours, phone, website, price, cuisine, open/closed — each with "how do you know?" (I was there / photo / their website / called them). Applies at once over Google or OSM; changing something members already set needs 2 people to agree; repeating the same value is a confirmation ("✓ Crumbs · 2"). Google's value is never offered as the starting text — members enter what they see.
+- **Restaurant info card** on the place page (`components/restaurant-profile.tsx`): "% Crumbs-owned" meter, each field with its source tag, "✓ Still right" / "Fix" / "Add what you see", hours typed freely or **read off a photo of the door sign** (`lib/hours-text.ts` parses "Mon-Fri 11am-10pm; Sun closed" and OSM `opening_hours`). Hours members add also update the group's "Open now" line. Totals from all groups' visits (`restaurant_insights`: visits, groups, ~$ per person after 3+ visits, % takeout) — Crumbs' own data, never per group.
+- **OpenStreetMap enrichment** (`/api/osm/match`, `lib/osm-match.ts`, `merge_open_data`): when a profile is opened, the matching OSM place (similar name within 80 m) fills address/phone/website/cuisine/hours where we only had Google or nothing. Once per restaurant every ~3 months.
+- Shared hours from members/OSM are trusted for 90 days (Google's for 14) before any new Google lookup.
+- **Building Crumbs** card in Achievements (`my_contributions`): facts, menu dishes, checks, places helped + 5 badges (Scout, Map maker, Menu maker, Fact checker, Local legend).
+- **Admin**: free-tier meters (database vs 500 MB, photos vs 1 GB; amber at 60%, red at 80% with what to do), and "Data Crumbs owns" (% of restaurants with owned hours / address, facts added).
+- Tests 58/58 (new: hours text, OSM match, ownership). SQL tested: 2-person rule, confirmations, OSM can't override members, bad websites refused, insights. Build passes; demo tour clean.
+
+### Go-public data checklist (not built yet — do before launch)
+1. Purge `google`-sourced fields from `restaurants` (and Google names/addresses/hours from group `places`, keeping place IDs; re-fetch live when shown).
+2. Show Google-only details live (fetched when opened, not stored), with Google attribution; never on the OSM map.
+3. Consider importing Overture Maps places (CDLA-Permissive-2.0, keep forever) for cities as they're needed, as the base layer under member facts.
+4. OSM data in a publicly shared database triggers ODbL share-alike — keep OSM-sourced fields marked (already done via `sources`).

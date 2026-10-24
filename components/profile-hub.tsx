@@ -10,6 +10,7 @@ import { BingoCard, StatsPanel } from './stats-panel'
 import { PhotoTimeline } from './photo-timeline'
 import { SettingsPanel } from './settings-panel'
 import { AdminPanel } from './admin-panel'
+import { ContributionsCard } from './contributions-card'
 
 export type HubPage = 'menu' | 'achievements' | 'passport' | 'stats' | 'settings' | 'admin'
 
@@ -139,6 +140,7 @@ export function ProfileHub({
         <Overlay label="Achievements" title="Achievements" onClose={closeTop}>
           <div className="stagger flex flex-col gap-4">
             <StreakCard places={allPlaces} />
+            <ContributionsCard supabase={settings.supabase} demo={settings.demo} v4={!!settings.v4} />
             <div className="badge-grid">
               {earned.map((badge) => (
                 <div

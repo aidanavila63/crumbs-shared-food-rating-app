@@ -11,7 +11,9 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
   // #27 Another group may have fetched these hours recently: reuse them (no Google call).
   if (!demo && place.restaurant_id) {
     const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
-    if (shared?.hours_checked_at && !hoursAreStale(shared)) {
+    // Hours members or OpenStreetMap gave us are Crumbs' own: trust them for ~3 months.
+    const owned = shared?.sources?.hours === 'crumbs' || shared?.sources?.hours === 'osm'
+    if (shared?.hours_checked_at && shared.opening_hours && !hoursAreStale(shared, owned ? 90 : 14)) {
       const reused = {
         opening_hours: shared.opening_hours,
         business_status: shared.business_status,

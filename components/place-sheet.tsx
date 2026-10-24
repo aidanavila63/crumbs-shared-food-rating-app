@@ -25,6 +25,7 @@ import { menuDishes, type MenuLine } from '@/lib/ocr-parse'
 import { ReadPhotoButton } from './photo-reader'
 import { MenuReview } from './menu-review'
 import { CommunityMenu } from './community-menu'
+import { RestaurantProfile } from './restaurant-profile'
 import { useRestaurant } from '@/hooks/use-restaurant'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
@@ -882,6 +883,14 @@ export function PlaceSheet({
             </div>
           </div>
         )}
+        <RestaurantProfile
+          store={restaurant}
+          onHours={async (hours) => {
+            const changes = { opening_hours: hours, hours_checked_at: new Date().toISOString() }
+            onUpdate({ ...latest.current, ...changes })
+            if (!demo) await supabase.from('places').update(changes).eq('id', place.id)
+          }}
+        />
         <FactsEditor place={place} supabase={supabase} demo={demo} userId={userId} onUpdate={onUpdate} />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
         <div className="flex flex-col gap-2">
