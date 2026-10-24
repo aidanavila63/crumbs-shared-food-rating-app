@@ -1,6 +1,15 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { Dices, Map as MapIcon, Plus, Search, Users, Utensils, UtensilsCrossed } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  CheckCheck,
+  Dices,
+  Map as MapIcon,
+  Plus,
+  Search,
+  Users,
+  Utensils,
+  UtensilsCrossed,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
@@ -17,6 +26,10 @@ import { notifyMates } from '@/lib/push'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
 import { haptic, useMotionPrefs } from '@/lib/motion'
+import { distanceKm } from '@/lib/stats'
+import { useUserLocation } from '@/lib/use-user-location'
+import { QuickLogSheet } from './quick-log-sheet'
+import { captureJoinCode, clearJoinCode, pendingJoinCode, stripJoinParam } from '@/lib/invite'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 
 const tabs = [
@@ -129,7 +142,11 @@ function CrumbsShell() {
     return view.filter((place) => ids.has(place.id))
   }, [view, tripList])
   const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
-  const [sort, setSort] = useState<'Newest' | 'Top rated' | 'A–Z'>('Newest')
+  const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
+  const [quickLog, setQuickLog] = useState(false)
+  // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
+  const here = useUserLocation(sort === 'Nearest')
+  const origin = here ?? home
   const [adding, setAdding] = useState(false)
   const [surprising, setSurprising] = useState(false)
   const [email, setEmail] = useState('')
@@ -148,14 +165,35 @@ function CrumbsShell() {
     const list = view.filter((place) => {
       const inFilter =
         filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
-      const haystack =
-        `${place.name} ${place.formatted_address ?? ''} ${place.cuisine ?? ''} ${(place.tags ?? []).join(' ')}`.toLowerCase()
+      // #82: search also looks inside dishes and everyone's notes.
+      const haystack = [
+        place.name,
+        place.formatted_address,
+        place.cuisine,
+        ...(place.tags ?? []),
+        ...place.place_ratings.map((rating) => rating.notes),
+        ...(place.dishes ?? []).flatMap((dish) => [
+          dish.name,
+          ...(dish.tags ?? []),
+          ...dish.dish_ratings.map((rating) => rating.notes),
+        ]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
       return inFilter && haystack.includes(needle)
     })
     if (sort === 'Top rated') return [...list].sort((a, b) => placeAverage(b) - placeAverage(a))
     if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
+    if (sort === 'Nearest' && origin) {
+      const km = (place: Place) =>
+        place.latitude !== null && place.longitude !== null
+          ? distanceKm(origin, { lat: place.latitude, lng: place.longitude })
+          : Infinity
+      return [...list].sort((a, b) => km(a) - km(b))
+    }
     return list
-  }, [view, filter, query, sort])
+  }, [view, filter, query, sort, origin])
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -182,19 +220,43 @@ function CrumbsShell() {
     setGroupName('')
     toast.success('Group created')
   }
-  async function joinGroup() {
+  async function joinGroup(code = joinCode) {
     if (!data.user) return
     setBusy(true)
-    const { data: group, error } = await data.supabase.rpc('join_group', { code: joinCode })
+    const { data: group, error } = await data.supabase.rpc('join_group', { code })
     setBusy(false)
     if (error) return toast.error(error.message)
-    data.setGroups(
-      data.groups.some((item) => item.id === group.id) ? data.groups : [...data.groups, group],
+    data.setGroups((current) =>
+      current.some((item) => item.id === group.id) ? current : [...current, group],
     )
     data.setGroup(group)
     setJoinCode('')
-    toast.success('Joined group')
+    haptic('success')
+    toast.success(`Joined ${group.name}`)
   }
+  // #44 Invite links (…/?join=CODE): remember the code through sign-in, then join automatically.
+  const [invite] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    captureJoinCode()
+    return pendingJoinCode()
+  })
+  const joining = useRef(false)
+  useEffect(() => {
+    // Next's router writes the URL once on start-up, so tidy ?join= just after that.
+    const timer = setTimeout(stripJoinParam, 0)
+    return () => clearTimeout(timer)
+  }, [])
+  useEffect(() => {
+    if (!data.user || !data.groupsLoaded || joining.current) return
+    const code = pendingJoinCode()
+    if (!code) return
+    joining.current = true
+    clearJoinCode()
+    const existing = data.groups.find((group) => group.join_code === code)
+    if (existing) data.setGroup(existing)
+    else if (!data.demo) joinGroup(code)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user, data.groupsLoaded])
   if (!data.user && data.loading)
     return (
       <main className="grid min-h-screen place-items-center bg-background">
@@ -211,6 +273,11 @@ function CrumbsShell() {
             </div>
             <span className="font-serif text-2xl font-bold">crumbs</span>
           </div>
+          {invite && (
+            <p className="tag preview-pop mt-6 w-fit">
+              🎉 You’re invited — sign in to join the group
+            </p>
+          )}
           <h1 className="mt-8 font-serif text-4xl font-bold">Your shared food map</h1>
           <p className="mt-3 leading-6 text-muted-foreground">
             Collect the places and dishes you love together.
@@ -302,7 +369,7 @@ function CrumbsShell() {
             <button
               className="secondary mt-3 w-full"
               disabled={busy || joinCode.length !== 6}
-              onClick={joinGroup}
+              onClick={() => joinGroup()}
             >
               Join group
             </button>
@@ -375,7 +442,7 @@ function CrumbsShell() {
                 <div className="tab-pane tab-from-right">
                   <ListsTab
                     lists={data.lists}
-                    places={data.places}
+                    places={view}
                     userId={data.user?.id}
                     groupId={data.group.id}
                     demo={data.demo}
@@ -385,6 +452,7 @@ function CrumbsShell() {
                       setTripMapId(id)
                       setTab('Map')
                     }}
+                    onSelect={setSelected}
                   />
                 </div>
               ) : (
@@ -403,6 +471,13 @@ function CrumbsShell() {
                         onChange={(event) => setQuery(event.target.value)}
                       />
                     </div>
+                    <button
+                      className="secondary !min-h-12 shrink-0 !px-3"
+                      aria-label="Quick log a visit"
+                      onClick={() => setQuickLog(true)}
+                    >
+                      <CheckCheck size={20} /> Log
+                    </button>
                     <button
                       className="primary size-12 shrink-0"
                       aria-label="Add a place"
@@ -424,7 +499,7 @@ function CrumbsShell() {
                     ))}
                   </div>
                   <div className="chip-row min-w-0">
-                    {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
+                    {(['Newest', 'Top rated', 'Nearest', 'A–Z'] as const).map((item) => (
                       <button
                         key={item}
                         aria-pressed={sort === item}
@@ -435,6 +510,11 @@ function CrumbsShell() {
                       </button>
                     ))}
                   </div>
+                  {sort === 'Nearest' && !origin && (
+                    <p className="text-xs text-muted-foreground">
+                      Finding you… If location is blocked, set Home in Settings to sort by distance.
+                    </p>
+                  )}
                   {data.loading ? (
                     <div
                       className="flex flex-col gap-4"
@@ -505,6 +585,7 @@ function CrumbsShell() {
               loading={data.loading}
               onSelect={setSelected}
               onSurprise={() => setSurprising(true)}
+              home={home}
             />
           )}
           {tab === 'Group' && (
@@ -588,6 +669,24 @@ function CrumbsShell() {
             setSurprising(false)
             setSelected(place)
           }}
+        />
+      )}
+      {quickLog && (
+        <QuickLogSheet
+          places={data.places}
+          userId={data.user.id}
+          demo={data.demo}
+          supabase={data.supabase}
+          onClose={() => setQuickLog(false)}
+          onAddNew={() => {
+            setQuickLog(false)
+            setAdding(true)
+          }}
+          onUpdate={(place) =>
+            data.setPlaces((current) =>
+              current.map((item) => (item.id === place.id ? place : item)),
+            )
+          }
         />
       )}
       {adding && (

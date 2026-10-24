@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Figtree, Young_Serif } from 'next/font/google'
 import { SwRegister } from '@/components/sw-register'
 import { OfflineBanner } from '@/components/offline-banner'
+import { EARLY_PREFS_SCRIPT } from '@/lib/early-prefs'
 import './globals.css'
 
 const figtree = Figtree({ subsets: ['latin'], variable: '--font-figtree' })
@@ -29,7 +30,11 @@ export const viewport: Viewport = {
 }
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the early script below sets data-theme/accent/motion before React loads.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: EARLY_PREFS_SCRIPT }} />
+      </head>
       <body className={`${figtree.variable} ${youngSerif.variable}`}>
         {children}
         <OfflineBanner />

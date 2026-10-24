@@ -94,6 +94,13 @@ export function PlaceEditor({
         longitude: found.longitude,
         google_maps_url: found.google_maps_url,
         website: found.website,
+        ...(found.hours_checked_at
+          ? {
+              opening_hours: found.opening_hours ?? null,
+              business_status: found.business_status ?? null,
+              hours_checked_at: found.hours_checked_at,
+            }
+          : {}),
         price_level: place.price_level ?? found.price_level,
         cuisine: place.cuisine ?? found.cuisine,
       }

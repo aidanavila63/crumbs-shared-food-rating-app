@@ -4,6 +4,7 @@ import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import { normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
 import { surprisePool } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
+import { haptic } from '@/lib/motion'
 import { Sheet } from './sheet'
 
 /** Pick a want-to-try place at random, from only the ones that fit what you feel like. */
@@ -45,6 +46,7 @@ export function SurpriseSheet({
   const waiting = near && !location
 
   function spin() {
+    haptic('select')
     const options = pool.length > 1 ? pool.filter((place) => place.id !== picked?.id) : pool
     setPicked(options[Math.floor(Math.random() * options.length)] ?? null)
   }
@@ -123,7 +125,7 @@ export function SurpriseSheet({
           Places you&apos;ve been are never picked.
         </p>
         {picked && (
-          <div className="surface flex flex-col gap-2">
+          <div key={picked.id} className="surface dice-reveal flex flex-col gap-2">
             <p className="font-serif text-2xl font-bold">{picked.name}</p>
             <p className="text-sm text-muted-foreground">
               {[

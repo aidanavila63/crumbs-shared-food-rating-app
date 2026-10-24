@@ -7,6 +7,7 @@ import { placeAverage } from './place-card'
 import { TonightCard } from './tonight-card'
 import { CravingButton } from './craving-button'
 import { ChallengesCard } from './goals-cards'
+import { WeatherNudge } from './weather-nudge'
 
 type Idea = { title: string; why: string }
 
@@ -20,6 +21,7 @@ export function DecideTab({
   loading = false,
   onSelect,
   onSurprise,
+  home = null,
 }: {
   places: Place[]
   /** Unmasked places (blind ratings) for challenges, which only count visits. */
@@ -30,6 +32,7 @@ export function DecideTab({
   loading?: boolean
   onSelect: (place: Place) => void
   onSurprise: () => void
+  home?: { lat: number; lng: number } | null
 }) {
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
@@ -110,6 +113,8 @@ export function DecideTab({
         </button>
         <CravingButton groupId={groupId} />
       </div>
+
+      {!loading && <WeatherNudge places={places} home={home} onSelect={onSelect} />}
 
       {!loading && <TonightCard places={places} members={members} onOpen={onSelect} />}
 

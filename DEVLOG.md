@@ -127,3 +127,17 @@ Delivered as patch files (Claude can't push to this repo). Project-level notes l
 - `.gitignore`: `tsconfig.tsbuildinfo`, `next-env.d.ts`.
 
 **Verified**: `tsc --noEmit` clean, 31/31 tests (4 new badge tests), eslint 0 errors (warnings all pre-existing). Toured every tab, the profile menu and all four pages in a 390×844 headless browser (demo mode, OSM map): no page errors; Escape closes only the top overlay; the Animations switch flips `data-motion`. Not tested on a real phone.
+
+## Round 10 - batch 2 (Oct 24, Claude in Cowork)
+Delivered in the same patch series as Round 9 (`crumbs-batch2.patch` = all 4 commits on top of `main` 85c553f).
+- **#27 cheaper Google adds:** the add-place / "Find on map" request now also asks for `regularOpeningHours`, `businessStatus`, `utcOffsetMinutes` and saves them. The request was already Enterprise-tier (priceLevel + websiteURI) and is billed once at its highest tier, so this is free and removes the separate hours lookup the first time a place was opened.
+- **#72 Quick log** (`components/quick-log-sheet.tsx`): "Log" button next to + on Places → pick a place (closest first if location allowed, otherwise want-to-try first) → stars (optional) + spend (optional) → logs a visit for today, marks Been, saves your rating.
+- **#23 Nearest sort** (live location, falls back to Home) and **#82 search** now matches dish names, dish tags and everyone's notes.
+- **#22 / #21 Map:** filter button on the map → rating (3★+/4★+/4.5★+), price, cuisine, and pin colours (by rating / Been-vs-want, remembered on the phone). Selected pin also grows on the OpenStreetMap map; OSM pins only drop in on the first draw.
+- **#42 Smart lists** (`lib/smart-lists.ts`): Top rated, Regulars, Rate these, Never again — on the Lists view. **#83** lists can be sorted (Newest / A–Z / Biggest); inside a list there's search + "In list" filter.
+- **#63 Cuisine breakdown** in Stats & memories.
+- **#44 Invite link + QR:** Group tab → Copy invite link / QR code (`qrcode` package, loaded only when opened). `/?join=CODE` is remembered through sign-in (localStorage, 1 day) and joins automatically; sign-in screen shows "You're invited".
+- **#79 Theme + accent:** Settings → Theme (Auto/Light/Dark) and 5 accent colours. An inline `<head>` script (`lib/early-prefs.ts`) applies theme/accent/animations before paint (no flash). CSS: `:root[data-theme]`, `:root[data-accent]`, `--accent-l/-d/-d-fg`.
+- **#35 Weather nudge** (`lib/weather.ts`, `components/weather-nudge.tsx`): Open-Meteo (free, no key; CC BY 4.0 attribution shown; free tier is non-commercial — revisit if monetized). Uses Home or already-granted location (never prompts), cached 30 min. Settings → Weather nudges on/off (per phone for now; group-owner setting later).
+- Animations: Surprise us result tumbles in like a dice roll; weather emoji floats; filter panel/swatches/smart cards pop; theme changes fade.
+- Tests: 35/35 (new: smart lists, weather). Headless tour in demo mode (390×844) with the weather API mocked: join link, nearest sort, dish search, quick log, smart lists, map filters + pin modes, weather nudge, QR, dark + accent persisting across reload — no page errors.

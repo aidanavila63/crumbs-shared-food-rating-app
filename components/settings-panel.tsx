@@ -3,8 +3,10 @@ import { useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, Profile } from '@/hooks/use-crumbs-data'
-import { canVibrate, setMotionPrefs, useMotionPrefs } from '@/lib/motion'
+import { canVibrate, haptic, setMotionPrefs, useMotionPrefs } from '@/lib/motion'
+import { ACCENTS, setThemePrefs, useThemePrefs, type ThemeMode } from '@/lib/theme'
 import { Switch } from './switch'
+import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
 
@@ -35,11 +37,14 @@ export function SettingsPanel({
   onSignOut: () => void
 }) {
   const prefs = useMotionPrefs()
+  const theme = useThemePrefs()
+  const themes: ThemeMode[] = ['auto', 'light', 'dark']
   // Only rendered after a tap (inside the Settings overlay), so reading navigator here is safe.
   const [vibrates] = useState(canVibrate)
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
   const [groupName, setGroupName] = useState(group.name)
   const [saving, setSaving] = useState<'name' | 'group' | null>(null)
+  const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
   const isOwner = !!userId && group.created_by === userId
 
   async function saveName() {
@@ -72,6 +77,50 @@ export function SettingsPanel({
     <div className="stagger flex flex-col gap-4">
       <section className="surface settings-card">
         <h3 className="settings-heading">Look &amp; feel</h3>
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">Theme</span>
+          <div className="segmented segmented-3" role="radiogroup" aria-label="Theme">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{ transform: `translateX(${themes.indexOf(theme.theme) * 100}%)` }}
+            />
+            {themes.map((mode) => (
+              <button
+                key={mode}
+                role="radio"
+                aria-checked={theme.theme === mode}
+                className={theme.theme === mode ? 'segmented-active' : ''}
+                onClick={() => {
+                  haptic('tap')
+                  setThemePrefs({ theme: mode })
+                }}
+              >
+                {mode === 'auto' ? 'Auto' : mode === 'light' ? 'Light' : 'Dark'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">Accent colour</span>
+          <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Accent colour">
+            {ACCENTS.map((accent) => (
+              <button
+                key={accent.id}
+                role="radio"
+                aria-checked={theme.accent === accent.id}
+                aria-label={accent.label}
+                title={accent.label}
+                className={`swatch ${theme.accent === accent.id ? 'swatch-on' : ''}`}
+                style={{ background: accent.swatch }}
+                onClick={() => {
+                  haptic('select')
+                  setThemePrefs({ accent: accent.id })
+                }}
+              />
+            ))}
+          </div>
+        </div>
         <div className="settings-row">
           <span>
             <span className="font-semibold">Animations</span>
@@ -99,6 +148,25 @@ export function SettingsPanel({
             checked={prefs.haptics && vibrates}
             disabled={!vibrates}
             onChange={(on) => setMotionPrefs({ haptics: on })}
+          />
+        </div>
+        <div className="settings-row">
+          <span>
+            <span className="font-semibold">Weather nudges</span>
+            <span className="block text-sm text-muted-foreground">
+              “Rainy tonight — soup weather” on Decide &amp; Plan. Uses your Home or allowed
+              location.
+            </span>
+          </span>
+          <Switch
+            label="Weather nudges"
+            checked={weatherOn}
+            onChange={(on) => {
+              setWeatherOn(on)
+              try {
+                localStorage.setItem(WEATHER_KEY, on ? 'on' : 'off')
+              } catch {}
+            }}
           />
         </div>
       </section>

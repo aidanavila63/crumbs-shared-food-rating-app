@@ -25,6 +25,7 @@ export function StatsPanel({
       dishes: bestDishes(places, 10),
       match: userId && partner ? tasteMatch(places, userId, partner.id) : null,
       memories: onThisDay(places),
+      cuisines: cuisineBreakdown(places),
     }),
     [places, userId, partner],
   )
@@ -85,8 +86,51 @@ export function StatsPanel({
           )}
         </div>
       )}
+      {stats.cuisines.length > 0 && (
+        <div className="surface flex flex-col gap-3">
+          <span className="tag w-fit">Cuisines</span>
+          {stats.cuisines.map((row) => (
+            <div key={row.cuisine} className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="font-semibold">{row.cuisine}</span>
+                <span className="text-xs text-muted-foreground">
+                  {row.count} place{row.count === 1 ? '' : 's'}
+                  {row.average ? ` · ${row.average.toFixed(1)}★` : ''}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div
+                  className="bar-fill h-full rounded-full bg-primary"
+                  style={{ width: `${(row.average / 5) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   )
+}
+
+/** #63: every cuisine you've been to, with how many places and the group's average. */
+function cuisineBreakdown(places: Place[]) {
+  const rows = new Map<string, { cuisine: string; count: number; scores: number[] }>()
+  places
+    .filter((place) => place.status === 'Been' && place.cuisine)
+    .forEach((place) => {
+      const key = place.cuisine!.trim()
+      const row = rows.get(key.toLowerCase()) ?? { cuisine: key, count: 0, scores: [] }
+      row.count += 1
+      place.place_ratings.forEach((rating) => row.scores.push(rating.score))
+      rows.set(key.toLowerCase(), row)
+    })
+  return [...rows.values()]
+    .map((row) => ({
+      cuisine: row.cuisine,
+      count: row.count,
+      average: row.scores.length ? row.scores.reduce((a, b) => a + b, 0) / row.scores.length : 0,
+    }))
+    .sort((a, b) => b.average - a.average || b.count - a.count)
 }
 
 /** 5×5 cuisine bingo card (the "cuisine passport"). */

@@ -163,8 +163,11 @@ export function mergeMasked(real: Place, next: Place, userId?: string): Place {
 }
 
 // ---------- map pins ----------
-export function markerClass(place: Place, average: number) {
+export type PinMode = 'rating' | 'status'
+/** Pin colour: by how much you liked it (default) or just Been vs Want to try (#21). */
+export function markerClass(place: Place, average: number, mode: PinMode = 'rating') {
   if (place.status !== 'Been') return 'marker-want'
+  if (mode === 'status') return 'marker-been'
   if (average >= 4) return 'marker-great'
   if (average >= 3) return 'marker-ok'
   if (average > 0) return 'marker-low'

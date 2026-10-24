@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
-import { markerClass } from '@/lib/place-info'
+import { markerClass, type PinMode } from '@/lib/place-info'
 import 'leaflet/dist/leaflet.css'
 
 type Target = { lat: number; lng: number } | null
@@ -14,15 +14,21 @@ export function OsmMap({
   locateTarget,
   onPick,
   onBackgroundClick,
+  pinMode = 'rating',
+  selectedId = null,
 }: {
   places: Place[]
   center: { lat: number; lng: number }
   locateTarget: Target
   onPick: (id: string) => void
   onBackgroundClick: () => void
+  pinMode?: PinMode
+  selectedId?: string | null
 }) {
   const box = useRef<HTMLDivElement>(null)
-  const state = useRef<{ L: any; map: any; layer: any; fitted: string } | null>(null)
+  const state = useRef<{ L: any; map: any; layer: any; fitted: string; drawn?: boolean } | null>(
+    null,
+  )
   const callbacks = useRef({ onPick, onBackgroundClick })
   callbacks.current = { onPick, onBackgroundClick }
 
@@ -56,12 +62,15 @@ export function OsmMap({
     if (!current) return
     const { L, map, layer } = current
     layer.clearLayers()
+    // Pins drop in on the first draw only; redraws (filters, selection) shouldn't replay it.
+    const still = current.drawn ? ' marker-still' : ''
+    current.drawn = true
     const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
     located.forEach((place) => {
       const average = placeAverage(place)
       const icon = L.divIcon({
         className: '',
-        html: `<div class="marker ${markerClass(place, average)}">${
+        html: `<div class="marker ${markerClass(place, average, pinMode)}${place.id === selectedId ? ' marker-selected' : ''}${still}">${
           average ? average.toFixed(1) : '+'
         }</div>`,
         iconSize: [44, 30],
@@ -85,7 +94,7 @@ export function OsmMap({
     }
   }
 
-  useEffect(draw, [places])
+  useEffect(draw, [places, pinMode, selectedId])
 
   useEffect(() => {
     if (locateTarget) state.current?.map.setView([locateTarget.lat, locateTarget.lng], 14)

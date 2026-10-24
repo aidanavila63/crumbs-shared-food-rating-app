@@ -1,12 +1,13 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { LocateFixed, MapPin } from 'lucide-react'
+import { LocateFixed, MapPin, SlidersHorizontal } from 'lucide-react'
 import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { OsmMap } from './osm-map'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
-import { markerClass } from '@/lib/place-info'
+import { markerClass, type PinMode } from '@/lib/place-info'
+import { haptic } from '@/lib/motion'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -50,15 +51,41 @@ export function MapTab({
 }) {
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'All' | Status | 'Pinned'>('All')
+  // #22 extra filters + #21 pin colours (pin colours are remembered on this phone).
+  const [showFilters, setShowFilters] = useState(false)
+  const [minRating, setMinRating] = useState(0)
+  const [prices, setPrices] = useState<number[]>([])
+  const [cuisine, setCuisine] = useState<string | null>(null)
+  const [pinMode, setPinModeState] = useState<PinMode>(() => {
+    try {
+      return localStorage.getItem('crumbs-pin-mode') === 'status' ? 'status' : 'rating'
+    } catch {
+      return 'rating'
+    }
+  })
+  function setPinMode(mode: PinMode) {
+    setPinModeState(mode)
+    try {
+      localStorage.setItem('crumbs-pin-mode', mode)
+    } catch {}
+  }
+  const cuisines = useMemo(
+    () => [...new Set(places.map((place) => place.cuisine).filter((c): c is string => !!c))].sort(),
+    [places],
+  )
+  const extraCount = (minRating ? 1 : 0) + (prices.length ? 1 : 0) + (cuisine ? 1 : 0)
   const [location, setLocation] = useState({ lat: 20, lng: 0 })
   const [locateTarget, setLocateTarget] = useState<{ lat: number; lng: number } | null>(null)
   const filtered = useMemo(
     () =>
       places.filter(
         (place) =>
-          filter === 'All' || (filter === 'Pinned' ? place.pinned : place.status === filter),
+          (filter === 'All' || (filter === 'Pinned' ? place.pinned : place.status === filter)) &&
+          (!minRating || placeAverage(place) >= minRating) &&
+          (!prices.length || (place.price_level !== null && prices.includes(place.price_level))) &&
+          (!cuisine || place.cuisine === cuisine),
       ),
-    [filter, places],
+    [filter, places, minRating, prices, cuisine],
   )
   const preview = filtered.find((place) => place.id === previewId) ?? null
   const googleDown = useGoogleDown()
@@ -107,7 +134,129 @@ export function MapTab({
               {item}
             </button>
           ))}
+          <button
+            aria-pressed={showFilters}
+            aria-label="More filters and pin colours"
+            className={`chip ${showFilters || extraCount ? 'chip-active' : ''}`}
+            onClick={() => {
+              haptic('tap')
+              setShowFilters(!showFilters)
+            }}
+          >
+            <SlidersHorizontal size={16} />
+            {extraCount ? <span className="ml-1">{extraCount}</span> : null}
+          </button>
         </div>
+        {showFilters && (
+          <div className="surface map-filters absolute left-3 right-3 top-16 z-20 flex flex-col gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Rating
+              </p>
+              <div className="chip-row mt-1">
+                {[0, 3, 4, 4.5].map((value) => (
+                  <button
+                    key={value}
+                    aria-pressed={minRating === value}
+                    className={`chip chip-sm ${minRating === value ? 'chip-active' : ''}`}
+                    onClick={() => setMinRating(value)}
+                  >
+                    {value ? `${value}★+` : 'Any'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Price
+              </p>
+              <div className="chip-row mt-1">
+                {[1, 2, 3, 4].map((level) => (
+                  <button
+                    key={level}
+                    aria-pressed={prices.includes(level)}
+                    className={`chip chip-sm ${prices.includes(level) ? 'chip-active' : ''}`}
+                    onClick={() =>
+                      setPrices(
+                        prices.includes(level)
+                          ? prices.filter((p) => p !== level)
+                          : [...prices, level],
+                      )
+                    }
+                  >
+                    {'$'.repeat(level)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {cuisines.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Cuisine
+                </p>
+                <div className="chip-row mt-1">
+                  <button
+                    aria-pressed={!cuisine}
+                    className={`chip chip-sm ${!cuisine ? 'chip-active' : ''}`}
+                    onClick={() => setCuisine(null)}
+                  >
+                    Any
+                  </button>
+                  {cuisines.map((item) => (
+                    <button
+                      key={item}
+                      aria-pressed={cuisine === item}
+                      className={`chip chip-sm ${cuisine === item ? 'chip-active' : ''}`}
+                      onClick={() => setCuisine(cuisine === item ? null : item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Pin colours
+              </p>
+              <div className="chip-row mt-1">
+                {(
+                  [
+                    ['rating', 'By rating'],
+                    ['status', 'Been / want to try'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    aria-pressed={pinMode === mode}
+                    className={`chip chip-sm ${pinMode === mode ? 'chip-active' : ''}`}
+                    onClick={() => setPinMode(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-between">
+              <button
+                className="text-sm text-muted-foreground underline"
+                onClick={() => {
+                  setMinRating(0)
+                  setPrices([])
+                  setCuisine(null)
+                }}
+              >
+                Clear filters
+              </button>
+              <button
+                className="text-sm font-bold text-primary"
+                onClick={() => setShowFilters(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
         {useOsm ? (
           <OsmMap
             places={filtered}
@@ -115,6 +264,8 @@ export function MapTab({
             locateTarget={locateTarget}
             onPick={setPreviewId}
             onBackgroundClick={() => setPreviewId(null)}
+            pinMode={pinMode}
+            selectedId={previewId}
           />
         ) : (
           <>
@@ -139,7 +290,7 @@ export function MapTab({
                     onClick={() => setPreviewId(place.id)}
                   >
                     <div
-                      className={`marker ${markerClass(place, placeAverage(place))} ${previewId === place.id ? 'marker-selected' : ''}`}
+                      className={`marker ${markerClass(place, placeAverage(place), pinMode)} ${previewId === place.id ? 'marker-selected' : ''}`}
                     >
                       {placeAverage(place) ? placeAverage(place).toFixed(1) : '+'}
                     </div>

@@ -45,6 +45,9 @@ export function AddPlaceSheet({
           cuisine: found?.cuisine ?? null,
           website: found?.website ?? null,
           google_maps_url: found?.google_maps_url ?? null,
+          opening_hours: found?.opening_hours ?? null,
+          business_status: found?.business_status ?? null,
+          hours_checked_at: found?.hours_checked_at ?? null,
           status,
           pinned: false,
           tags: [],
@@ -67,6 +70,14 @@ export function AddPlaceSheet({
             website: found?.website ?? null,
             google_maps_url: found?.google_maps_url ?? null,
             google_place_id: found?.google_place_id ?? `manual:${crypto.randomUUID()}`,
+            // Hours came in the same Google request; saving them skips a second lookup.
+            ...(found?.hours_checked_at
+              ? {
+                  opening_hours: found.opening_hours ?? null,
+                  business_status: found.business_status ?? null,
+                  hours_checked_at: found.hours_checked_at,
+                }
+              : {}),
             status,
             pinned: false,
             tags: [],

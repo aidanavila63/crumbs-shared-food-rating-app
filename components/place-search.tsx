@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
+import { hoursFromGoogle, type Hours } from '@/lib/place-info'
 
 export type FoundPlace = {
   google_place_id: string
@@ -15,9 +16,16 @@ export type FoundPlace = {
   cuisine: string | null
   website: string | null
   google_maps_url: string | null
+  /** Filled when the place came from Google (same request, so no second lookup later). */
+  opening_hours?: Hours | null
+  business_status?: string | null
+  hours_checked_at?: string | null
 }
 
-// Only these fields are requested, to stay inside the cheap Places tiers.
+// One request gets everything. priceLevel + websiteURI already put this in Google's
+// "Enterprise" tier (1,000 free a month), and a request is billed once at its highest tier,
+// so adding the opening hours here is free — and saves the separate hours lookup that used
+// to happen the first time a place was opened.
 const FIELDS = [
   'id',
   'displayName',
@@ -27,6 +35,9 @@ const FIELDS = [
   'websiteURI',
   'googleMapsURI',
   'primaryType',
+  'regularOpeningHours',
+  'businessStatus',
+  'utcOffsetMinutes',
 ]
 
 const PRICE: Record<string, number> = {
@@ -62,6 +73,9 @@ export function toFoundPlace(place: any): FoundPlace {
     cuisine: cuisineFrom(place.primaryType),
     website: place.websiteURI ?? null,
     google_maps_url: place.googleMapsURI ?? null,
+    opening_hours: hoursFromGoogle(place),
+    business_status: (place.businessStatus as string | null) ?? null,
+    hours_checked_at: new Date().toISOString(),
   }
 }
 
