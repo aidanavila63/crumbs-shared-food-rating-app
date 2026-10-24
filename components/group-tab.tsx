@@ -160,7 +160,11 @@ export function GroupTab({
                 <span>
                   <strong>{member.display_name}</strong>
                   {member.id === userId ? ' (you)' : ''}
-                  {member.id === group.created_by && <span className="tag ml-2">owner</span>}
+                  {member.id === group.created_by ? (
+                    <span className="tag ml-2">owner</span>
+                  ) : member.role === 'admin' ? (
+                    <span className="tag ml-2">admin</span>
+                  ) : null}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {count} rating{count === 1 ? '' : 's'}

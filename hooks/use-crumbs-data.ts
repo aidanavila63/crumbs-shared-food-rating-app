@@ -12,11 +12,37 @@ export type Rating = {
   score: number
   notes: string | null
   points?: number | null
+  // v4 (#1 categories, #3 would go back)
+  food?: number | null
+  service?: number | null
+  vibe?: number | null
+  value?: number | null
+  would_return?: 'yes' | 'maybe' | 'no' | null
 }
-export type PlaceVisit = { id: string; place_id: string; visited_on: string; spend: number | null }
+export type VisitKind = 'dine_in' | 'takeout' | 'delivery'
+export type PlaceVisit = {
+  id: string
+  place_id: string
+  visited_on: string
+  spend: number | null
+  // v4 (#5 score, #6 people, #78 kind, #37 who picked, #69/#70 memories)
+  score?: number | null
+  people?: number | null
+  kind?: VisitKind | null
+  picked_by?: string | null
+  occasion?: 'date' | 'celebration' | null
+  milestone?: string | null
+  note?: string | null
+  created_by?: string | null
+}
 export type Dish = {
   verdict?: 'again' | 'never' | null
   tags?: string[]
+  // v4 (#18 course, #17 dietary + spice, #16 wishlist)
+  course?: 'starter' | 'main' | 'side' | 'dessert' | 'drink' | null
+  dietary?: string[]
+  spice?: number | null
+  wishlist?: boolean
   id: string
   place_id: string
   name: string
@@ -53,20 +79,65 @@ export type Place = {
   place_ratings: Rating[]
   dishes?: Dish[]
 }
-export type Group = { id: string; name: string; join_code: string; created_by: string }
+export type GroupSettings = {
+  scale?: '5' | 'half' | '10' // #2
+  categories?: boolean // #1
+  wouldReturn?: boolean // #3
+  turns?: boolean // #37
+  home?: boolean // #77 (on unless false)
+  weather?: boolean // #35 (on unless false)
+  tags?: string[] // #8 preset vibe tags
+}
+export type Group = {
+  id: string
+  name: string
+  join_code: string
+  created_by: string
+  settings?: GroupSettings | null
+  emoji?: string | null
+  color?: string | null
+}
+export type HomeMealRating = { user_id: string; score: number; notes: string | null }
+export type HomeMealCook = {
+  id: string
+  meal_id: string
+  cooked_on: string
+  cooked_by: string | null
+}
+export type HomeMeal = {
+  id: string
+  group_id: string
+  name: string
+  status: 'Cooked' | 'Want to cook'
+  verdict: 'again' | 'never' | null
+  recipe_url: string | null
+  notes: string | null
+  photo_path: string | null
+  dietary: string[]
+  spice: number | null
+  created_by: string
+  created_at: string
+  home_meal_ratings: HomeMealRating[]
+  home_meal_cooks: HomeMealCook[]
+}
 export type Profile = {
   id: string
   display_name: string
   avatar_url: string | null
   avoid?: string[] | null
   blind_ratings?: boolean | null
+  // v4
+  is_admin?: boolean | null
+  notify?: Record<string, boolean> | null
+  role?: 'owner' | 'admin' | 'member' | null
 }
 export type List = {
   id: string
   group_id: string
   name: string
   emoji: string
-  list_places?: { place_id: string }[]
+  list_places?: { place_id: string; position?: number | null }[]
+  kind?: 'list' | 'crawl' | null
   trip_city?: string | null
   starts_on?: string | null
   ends_on?: string | null
@@ -79,6 +150,9 @@ const demoGroup: Group = {
   name: 'Maya & Jordan',
   join_code: 'CRUMBS',
   created_by: demoUser.id,
+  emoji: '🍜',
+  color: '#7b2d5b',
+  settings: { scale: '5', categories: true, wouldReturn: true, turns: true },
 }
 const demoPlaces: Place[] = [
   {
@@ -151,9 +225,63 @@ const demoPlaces: Place[] = [
     }),
   ),
 ]
+const demoMeals: HomeMeal[] = [
+  {
+    id: 'demo-meal-1',
+    group_id: demoGroup.id,
+    name: 'Sunday lasagna',
+    status: 'Cooked',
+    verdict: 'again',
+    recipe_url: null,
+    notes: 'Extra ricotta next time',
+    photo_path: null,
+    dietary: ['vegetarian'],
+    spice: 0,
+    created_by: 'demo-partner',
+    created_at: new Date(Date.now() - 4 * 864e5).toISOString(),
+    home_meal_ratings: [
+      { user_id: 'demo-user', score: 5, notes: null },
+      { user_id: 'demo-partner', score: 4, notes: null },
+    ],
+    home_meal_cooks: [
+      { id: 'demo-cook-1', meal_id: 'demo-meal-1', cooked_on: '2026-10-19', cooked_by: 'demo-partner' },
+    ],
+  },
+  {
+    id: 'demo-meal-2',
+    group_id: demoGroup.id,
+    name: 'Homemade dumplings',
+    status: 'Want to cook',
+    verdict: null,
+    recipe_url: 'https://example.com/dumplings',
+    notes: null,
+    photo_path: null,
+    dietary: [],
+    spice: 1,
+    created_by: 'demo-user',
+    created_at: new Date(Date.now() - 864e5).toISOString(),
+    home_meal_ratings: [],
+    home_meal_cooks: [],
+  },
+]
 const demoMembers: Profile[] = [
-  { id: 'demo-user', display_name: 'Jordan', avatar_url: null, avoid: [], blind_ratings: false },
-  { id: 'demo-partner', display_name: 'Maya', avatar_url: null, avoid: [], blind_ratings: false },
+  {
+    id: 'demo-user',
+    display_name: 'Jordan',
+    avatar_url: null,
+    avoid: [],
+    blind_ratings: false,
+    is_admin: true,
+    role: 'owner',
+  },
+  {
+    id: 'demo-partner',
+    display_name: 'Maya',
+    avatar_url: null,
+    avoid: [],
+    blind_ratings: false,
+    role: 'member',
+  },
 ]
 
 export function useCrumbsData() {
@@ -164,6 +292,9 @@ export function useCrumbsData() {
   const [places, setPlaces] = useState<Place[]>(demo ? demoPlaces : [])
   const [lists, setLists] = useState<List[]>([])
   const [members, setMembers] = useState<Profile[]>(demo ? demoMembers : [])
+  const [homeMeals, setHomeMeals] = useState<HomeMeal[]>(demo ? demoMeals : [])
+  // v4 = the 20261025 database update has been run. Until then new features stay hidden.
+  const [v4, setV4] = useState(demo)
   const [loading, setLoading] = useState(!demo)
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
   const loadedOnce = useRef(false)
@@ -176,7 +307,7 @@ export function useCrumbsData() {
         supabase
           .from('places')
           .select(
-            '*,place_ratings(score,user_id,notes),place_visits(id,place_id,visited_on,spend),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))',
+            '*,place_ratings(*),place_visits(*),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))',
           )
           .eq('group_id', group.id)
           .order('pinned', { ascending: false })
@@ -187,17 +318,26 @@ export function useCrumbsData() {
     if (listsError) throw listsError
     const { data: memberRows } = await supabase
       .from('group_members')
-      .select('user_id')
+      .select('user_id,role')
       .eq('group_id', group.id)
     const ids = (memberRows ?? []).map((row: any) => row.user_id)
+    const roles = Object.fromEntries((memberRows ?? []).map((row: any) => [row.user_id, row.role]))
     let profileRows: Profile[] = []
     if (ids.length) {
-      const { data: rows } = await supabase
-        .from('profiles')
-        .select('id,display_name,avatar_url,avoid,blind_ratings')
-        .in('id', ids)
-      profileRows = (rows ?? []) as Profile[]
+      const { data: rows } = await supabase.from('profiles').select('*').in('id', ids)
+      profileRows = ((rows ?? []) as Profile[]).map((row) => ({
+        ...row,
+        role: row.id === group.created_by ? 'owner' : (roles[row.id] ?? 'member'),
+      }))
     }
+    // Is the v4 database update in? (home_meals only exists after it.)
+    const meals = await supabase
+      .from('home_meals')
+      .select('*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by)')
+      .eq('group_id', group.id)
+      .order('created_at', { ascending: false })
+    setV4(!meals.error)
+    setHomeMeals(meals.error ? [] : ((meals.data ?? []) as HomeMeal[]))
     setMembers(profileRows)
     setPlaces(((placeRows ?? []) as Place[]).filter((place) => !pendingDeletes.has(place.id)))
     setLists(((listRows ?? []) as List[]).filter((list) => !pendingDeletes.has(list.id)))
@@ -232,12 +372,13 @@ export function useCrumbsData() {
       setGroup(null)
       setPlaces([])
       setLists([])
+      setHomeMeals([])
       setMembers([])
       return
     }
     supabase
       .from('group_members')
-      .select('groups(id,name,join_code,created_by)')
+      .select('groups(*)')
       .eq('user_id', user.id)
       .then(({ data, error }: any) => {
         if (error) toast.error(error.message)
@@ -292,11 +433,26 @@ export function useCrumbsData() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meals', filter: `group_id=eq.${group.id}` }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meal_ratings' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_meal_cooks' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${group.id}` }, scheduleLoad)
+      // Group settings / look changed by the owner or an admin: apply straight away.
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'groups', filter: `id=eq.${group.id}` },
+        (payload: any) => {
+          const next = payload.new as Group
+          setGroup((current) => (current && current.id === next.id ? { ...current, ...next } : current))
+          setGroups((current) => current.map((item) => (item.id === next.id ? { ...item, ...next } : item)))
+        },
+      )
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [group, scheduleLoad, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group?.id, scheduleLoad, supabase])
 
   const mutate = useCallback(
     async (work: () => Promise<any>) => {
@@ -321,6 +477,9 @@ export function useCrumbsData() {
     setPlaces,
     lists,
     setLists,
+    homeMeals,
+    setHomeMeals,
+    v4,
     members,
     setMembers,
     groupsLoaded,

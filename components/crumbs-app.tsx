@@ -392,7 +392,18 @@ function CrumbsShell() {
         <div className="mb-5 flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted-foreground">Your shared food map</p>
-            <h1 className="truncate font-serif text-3xl font-bold">{data.group.name}</h1>
+            <h1 className="flex min-w-0 items-center gap-2 font-serif text-3xl font-bold">
+              {data.group.emoji && (
+                <span
+                  className="group-badge"
+                  style={{ background: data.group.color ?? undefined }}
+                  aria-hidden="true"
+                >
+                  {data.group.emoji}
+                </span>
+              )}
+              <span className="truncate">{data.group.name}</span>
+            </h1>
           </div>
           {data.groups.length > 1 && (
             <select
@@ -652,11 +663,16 @@ function CrumbsShell() {
                   member.id === userId ? { ...member, ...changes } : member,
                 ),
               ),
-            onGroupRenamed: (group) => {
+            onGroup: (group) => {
               data.setGroup(group)
-              data.setGroups(data.groups.map((item) => (item.id === group.id ? group : item)))
+              data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
             },
             onSignOut: signOut,
+            members: data.members,
+            v4: data.v4,
+            onReload: () => {
+              data.load().catch(() => {})
+            },
           }}
         />
       )}

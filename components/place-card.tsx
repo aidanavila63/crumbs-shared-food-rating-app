@@ -1,15 +1,14 @@
 'use client'
 import { MapPin, Pin } from 'lucide-react'
+import { average5 } from '@/lib/ratings'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { isClosedForever, normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
 import { distanceKm } from '@/lib/stats'
 import type { Profile } from '@/hooks/use-crumbs-data'
+/** Group average on the 0-5 scale; exact (uses points) when half stars / 10-point scores are saved. */
 export function placeAverage(place: Place) {
-  return place.place_ratings.length
-    ? place.place_ratings.reduce((sum, rating) => sum + rating.score, 0) /
-        place.place_ratings.length
-    : 0
+  return average5(place.place_ratings)
 }
 export function PlaceCard({
   place,

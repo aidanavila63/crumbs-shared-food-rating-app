@@ -1080,3 +1080,18 @@ body,
     transform: rotate(3deg) scale(1.03);
   }
 }
+
+/* ================= Batch 3 (Oct 2026) ================= */
+.group-badge {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--primary);
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: var(--shadow);
+  animation: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) backwards;
+}

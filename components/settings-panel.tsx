@@ -9,6 +9,15 @@ import { Switch } from './switch'
 import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
+import { GroupSettingsCard } from './group-settings'
+
+// #73: which notifications you get. Missing = on.
+const NOTIFY_TYPES = [
+  ['rating', 'Ratings', 'Maya rated Hana Ramen 5★'],
+  ['place', 'New places', 'Maya added Baan Thai'],
+  ['dish', 'Dish scores', 'Maya gave Tonkotsu 92/100'],
+  ['craving', 'Cravings', 'Maya is craving ramen'],
+] as const
 
 type Home = { lat: number; lng: number } | null
 
@@ -22,8 +31,11 @@ export function SettingsPanel({
   home,
   onHome,
   onProfile,
-  onGroupRenamed,
+  onGroup,
   onSignOut,
+  members = [],
+  v4 = false,
+  onReload = () => {},
 }: {
   profile: Profile | null
   userId?: string
@@ -33,8 +45,11 @@ export function SettingsPanel({
   home: Home
   onHome: (home: Home) => void
   onProfile: (changes: Partial<Profile>) => void
-  onGroupRenamed: (group: Group) => void
+  onGroup: (group: Group) => void
   onSignOut: () => void
+  members?: Profile[]
+  v4?: boolean
+  onReload?: () => void
 }) {
   const prefs = useMotionPrefs()
   const theme = useThemePrefs()
@@ -42,10 +57,38 @@ export function SettingsPanel({
   // Only rendered after a tap (inside the Settings overlay), so reading navigator here is safe.
   const [vibrates] = useState(canVibrate)
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
-  const [groupName, setGroupName] = useState(group.name)
-  const [saving, setSaving] = useState<'name' | 'group' | null>(null)
+  const [saving, setSaving] = useState<'name' | 'feedback' | null>(null)
   const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
-  const isOwner = !!userId && group.created_by === userId
+  const [feedback, setFeedback] = useState('')
+  const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
+  const canManage = myRole === 'owner' || myRole === 'admin'
+  const notify = profile?.notify ?? {}
+
+  async function setNotify(key: string, on: boolean) {
+    if (!userId) return
+    const next = { ...notify, [key]: on }
+    onProfile({ notify: next })
+    if (demo) return
+    const { error } = await supabase.from('profiles').update({ notify: next }).eq('id', userId)
+    if (error) {
+      onProfile({ notify })
+      toast.error(error.message)
+    }
+  }
+
+  async function sendFeedback() {
+    const body = feedback.trim()
+    if (!body) return
+    setSaving('feedback')
+    const { error } = demo
+      ? { error: null }
+      : await supabase.from('feedback').insert({ body: body.slice(0, 2000), page: 'settings' })
+    setSaving(null)
+    if (error) return toast.error(error.message)
+    setFeedback('')
+    haptic('success')
+    toast.success('Thanks! Feedback sent.')
+  }
 
   async function saveName() {
     const next = displayName.trim()
@@ -58,19 +101,6 @@ export function SettingsPanel({
     if (error) return toast.error(error.message)
     onProfile({ display_name: next })
     toast.success('Name updated')
-  }
-
-  async function saveGroup() {
-    const next = groupName.trim()
-    if (!next || next === group.name) return
-    setSaving('group')
-    const { error } = demo
-      ? { error: null }
-      : await supabase.from('groups').update({ name: next }).eq('id', group.id)
-    setSaving(null)
-    if (error) return toast.error(error.message)
-    onGroupRenamed({ ...group, name: next })
-    toast.success('Group renamed')
   }
 
   return (
@@ -202,27 +232,48 @@ export function SettingsPanel({
 
       <NotificationsToggle userId={userId} supabase={supabase} />
 
-      {isOwner && (
+      {v4 && (
         <section className="surface settings-card">
-          <h3 className="settings-heading">Group settings</h3>
-          <p className="text-sm text-muted-foreground">
-            Only you see this — you created {group.name}.
-          </p>
-          <label className="text-sm font-semibold" htmlFor="group-name">
-            Group name
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="group-name"
-              className="field"
-              value={groupName}
-              onChange={(event) => setGroupName(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && saveGroup()}
-            />
-            <button className="primary shrink-0" disabled={saving === 'group'} onClick={saveGroup}>
-              {saving === 'group' ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+          <h3 className="settings-heading">Notify me about</h3>
+          {NOTIFY_TYPES.map(([key, label, example]) => (
+            <div className="settings-row" key={key}>
+              <span>
+                <span className="font-semibold">{label}</span>
+                <span className="block text-sm text-muted-foreground">“{example}”</span>
+              </span>
+              <Switch label={label} checked={notify[key] !== false} onChange={(on) => setNotify(key, on)} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {canManage && (
+        <GroupSettingsCard
+          group={group}
+          members={members}
+          userId={userId}
+          supabase={supabase}
+          demo={demo}
+          v4={v4}
+          onGroup={onGroup}
+          onReload={onReload}
+        />
+      )}
+
+      {v4 && (
+        <section className="surface settings-card">
+          <h3 className="settings-heading">Send feedback</h3>
+          <textarea
+            className="field"
+            aria-label="Your feedback"
+            placeholder="Something broken, confusing or that you’d love?"
+            maxLength={2000}
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+          />
+          <button className="primary" disabled={!feedback.trim() || saving === 'feedback'} onClick={sendFeedback}>
+            {saving === 'feedback' ? 'Sending…' : 'Send'}
+          </button>
         </section>
       )}
 

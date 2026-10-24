@@ -62,7 +62,15 @@ export async function POST(request: Request) {
     .from('group_members')
     .select('user_id')
     .eq('group_id', groupId)
-  const others = (members ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id)
+  let others = (members ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id)
+  // #73: skip people who switched this kind of notification off (column exists from v4).
+  const kind =
+    body.type === 'place_rating' ? 'rating' : body.type === 'place_added' ? 'place' : body.type === 'dish_rating' ? 'dish' : 'craving'
+  const { data: prefs, error: prefsError } = await supabase.from('profiles').select('id,notify').in('id', others)
+  if (!prefsError && prefs) {
+    const off = new Set(prefs.filter((row: any) => row.notify?.[kind] === false).map((row: any) => row.id))
+    others = others.filter((id: string) => !off.has(id))
+  }
   if (!others.length) return Response.json({ sent: 0 })
   const { data: subs } = await supabase
     .from('push_subscriptions')
