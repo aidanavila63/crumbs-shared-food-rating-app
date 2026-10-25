@@ -33,6 +33,7 @@ import { track } from '@/lib/analytics'
 import { Overlay } from './overlay'
 import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
+import { OwnerInsights, OwnerPosts, OwnerPoster } from './owner-extras'
 
 const FIELDS: FactField[] = ['address', 'hours', 'phone', 'website', 'cuisine', 'status']
 const LABEL: Partial<Record<FactField, string>> = {
@@ -348,6 +349,8 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         </p>
       </div>
 
+      <OwnerInsights restaurantId={r.id} supabase={supabase} demo={demo} />
+      <OwnerPosts restaurantId={r.id} supabase={supabase} demo={demo} />
       {suggestions.length > 0 && (
         <section className="surface flex flex-col gap-2">
           <h3 className="font-serif text-xl font-bold">Members suggest</h3>
@@ -439,6 +442,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         onMenu={setMenu}
         onChanged={reload}
       />
+      <OwnerPoster restaurantId={r.id} name={r.name} />
     </div>
   )
 }

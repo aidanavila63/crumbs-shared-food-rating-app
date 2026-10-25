@@ -2856,6 +2856,68 @@ create trigger guests_read_only before insert or update or delete on public.grou
   for each row execute function public.block_guest_writes('group');
 
 -- ============================================================================================
+-- 13o. Owners round (#153 announcements, #154 holiday hours & closures, #155 weekly specials and
+--      limited-time items, #211 owner insights)
+-- ============================================================================================
+create table if not exists public.restaurant_posts (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  kind text not null check (kind in ('news', 'special', 'limited', 'closure')),
+  title text not null check (char_length(title) between 1 and 80),
+  body text check (char_length(body) <= 400),
+  weekdays smallint[] check (weekdays <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[]),
+  starts_on date,
+  ends_on date,
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (ends_on is null or starts_on is null or ends_on >= starts_on)
+);
+create index if not exists restaurant_posts_idx on public.restaurant_posts (restaurant_id, created_at desc);
+alter table public.restaurant_posts enable row level security;
+drop policy if exists restaurant_posts_read on public.restaurant_posts;
+drop policy if exists restaurant_posts_owner on public.restaurant_posts;
+create policy restaurant_posts_read on public.restaurant_posts for select to authenticated using (true);
+create policy restaurant_posts_owner on public.restaurant_posts for all to authenticated
+  using (public.manages_restaurant(restaurant_id) or public.is_crumbs_admin())
+  with check (public.manages_restaurant(restaurant_id) or public.is_crumbs_admin());
+
+-- #211 Totals across all of Crumbs for the restaurant's verified owner (never which groups).
+create or replace function public.owner_insights(target uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  result jsonb;
+begin
+  if not (public.manages_restaurant(target) or public.is_crumbs_admin()) then raise exception 'Owners only'; end if;
+  with v as (
+    select v.* from public.place_visits v join public.places p on p.id = v.place_id where p.restaurant_id = target
+  ), pl as (
+    select * from public.places where restaurant_id = target
+  )
+  select jsonb_build_object(
+    'saved', (select count(*) from pl),
+    'want_to_try', (select count(*) from pl where status = 'Want to try'),
+    'been', (select count(*) from pl where status = 'Been'),
+    'visits', (select count(*) from v),
+    'by_month', (select case when (select count(*) from v) >= 5 then coalesce(jsonb_agg(jsonb_build_object('month', m, 'visits', n) order by m), '[]') end
+                   from (select to_char(date_trunc('month', visited_on), 'YYYY-MM') as m, count(*) as n
+                           from v where visited_on > current_date - interval '12 months' group by 1) x),
+    'per_head_by_quarter', (select coalesce(jsonb_agg(jsonb_build_object('quarter', q, 'per_head', ph) order by q), '[]')
+                   from (select to_char(date_trunc('quarter', visited_on), 'YYYY-"Q"Q') as q, round(avg(spend / people), 0) as ph
+                           from v where spend > 0 and people > 0 group by 1 having count(*) >= 3) x),
+    'rating', (select case when count(*) >= 3 then round(avg(coalesce(r.points, r.score * 20)) / 20.0, 1) end
+                 from public.place_ratings r join pl on pl.id = r.place_id where not r.draft),
+    'ratings', (select count(*) from public.place_ratings r join pl on pl.id = r.place_id where not r.draft),
+    'top_dishes', (select coalesce(jsonb_agg(jsonb_build_object('name', name, 'confirms', c) order by c desc), '[]') from (
+                     select d.name, count(*) filter (where dv.vote = 'confirm') as c
+                       from public.restaurant_dishes d join public.restaurant_dish_votes dv on dv.dish_id = d.id
+                      where d.restaurant_id = target group by d.id, d.name order by 2 desc limit 5) x where c > 0)
+  ) into result;
+  return result;
+end $$;
+revoke execute on function public.owner_insights(uuid) from public, anon;
+grant execute on function public.owner_insights(uuid) to authenticated;
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

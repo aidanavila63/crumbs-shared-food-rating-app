@@ -379,11 +379,57 @@ function CrumbsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.user, data.groupsLoaded])
   useEffect(() => {
-    if (!data.user || !data.group || launched.current || typeof window === 'undefined') return
+    if (!data.user || !data.group || data.loading || launched.current || typeof window === 'undefined')
+      return
     launched.current = true
     const params = new URLSearchParams(window.location.search)
     const action = params.get('do')
     const incoming = fromShare(params)
+    // #212 scanned a restaurant's "Find us on Crumbs" poster: add it (or open it if it's saved)
+    const addId = params.get('add')
+    if (addId && /^[0-9a-f-]{36}$/i.test(addId)) {
+      params.delete('add')
+      const rest = params.toString()
+      window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+      const saved = data.places.find((p) => p.restaurant_id === addId)
+      if (saved) {
+        setSelected(saved)
+        return
+      }
+      if (data.demo) return
+      ;(async () => {
+        const { data: r } = await data.supabase
+          .from('restaurants')
+          .select('id,source_key,name,formatted_address,latitude,longitude,cuisine,website,google_maps_url')
+          .eq('id', addId)
+          .maybeSingle()
+        if (!r || r.latitude === null) return toast.error('Couldn’t find that restaurant')
+        try {
+          const place = await addFoundPlace({
+            supabase: data.supabase,
+            demo: data.demo,
+            groupId: data.group!.id,
+            userId: data.user!.id,
+            found: {
+              google_place_id: r.source_key,
+              name: r.name,
+              formatted_address: r.formatted_address,
+              latitude: r.latitude,
+              longitude: r.longitude,
+              cuisine: r.cuisine,
+              website: r.website,
+              google_maps_url: r.google_maps_url,
+            },
+          })
+          data.setPlaces((current) => [place, ...current])
+          toast.success(`${r.name} is on your Want to try list`)
+          setSelected(place)
+        } catch (error: any) {
+          toast.error(error?.message || 'Could not add it')
+        }
+      })()
+      return
+    }
     if (action === 'log') setQuickLog(true)
     else if (action === 'add' || incoming.link || incoming.name) {
       setShared(incoming.link || incoming.name ? incoming : null)
@@ -393,7 +439,7 @@ function CrumbsShell() {
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.user, data.group])
+  }, [data.user, data.group, data.loading])
   if (!data.user && data.loading)
     return (
       <main className="grid min-h-screen place-items-center bg-background">

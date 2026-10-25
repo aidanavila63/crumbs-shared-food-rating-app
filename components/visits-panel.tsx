@@ -7,6 +7,7 @@ import { haptic } from '@/lib/motion'
 import { ScoreDisplay, ScoreInput } from './score-input'
 import { recall, remember } from '@/lib/remember'
 import { useSocial } from '@/hooks/use-social'
+import { SplitBill } from './split-bill'
 import { MEAL_TIMES, WAITS, mealTimeAt, type MealTime } from '@/lib/visit-rating'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -73,6 +74,7 @@ export function VisitsPanel({
   const [note, setNote] = useState('')
   const [mealTime, setMealTime] = useState<MealTime | null>(null)
   const [wait, setWait] = useState<number | null>(null)
+  const [splitting, setSplitting] = useState(false)
   const visits = [...(place.place_visits ?? [])].sort((a, b) =>
     b.visited_on.localeCompare(a.visited_on),
   )
@@ -264,13 +266,29 @@ export function VisitsPanel({
         </button>
       </div>
       {v4 && (
-        <button
-          className="self-start text-xs font-semibold text-primary underline"
-          aria-expanded={more}
-          onClick={() => setMore(!more)}
-        >
-          {more ? 'Fewer details' : 'More details (how it went, who came, occasion…)'}
-        </button>
+        <div className="flex flex-wrap gap-4">
+          <button
+            className="text-xs font-semibold text-primary underline"
+            aria-expanded={more}
+            onClick={() => setMore(!more)}
+          >
+            {more ? 'Fewer details' : 'More details (how it went, who came, occasion…)'}
+          </button>
+          <button
+            className="text-xs font-semibold text-primary underline"
+            onClick={() => setSplitting(true)}
+          >
+            🧾 Split a bill
+          </button>
+        </div>
+      )}
+      {splitting && (
+        <SplitBill
+          placeName={place.name}
+          members={members}
+          userId={userId}
+          onClose={() => setSplitting(false)}
+        />
       )}
       {v4 && more && (
         <div className="visit-more surface-soft flex flex-col gap-3">

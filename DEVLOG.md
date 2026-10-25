@@ -389,3 +389,10 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - **#192 kudos**: "👏 Great pick" on visits someone else picked; Whose turn shows the best picker.
 - **#193 all my groups on the map**: "👥 All my groups" on the Map (with 2+ groups); other groups' places carry their emoji; tapping one offers to switch group.
 - Tests 115/115; SQL tested (guest join/blocks/quiet updates/promotion, copy list, goals); earlier batch tests unaffected; build passes; demo checked.
+
+## Round 35 - split the bill + owners (#142 #153 #154 #155 #211 #212) (Oct 25, Claude in Cowork)
+- **#142 Split the bill** (`components/split-bill.tsx`, `lib/split-bill.ts`): from Quick log's receipt step ("🧾 Split the bill", items pre-filled) or a place's visits ("🧾 Split a bill"). Who's paying (group members + anyone else by name), items with prices, tap who had each (nobody ticked = everyone), tax 0/5/13/15 %, tip 0/15/18/20/25 %; tax and tip shared in proportion; who owes what; Paid by; Share. Nothing saved.
+- **#153–#155 posts by verified owners** (Your restaurants → Specials & news; `restaurant_posts`): weekly specials (pick days), limited-time items (dates), closures / holiday hours (dates, optional special hours), news. Places show a **From the restaurant** card: closures first, TODAY specials, LIMITED items, other weekly specials, news (30 days or until its end date). Owners/admins only can post.
+- **#211 owner insights** (`owner_insights()`): saved by / want to try / visits, average rating (3+), visits by month (bars, 5+ visits), $ a person by quarter (3+ each), most confirmed dishes — totals only.
+- **#212 "Find us on Crumbs" poster**: downloadable A4 PNG with a QR code → `/?add=<restaurant>` opens Crumbs and adds the place to the scanner's group (or opens it if already saved).
+- Tests 118/118; SQL tested (owner-only posts and insights); build passes; demo checked.

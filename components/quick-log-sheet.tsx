@@ -17,6 +17,7 @@ import { linkRestaurant, shareDishes } from '@/lib/restaurants'
 import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
 import { recall, remember } from '@/lib/remember'
 import { usePrivateNote } from './private-note'
+import { SplitBill } from './split-bill'
 import {
   MEAL_TIMES,
   WAITS,
@@ -78,6 +79,7 @@ export function QuickLogSheet({
   // #74 Items read off the receipt / order screenshot, offered after logging.
   const [items, setItems] = useState<(MenuLine & { on: boolean })[]>([])
   const [ordered, setOrdered] = useState<Place | null>(null)
+  const [splitting, setSplitting] = useState(false)
   const [kind, setKind] = useState<VisitKind>(() => recall('visit', 'kind', 'dine_in'))
   const [people, setPeople] = useState(() => recall('visit', 'people', ''))
   const [pickedBy, setPickedBy] = useState('')
@@ -269,6 +271,21 @@ export function QuickLogSheet({
               )}
             </label>
           ))}
+          <button
+            className="self-start text-sm font-semibold text-primary underline"
+            onClick={() => setSplitting(true)}
+          >
+            🧾 Split the bill
+          </button>
+          {splitting && (
+            <SplitBill
+              placeName={ordered.name}
+              items={items.filter((x) => x.on)}
+              members={members}
+              userId={userId}
+              onClose={() => setSplitting(false)}
+            />
+          )}
           <div className="flex gap-2">
             <button className="secondary" onClick={onClose}>
               Skip

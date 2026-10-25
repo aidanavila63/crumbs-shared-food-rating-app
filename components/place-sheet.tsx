@@ -63,6 +63,7 @@ import { OtherGroups } from './other-groups'
 import { PrivateNote, usePrivateNote } from './private-note'
 import { OrderForTable } from './order-for-table'
 import { GoodToKnow } from './good-to-know'
+import { RestaurantPosts } from './restaurant-posts'
 import { PlanB } from './plan-b'
 import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
 import { photoUrl } from '@/lib/photos'
@@ -1011,6 +1012,14 @@ export function PlaceSheet({
               </span>
             ))}
           </div>
+        )}
+        {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
+          <RestaurantPosts
+            restaurantId={restaurant.restaurant.id}
+            supabase={supabase}
+            demo={demo}
+            verified={!!restaurant.restaurant.owner_verified}
+          />
         )}
         {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
           <GoodToKnow
