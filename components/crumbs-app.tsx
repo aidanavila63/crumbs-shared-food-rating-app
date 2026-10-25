@@ -40,6 +40,7 @@ import { useDecide } from '@/hooks/use-decide'
 import { installErrorReporter } from '@/lib/report-errors'
 import { flushQueue } from '@/lib/offline-queue'
 import { addFoundPlace } from '@/lib/add-found'
+import { fromShare } from '@/lib/maps-link'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -217,6 +218,9 @@ function CrumbsShell() {
   const here = useUserLocation(sort === 'Nearest')
   const origin = here ?? home
   const [adding, setAdding] = useState(false)
+  // #163/#164 Home-screen shortcuts (?do=log, ?do=add) and things shared to Crumbs (?title=&text=&url=).
+  const [shared, setShared] = useState<{ link: string | null; name: string | null } | null>(null)
+  const launched = useRef(false)
   const [surprising, setSurprising] = useState(false)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -326,6 +330,22 @@ function CrumbsShell() {
     else if (!data.demo) joinGroup(code)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.user, data.groupsLoaded])
+  useEffect(() => {
+    if (!data.user || !data.group || launched.current || typeof window === 'undefined') return
+    launched.current = true
+    const params = new URLSearchParams(window.location.search)
+    const action = params.get('do')
+    const incoming = fromShare(params)
+    if (action === 'log') setQuickLog(true)
+    else if (action === 'add' || incoming.link || incoming.name) {
+      setShared(incoming.link || incoming.name ? incoming : null)
+      setAdding(true)
+    } else return
+    for (const key of ['do', 'title', 'text', 'url']) params.delete(key)
+    const rest = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user, data.group])
   if (!data.user && data.loading)
     return (
       <main className="grid min-h-screen place-items-center bg-background">
@@ -878,7 +898,11 @@ function CrumbsShell() {
           groupId={data.group.id}
           demo={data.demo}
           supabase={data.supabase}
-          onClose={() => setAdding(false)}
+          shared={shared}
+          onClose={() => {
+            setAdding(false)
+            setShared(null)
+          }}
           onSaved={(place) => {
             track('place_added', { status: place.status, source: place.google_place_id.split(':')[0] })
             data.setPlaces([place, ...data.places])

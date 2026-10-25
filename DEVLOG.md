@@ -308,3 +308,12 @@ Aidan: no hot take one-liner (#9 = No); do Wrapped now.
 - **Summary card** with Share (phone share sheet with a 1080×1920 picture) and Save image. Year chips when you have more than one year; in January/February it opens on last year.
 - **Decide & Plan teaser** "🎁 Your 2026 Wrapped" from December to February.
 - Built on the phone from your own data (blind ratings respected) — free, nothing stored or sent. Tests 83/83; build passes; demo tour clean.
+
+## Round 26 - keeping Crumbs healthy (#163 #164 #169–173 #226) (Oct 25, Claude in Cowork)
+Aidan's decisions on ideas #112–235 recorded in the backlog. This round: the behind-the-scenes Yes items.
+- **One daily job** (`app/api/daily`, `vercel.json` now daily 07:17 UTC): #173 a tiny read every day so the database never sleeps after a quiet week (works even without CRON_SECRET); #172 checks free limits via `limit_report()` (database vs 500 MB, photos vs 1 GB, every spending budget) and writes `admin_alerts` (warn at 80% / daily 90%, stop at 95–100%, "on pace for" info); new warnings push to admins' phones when push keys are set; #89 the weekly backup now runs from here on Mondays (`lib/run-backup.ts`).
+- **#226 Spending guard forecast**: "At this pace ~X by month end" under each monthly bar, red if it would hit the limit.
+- **Admin → Data quality**: alerts (Dismiss), #169 possible duplicates (same name within ~150 m) with **Merge** (#170 `merge_restaurants`: keeps the owner-verified or more-saved copy; places, dishes, ✓/✕ votes, details, claims, managers and points move over, gaps filled), #171 "Busy in the last day" with each person's "% backed".
+- **#171 Anti-spam**: daily caps 60 details / 200 checks / 60 prices per person (owners exempt for their own place); `user_trust` = share of someone's details later backed by others; below 30% (after 5) their details wait for two people to agree.
+- **#163 Home-screen shortcuts** (long-press the icon): Log a visit, Add a place. **#164 Share to Crumbs**: share a map link or a place name from another app → Add a place opens with it filled in (map links are read straight away).
+- Tests 88/88; SQL tested (dupes admin-only, merge, caps, trust, limit report); build passes; share flow checked in demo.

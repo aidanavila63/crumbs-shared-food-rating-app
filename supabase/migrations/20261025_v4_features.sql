@@ -826,6 +826,7 @@ begin
   if choice = 'confirm' and public.manages_restaurant(r) then
     update public.restaurant_dishes set owner_ok = true, hidden = false where id = target_dish;
   end if;
+  if choice is not null and public.over_daily_cap('vote') then raise exception 'That’s a lot of ticks for one day — try again tomorrow.'; end if;
   if choice is null then
     delete from public.restaurant_dish_votes where dish_id = target_dish and user_id = auth.uid();
   elsif choice in ('confirm', 'flag') then
@@ -972,9 +973,13 @@ declare
   confirming boolean;
   locked boolean;
   far boolean := false;
+  shaky boolean := false;
   earned integer := 0;
 begin
   if not (public.my_restaurant(target) or manager) then raise exception 'Not one of your restaurants'; end if;
+  if not manager and public.over_daily_cap('fact') then raise exception 'That’s a lot of details for one day — thank you! Try again tomorrow.'; end if;
+  -- #171 Someone whose details are rarely backed up needs a second person to agree first.
+  shaky := coalesce(public.user_trust(me) < 0.3, false);
   select * into r from public.restaurants where id = target;
   -- Verified by Owner: most details are the restaurant's to change. A member's answer is kept as
   -- a suggestion the owner sees in "Your restaurants" (no points; applies only if enough people
@@ -1044,7 +1049,7 @@ begin
   -- The restaurant's own confirmed manager always wins; members need 3 to overrule them.
   -- On a Verified-by-Owner page the details members may still change (e.g. a closure) need 3.
   if manager or (src = 'owner' and (agree >= 3 or current = v))
-     or (not r.owner_verified or agree >= 3) and not (far and agree < 2) and
+     or (not r.owner_verified or agree >= 3) and not ((far or shaky) and agree < 2) and
         (coalesce(src, '') not in ('crumbs', 'owner') or current is null or (src = 'crumbs' and agree >= 2) or current = v) then
     applied := current is distinct from v or src is distinct from 'crumbs';
     if src = 'owner' and not manager and current = v then applied := false; end if;
@@ -1709,6 +1714,7 @@ begin
     raise exception 'Not one of your restaurants';
   end if;
   if new_price is null or new_price < 0 or new_price >= 10000 then raise exception 'Bad price'; end if;
+  if public.over_daily_cap('price') then raise exception 'That’s a lot of prices for one day — try again tomorrow.'; end if;
   new_price := round(new_price, 2);
   if public.manages_restaurant(d.restaurant_id) then
     perform public.owner_edit_dish(target_dish, d.name, new_price, d.course, false);
@@ -1938,6 +1944,149 @@ begin
   foreach f in array array['remove_manager(uuid, uuid)', 'my_restaurants()', 'owner_suggestions(uuid)',
                            'suggest_dish_price(uuid, numeric, text)', 'keep_dish_price(uuid)', 'settle_owner_suggestions(uuid)',
                            'keep_owner_value(uuid, text)', 'owner_edit_dish(uuid, text, numeric, text, boolean)', 'my_tier()'] loop
+    execute format('revoke execute on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
+-- ============================================================================================
+-- 13g. Keeping Crumbs healthy: daily check, free-limit alerts, caps & trust, duplicates (#169–#173, #226)
+-- ============================================================================================
+-- Numbers for the daily job (server key only): database + photo size and every budget's use.
+create or replace function public.limit_report()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'db_bytes', pg_database_size(current_database()),
+    'storage_bytes', (select coalesce(sum((metadata->>'size')::bigint), 0) from storage.objects where bucket_id = 'crumbs-photos'),
+    'budgets', (select coalesce(jsonb_agg(jsonb_build_object(
+        'kind', b.kind, 'note', b.note, 'daily_total', b.daily_total, 'monthly_total', b.monthly_total,
+        'today', coalesce((select c.count from public.usage_counts c where c.kind = b.kind and c.day = current_date
+                            and c.user_id = '00000000-0000-0000-0000-000000000000'), 0),
+        'month', coalesce((select sum(c.count) from public.usage_counts c where c.kind = b.kind
+                            and c.day >= date_trunc('month', current_date) and c.user_id = '00000000-0000-0000-0000-000000000000'), 0))), '[]')
+      from public.usage_budgets b))
+$$;
+revoke execute on function public.limit_report() from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.limit_report() to service_role;
+  end if;
+end $$;
+
+-- #172 Alerts the daily job raises (one per kind per day); shown on the Admin page.
+create table if not exists public.admin_alerts (
+  id bigint generated always as identity primary key,
+  kind text not null,
+  level text not null default 'warn' check (level in ('info', 'warn', 'stop')),
+  message text not null check (char_length(message) <= 300),
+  day date not null default current_date,
+  created_at timestamptz not null default now(),
+  unique (kind, day)
+);
+alter table public.admin_alerts enable row level security;
+drop policy if exists admin_alerts_admin on public.admin_alerts;
+create policy admin_alerts_admin on public.admin_alerts for all to authenticated
+  using (public.is_crumbs_admin()) with check (public.is_crumbs_admin());
+
+-- #171 Daily caps on contributions (stops runaway scripts or spam) and a trust score.
+create or replace function public.over_daily_cap(what text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select case what
+    when 'fact' then (select count(*) from public.restaurant_facts where user_id = auth.uid() and created_at >= current_date) >= 60
+    when 'vote' then (select count(*) from public.restaurant_dish_votes where user_id = auth.uid() and created_at >= current_date) >= 200
+    when 'price' then (select count(*) from public.restaurant_dish_prices where user_id = auth.uid() and created_at >= current_date) >= 60
+    else false end
+$$;
+-- Share (0–1) of someone's details that others later backed up; null until they have 5.
+create or replace function public.user_trust(uid uuid)
+returns numeric language sql stable security definer set search_path = public as $$
+  select case when count(*) >= 5 then round(
+           count(*) filter (where coalesce((r.verified->f.field->>'claimed')::boolean, false)
+                              and f.value = public.fact_value(r, f.field))::numeric / count(*), 2) end
+    from public.restaurant_facts f join public.restaurants r on r.id = f.restaurant_id
+   where f.user_id = uid
+$$;
+revoke execute on function public.user_trust(uuid) from public, anon;
+
+-- #169 Possible duplicate restaurants (same name within ~150 m), admins only.
+create or replace function public.possible_duplicates()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'a', a.id, 'a_name', a.name, 'a_places', a.places_count, 'a_owner', a.owner_verified,
+    'b', b.id, 'b_name', b.name, 'b_places', b.places_count, 'b_owner', b.owner_verified,
+    'meters', round((abs(a.latitude - b.latitude) * 111000 + abs(a.longitude - b.longitude) * 80000)::numeric))), '[]')
+  from public.restaurants a join public.restaurants b
+    on a.id < b.id and public.dish_key(a.name) = public.dish_key(b.name)
+   and abs(a.latitude - b.latitude) < 0.0014 and abs(a.longitude - b.longitude) < 0.0019
+  where public.is_crumbs_admin()
+$$;
+
+-- #169 Who has been busy in the last day, with their trust score (spot spam fast).
+create or replace function public.recent_contributors()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x order by (x->>'facts')::int + (x->>'votes')::int desc), '[]') from (
+    select jsonb_build_object('user_id', p.id, 'name', p.display_name,
+      'facts', (select count(*) from public.restaurant_facts f where f.user_id = p.id and f.created_at > now() - interval '1 day'),
+      'votes', (select count(*) from public.restaurant_dish_votes v where v.user_id = p.id and v.created_at > now() - interval '1 day'),
+      'flags', (select count(*) from public.restaurant_dish_votes v where v.user_id = p.id and v.vote = 'flag' and v.created_at > now() - interval '1 day'),
+      'trust', public.user_trust(p.id)) as x
+    from public.profiles p
+    where public.is_crumbs_admin()
+      and (exists (select 1 from public.restaurant_facts f where f.user_id = p.id and f.created_at > now() - interval '1 day')
+        or exists (select 1 from public.restaurant_dish_votes v where v.user_id = p.id and v.created_at > now() - interval '1 day'))
+    limit 30) t
+$$;
+
+-- #170 Merge two copies of the same restaurant (admins): everything moves to `keep`.
+create or replace function public.merge_restaurants(keep uuid, dupe uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_crumbs_admin() then raise exception 'Admins only'; end if;
+  if keep = dupe or not exists (select 1 from public.restaurants where id = keep)
+     or not exists (select 1 from public.restaurants where id = dupe) then raise exception 'Pick two different restaurants'; end if;
+  update public.places set restaurant_id = keep where restaurant_id = dupe;
+  -- Dishes: same name → keep one and move the ✓/✕ over; others just move.
+  insert into public.restaurant_dish_votes (dish_id, user_id, vote, created_at)
+  select k.id, v.user_id, v.vote, v.created_at
+    from public.restaurant_dish_votes v
+    join public.restaurant_dishes d on d.id = v.dish_id and d.restaurant_id = dupe
+    join public.restaurant_dishes k on k.restaurant_id = keep and k.name_key = d.name_key
+  on conflict (dish_id, user_id) do nothing;
+  update public.menu_contributions m set dish_id = k.id
+    from public.restaurant_dishes d, public.restaurant_dishes k
+   where m.dish_id = d.id and d.restaurant_id = dupe and k.restaurant_id = keep and k.name_key = d.name_key
+     and not exists (select 1 from public.menu_contributions x where x.dish_id = k.id and x.user_id = m.user_id);
+  delete from public.restaurant_dishes d where d.restaurant_id = dupe
+     and exists (select 1 from public.restaurant_dishes k where k.restaurant_id = keep and k.name_key = d.name_key);
+  update public.restaurant_dishes set restaurant_id = keep where restaurant_id = dupe;
+  update public.menu_contributions set restaurant_id = keep where restaurant_id = dupe;
+  update public.restaurant_facts f set restaurant_id = keep where restaurant_id = dupe
+     and not exists (select 1 from public.restaurant_facts k where k.restaurant_id = keep and k.field = f.field and k.user_id is not distinct from f.user_id);
+  update public.restaurant_claims c set restaurant_id = keep where restaurant_id = dupe
+     and not exists (select 1 from public.restaurant_claims k where k.restaurant_id = keep and k.user_id = c.user_id);
+  insert into public.restaurant_managers (restaurant_id, user_id, since, last_active_at)
+  select keep, user_id, since, last_active_at from public.restaurant_managers where restaurant_id = dupe
+  on conflict do nothing;
+  update public.contribution_points set restaurant_id = keep where restaurant_id = dupe;
+  -- Fill gaps on the kept copy from the other one.
+  update public.restaurants k set
+    formatted_address = coalesce(k.formatted_address, d.formatted_address), phone = coalesce(k.phone, d.phone),
+    website = coalesce(k.website, d.website), cuisine = coalesce(k.cuisine, d.cuisine),
+    opening_hours = coalesce(k.opening_hours, d.opening_hours), osm_id = coalesce(k.osm_id, d.osm_id),
+    google_place_id = coalesce(k.google_place_id, d.google_place_id), sources = d.sources || k.sources,
+    verified = d.verified || k.verified
+  from public.restaurants d where k.id = keep and d.id = dupe;
+  delete from public.restaurants where id = dupe;
+  update public.restaurants set places_count = (select count(*) from public.places where restaurant_id = keep),
+         owner_verified = exists (select 1 from public.restaurant_managers where restaurant_id = keep)
+   where id = keep;
+  perform public.refresh_menu_price(keep);
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['over_daily_cap(text)', 'possible_duplicates()', 'recent_contributors()', 'merge_restaurants(uuid, uuid)'] loop
     execute format('revoke execute on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;

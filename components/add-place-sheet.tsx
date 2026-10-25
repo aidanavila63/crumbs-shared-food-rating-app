@@ -14,6 +14,7 @@ export function AddPlaceSheet({
   onClose,
   onSaved,
   supabase,
+  shared,
 }: {
   userId?: string
   groupId?: string
@@ -21,8 +22,10 @@ export function AddPlaceSheet({
   onClose: () => void
   onSaved: (place: Place) => void
   supabase: any
+  /** #164 shared from another app: a map link to read, or a name to search */
+  shared?: { link: string | null; name: string | null } | null
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(shared?.name ?? '')
   const [address, setAddress] = useState('')
   const [status, setStatus] = useState<Status>('Want to try')
   const [score, setScore] = useState(0)
@@ -139,6 +142,7 @@ export function AddPlaceSheet({
         />
         <MapsLinkImport
           supabase={demo ? undefined : supabase}
+          initialLink={shared?.link}
           onFound={(place) => {
             setFound(place)
             setName(place.name)

@@ -9,6 +9,7 @@ import { timeAgo } from './social'
 import { analyticsOn } from '@/lib/analytics'
 import { POINTS, type PointRules } from '@/lib/tiers'
 import { BACKUP_BUCKET } from '@/lib/backup'
+import { monthPace } from '@/lib/limits'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -274,6 +275,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       <BudgetsCard supabase={supabase} demo={demo} />
       <PointsCard supabase={supabase} demo={demo} />
       <BackupsCard supabase={supabase} demo={demo} />
+      <QualityCard supabase={supabase} demo={demo} />
       <ClaimsCard supabase={supabase} demo={demo} />
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
@@ -508,6 +510,14 @@ function BudgetsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
                 <span className={`owned-bar mt-1 ${tone(month)}`}>
                   <span className="bar-fill" style={{ width: `${Math.max(2, month)}%` }} />
                 </span>
+                {b.month > 0 && (
+                  <span
+                    className={`mt-1 block ${monthPace(b.month) > b.monthly_total ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    At this pace ~{monthPace(b.month)} by month end
+                    {monthPace(b.month) > b.monthly_total ? ' — it will stop at the limit' : ''}
+                  </span>
+                )}
               </div>
             ) : null}
             <div className="grid grid-cols-3 gap-2 text-xs">
@@ -601,15 +611,18 @@ function BackupsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
       <h3 className="settings-heading">Backups</h3>
       <p className="text-sm text-muted-foreground">
         Every Monday all Crumbs tables are saved as one compressed file (newest 8 kept). Needs
-        SUPABASE_SERVICE_ROLE_KEY and CRON_SECRET in Vercel. Photos and sign-in accounts aren’t
-        in it.
+        SUPABASE_SERVICE_ROLE_KEY and CRON_SECRET in Vercel. Photos and sign-in accounts aren’t in
+        it.
       </p>
       {files?.length ? (
         files.map((f) => (
           <div key={f.name} className="flex items-center justify-between gap-2 text-sm">
             <span>
               {f.name.replace('crumbs-', '').replace('.json.gz', '')}
-              <span className="text-muted-foreground"> · {Math.max(1, Math.round(f.size / 1024))} KB</span>
+              <span className="text-muted-foreground">
+                {' '}
+                · {Math.max(1, Math.round(f.size / 1024))} KB
+              </span>
             </span>
             <button className="text-xs text-primary underline" onClick={() => download(f.name)}>
               Download
@@ -804,6 +817,176 @@ function ClaimsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </div>
         </div>
       ))}
+    </section>
+  )
+}
+
+type AdminAlert = {
+  id: number
+  kind: string
+  level: 'info' | 'warn' | 'stop'
+  message: string
+  day: string
+}
+type Dupe = {
+  a: string
+  a_name: string
+  a_places: number
+  a_owner: boolean
+  b: string
+  b_name: string
+  b_places: number
+  b_owner: boolean
+  meters: number
+}
+type Contributor = {
+  user_id: string
+  name: string | null
+  facts: number
+  votes: number
+  flags: number
+  trust: number | null
+}
+
+const demoQuality = {
+  alerts: [
+    {
+      id: 1,
+      kind: 'pace_ai',
+      level: 'info' as const,
+      message: 'AI ideas: on pace for ~3,400 this month (limit 3,000). It stops at the limit.',
+      day: new Date().toISOString().slice(0, 10),
+    },
+  ],
+  dupes: [
+    {
+      a: 'r1',
+      a_name: 'Hana Ramen',
+      a_places: 3,
+      a_owner: false,
+      b: 'r2',
+      b_name: 'Hana Ramen Bar',
+      b_places: 1,
+      b_owner: false,
+      meters: 40,
+    },
+  ],
+  people: [
+    { user_id: 'u1', name: 'Sam', facts: 12, votes: 30, flags: 1, trust: 0.92 },
+    { user_id: 'u2', name: 'New account', facts: 55, votes: 4, flags: 20, trust: 0.2 },
+  ],
+}
+
+/** #172 alerts from the daily job, #169 duplicate restaurants to merge, #171 who's busy today. */
+function QualityCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [alerts, setAlerts] = useState<AdminAlert[]>(demo ? demoQuality.alerts : [])
+  const [dupes, setDupes] = useState<Dupe[]>(demo ? demoQuality.dupes : [])
+  const [people, setPeople] = useState<Contributor[]>(demo ? demoQuality.people : [])
+  useEffect(() => {
+    if (demo) return
+    supabase
+      .from('admin_alerts')
+      .select('id,kind,level,message,day')
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }: any) => setAlerts(data ?? []))
+    supabase.rpc('possible_duplicates').then(({ data }: any) => setDupes(data ?? []))
+    supabase.rpc('recent_contributors').then(({ data }: any) => setPeople(data ?? []))
+  }, [demo, supabase])
+
+  async function dismiss(id: number) {
+    setAlerts((all) => all.filter((a) => a.id !== id))
+    if (!demo) await supabase.from('admin_alerts').delete().eq('id', id)
+  }
+  async function merge(d: Dupe) {
+    // Keep the owner-verified one, else the one more groups saved.
+    const keepA = d.a_owner || (!d.b_owner && d.a_places >= d.b_places)
+    const [keep, dupe, keepName, dupeName] = keepA
+      ? [d.a, d.b, d.a_name, d.b_name]
+      : [d.b, d.a, d.b_name, d.a_name]
+    if (
+      !window.confirm(
+        `Merge “${dupeName}” into “${keepName}”? Saved places, menus and details move over.`,
+      )
+    )
+      return
+    if (!demo) {
+      const { error } = await supabase.rpc('merge_restaurants', { keep, dupe })
+      if (error) return toast.error(error.message)
+    }
+    haptic('success')
+    setDupes((all) => all.filter((x) => x !== d))
+    toast.success('Merged')
+  }
+
+  const busy = people.filter((p) => p.facts + p.votes > 0)
+  if (!alerts.length && !dupes.length && !busy.length) return null
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Data quality</h3>
+      {alerts.map((a) => (
+        <div
+          key={a.id}
+          className={`surface-soft flex items-start justify-between gap-2 text-sm ${a.level === 'info' ? '' : 'font-semibold'}`}
+        >
+          <span>
+            {a.level === 'stop' ? '🛑 ' : a.level === 'warn' ? '⚠️ ' : ''}
+            {a.message}
+            <span className="block text-xs font-normal text-muted-foreground">{a.day}</span>
+          </span>
+          <button className="text-xs text-primary underline" onClick={() => dismiss(a.id)}>
+            Dismiss
+          </button>
+        </div>
+      ))}
+      {dupes.length > 0 && (
+        <details open={dupes.length <= 3}>
+          <summary className="cursor-pointer text-sm font-semibold text-primary">
+            Possible duplicates ({dupes.length})
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {dupes.map((d) => (
+              <div
+                key={`${d.a}-${d.b}`}
+                className="flex items-center justify-between gap-2 text-sm"
+              >
+                <span className="min-w-0">
+                  <strong>{d.a_name}</strong> ({d.a_places}) · <strong>{d.b_name}</strong> (
+                  {d.b_places})
+                  <span className="block text-xs text-muted-foreground">~{d.meters} m apart</span>
+                </span>
+                <button className="secondary !min-h-9 shrink-0 text-sm" onClick={() => merge(d)}>
+                  Merge
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {busy.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-sm font-semibold text-primary">
+            Busy in the last day ({busy.length})
+          </summary>
+          <div className="mt-2 flex flex-col gap-1">
+            {busy.slice(0, 15).map((p) => (
+              <div key={p.user_id} className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate">{p.name || 'Someone'}</span>
+                <span
+                  className={`shrink-0 text-xs ${p.trust !== null && p.trust < 0.3 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}
+                >
+                  {p.facts} details · {p.votes} checks{p.flags ? ` · ${p.flags} flags` : ''} ·{' '}
+                  {p.trust === null ? 'new' : `${Math.round(p.trust * 100)}% backed`}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Below 30% backed, someone’s details wait for two others to agree. Daily caps: 60
+            details, 200 checks, 60 prices.
+          </p>
+        </details>
+      )}
     </section>
   )
 }

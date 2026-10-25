@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useGoogleDown, markGoogleDown } from '@/lib/google-status'
@@ -10,14 +10,18 @@ import { findOnGoogle, findOnOsm, type FoundPlace } from './place-search'
 export function MapsLinkImport({
   onFound,
   supabase,
+  initialLink,
 }: {
   onFound: (place: FoundPlace) => void
   supabase?: any
+  /** #164 a link shared to Crumbs from another app: read it straight away */
+  initialLink?: string | null
 }) {
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
-  const [link, setLink] = useState('')
+  const [link, setLink] = useState(initialLink ?? '')
   const [busy, setBusy] = useState(false)
+  const started = useRef(false)
 
   async function run(raw: string = link) {
     if (!raw.trim()) return
@@ -50,6 +54,13 @@ export function MapsLinkImport({
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!initialLink || started.current) return
+    started.current = true
+    run(initialLink)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLink])
 
   /** iPhone asks before sharing the clipboard, so this is a button instead of reading it silently. */
   async function paste() {
