@@ -417,3 +417,11 @@ Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload 
 - **#168 walkthrough**: 6 short cards the first time someone opens a group on a phone (Skip any time). **Guidebook** at the top of Settings: how each area works (places & lists, rating, dishes & menus, deciding & plans, home cooking, building Crumbs, offline) + Tips & tricks, and "Replay the welcome tour".
 - **#225 search everything**: typing 2+ letters in the Places search also shows matching dishes (opens the place), lists, plans and home meals, grouped above your places.
 - Tests 124/124; build passes; demo checked.
+
+## Round 39 - checks on every push, staging, database rules (#227 #228 #231 #232) (Oct 25, Claude in Cowork)
+- **#232 database tests**: `supabase/tests/` – builds a fresh database from every migration (twice, to prove re-running is safe) and runs the 20 security/behaviour test files; `expected.txt` holds how many refusals each should raise.
+- **#227 click-through**: `tests/e2e/smoke.mjs` opens the demo, a place, every tab, quick log, Settings and the Guidebook, and reloads on another tab; fails on any page crash. Found and fixed a real one: reloading on a tab other than Places made the page re-draw (server/phone mismatch).
+- **CI** (`.github/workflows/ci.yml`): every push runs typecheck, unit tests, lint, build, the database tests and the click-through.
+- **#228 staging**: `docs/STAGING.md` – a second free Supabase project for Vercel previews.
+- **#231 migrations**: `supabase/README.md` – the v4 file is the last big one; after it runs on live, every change is a new dated file.
+- `NEXT-STEPS.md` rewritten for the big push.

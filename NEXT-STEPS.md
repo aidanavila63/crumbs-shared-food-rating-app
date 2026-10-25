@@ -1,11 +1,22 @@
-# Next steps
+# Next steps – the big push
 
-1. Supabase -> SQL Editor: paste and run `supabase/migrations/20261023_v2_features.sql` (safe to re-run). Do this BEFORE pushing.
-2. `git config core.autocrlf false`, then `git am ~/Downloads/crumbs-all-updates.patch`, then `git push`.
-3. Google sign-in ("provider is not enabled"): Supabase -> Authentication -> Sign In / Providers -> Google -> switch on,
-   paste the Client ID and Secret from Google Cloud Console -> APIs & Services -> Credentials -> OAuth client (Web).
-   In that Google client add this Authorised redirect URI: https://zatyzwsmlfmzapzwvcui.supabase.co/auth/v1/callback
-   In Supabase -> Authentication -> URL Configuration keep `https://*.vercel.app/auth/callback` in Redirect URLs.
-4. Notifications (optional): add the 3 values from NOTIFICATION-KEYS-private.txt to Vercel -> Settings -> Environment Variables
-   (All Environments), redeploy, then each phone: Share -> Add to Home Screen, open Crumbs from the icon, Group tab -> Notifications -> Turn on.
-5. Test on the preview, merge the PR, then restrict the Maps key to your production domain.
+Do these in order. Everything stays on free plans.
+
+1. **Database first** – Supabase → SQL Editor: paste and run `supabase/migrations/20261025_v4_features.sql`
+   (safe to run again). Then run the admin line at the very bottom of that file on its own, with your sign-in email.
+   After this, never edit that file again – new changes go in new dated files (see `supabase/README.md`).
+2. **Code** – `git config core.autocrlf false`, then `git am ~/Downloads/crumbs-batch30.patch`, then `git push`.
+3. **Vercel → Settings → Environment Variables** (All Environments unless noted), then redeploy:
+   - `SUPABASE_SERVICE_ROLE_KEY` – Supabase → Project Settings → API keys → service_role / secret key.
+     Needed for the daily job (reminders, keep-awake, backups, limit alerts) and the menu-PDF queue.
+   - `CRON_SECRET` – any long random text. Vercel sends it to the daily job so nobody else can run it.
+   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` – push notifications (optional).
+   - `NEXT_PUBLIC_POSTHOG_KEY` / `_HOST` (analytics) and `R2_*` + `NEXT_PUBLIC_R2_PUBLIC_URL` (photos) – optional.
+   - AI (menu photos and PDFs): Vercel → AI Gateway must be switched on for the project; no key needed on Vercel.
+4. **Google sign-in** – unchanged; see the Supabase/Google steps in `DEVLOG.md` if it ever stops working.
+5. **Check the push** – GitHub → Actions: the three checks (code, database security, demo click-through)
+   should be green. Then try the Vercel preview on your phone before merging.
+6. Optional: set up staging (`docs/STAGING.md`) so future SQL is tried on a copy first.
+
+Free-plan note: the menu-PDF queue reads about 4 PDFs per run on the free Vercel plan (60-second limit);
+the rest wait for the next run. The month-end catch-up uses whatever AI allowance is left.

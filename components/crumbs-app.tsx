@@ -1,6 +1,6 @@
 'use client'
 import { identify, resetAnalytics, track } from '@/lib/analytics'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCheck,
   Dices,
@@ -114,17 +114,20 @@ function CrumbsShell() {
     return installErrorReporter(data.supabase, data.user.id)
   }, [data.demo, data.v4, data.user?.id, data.supabase])
   useMotionPrefs() // applies the Animations setting to the page
-  const [tab, setTabState] = useState<Tab>(() => {
-    if (typeof window === 'undefined') return 'Places'
-    const saved = sessionStorage.getItem('crumbs-tab') ?? 'Places'
-    return OLD_TABS[saved] ?? (tabs.some((item) => item.id === saved) ? (saved as Tab) : 'Places')
-  })
+  // Start on Places (same as the server render), then go back to the tab you were on.
+  const [tab, setTabState] = useState<Tab>('Places')
   const [direction, setDirection] = useState<'left' | 'right'>('right')
-  const [placesView, setPlacesView] = useState<'places' | 'lists' | 'home'>(() =>
-    typeof window !== 'undefined' && sessionStorage.getItem('crumbs-tab') === 'Lists'
-      ? 'lists'
-      : 'places',
-  )
+  const [placesView, setPlacesView] = useState<'places' | 'lists' | 'home'>('places')
+  useLayoutEffect(() => {
+    let saved = 'Places'
+    try {
+      saved = sessionStorage.getItem('crumbs-tab') ?? 'Places'
+    } catch {}
+    const next =
+      OLD_TABS[saved] ?? (tabs.some((item) => item.id === saved) ? (saved as Tab) : 'Places')
+    if (next !== 'Places') setTabState(next)
+    if (saved === 'Lists') setPlacesView('lists')
+  }, [])
   const [hub, setHub] = useState<HubPage[]>([])
   function setTab(next: Tab) {
     if (next === tab) return
