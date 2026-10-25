@@ -2918,6 +2918,99 @@ revoke execute on function public.owner_insights(uuid) from public, anon;
 grant execute on function public.owner_insights(uuid) to authenticated;
 
 -- ============================================================================================
+-- 13p. Menu PDFs (#214): owners upload a PDF of their menu (members can open it). PDFs wait in a
+--      queue by upload time; near the end of each month the daily job spends the AI allowance that's
+--      left over reading them into the restaurant's menu, so free credit is never wasted.
+-- ============================================================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('crumbs-menus', 'crumbs-menus', true, 8388608, array['application/pdf'])
+on conflict (id) do update set public = true, file_size_limit = 8388608, allowed_mime_types = array['application/pdf'];
+drop policy if exists crumbs_menus_insert on storage.objects;
+drop policy if exists crumbs_menus_delete on storage.objects;
+create policy crumbs_menus_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'crumbs-menus' and (public.is_crumbs_admin()
+              or public.manages_restaurant(((storage.foldername(name))[1])::uuid)));
+create policy crumbs_menus_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'crumbs-menus' and (public.is_crumbs_admin()
+         or public.manages_restaurant(((storage.foldername(name))[1])::uuid)));
+
+create table if not exists public.restaurant_menu_files (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  path text not null unique check (char_length(path) <= 200),
+  bytes integer check (bytes between 1 and 8388608),
+  uploaded_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  status text not null default 'queued' check (status in ('queued', 'reading', 'read', 'failed')),
+  read_at timestamptz,
+  dishes_added integer,
+  error text check (char_length(error) <= 300)
+);
+create index if not exists restaurant_menu_files_queue on public.restaurant_menu_files (status, created_at);
+alter table public.restaurant_menu_files enable row level security;
+drop policy if exists menu_files_read on public.restaurant_menu_files;
+drop policy if exists menu_files_owner on public.restaurant_menu_files;
+drop policy if exists menu_files_owner_delete on public.restaurant_menu_files;
+create policy menu_files_read on public.restaurant_menu_files for select to authenticated using (true);
+create policy menu_files_owner on public.restaurant_menu_files for insert to authenticated
+  with check ((public.manages_restaurant(restaurant_id) or public.is_crumbs_admin())
+              and status = 'queued' and path like restaurant_id::text || '/%');
+create policy menu_files_owner_delete on public.restaurant_menu_files for delete to authenticated
+  using (public.manages_restaurant(restaurant_id) or public.is_crumbs_admin());
+
+alter table public.restaurant_dishes drop constraint if exists restaurant_dishes_source_check;
+alter table public.restaurant_dishes add constraint restaurant_dishes_source_check
+  check (source = any (array['photo', 'website', 'manual', 'receipt', 'pdf']));
+insert into public.usage_budgets (kind, daily_total, monthly_total, per_tier, note) values
+  ('menu_pdf', null, 400, '{0,0,0,0,0}', 'Menu PDFs read by AI (only leftover monthly AI allowance, end of month)')
+on conflict (kind) do nothing;
+
+-- The daily job saves what the AI read (server only). The owner's own menu, so owner-checked.
+create or replace function public.import_menu_file(file uuid, dishes jsonb)
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  f public.restaurant_menu_files;
+  d jsonb;
+  k text;
+  fresh integer := 0;
+  row_id uuid;
+  is_new boolean;
+begin
+  select * into f from public.restaurant_menu_files where id = file;
+  if f.id is null then raise exception 'No such file'; end if;
+  if jsonb_typeof(dishes) <> 'array' then raise exception 'Bad dishes'; end if;
+  for d in select * from jsonb_array_elements(dishes) limit 200 loop
+    k := public.dish_key(d->>'name');
+    continue when k is null or length(k) < 2 or length(d->>'name') > 120;
+    insert into public.restaurant_dishes (restaurant_id, name, name_key, price, description, course, source, added_by, owner_ok)
+    values (f.restaurant_id, trim(d->>'name'), k,
+            case when (d->>'price') ~ '^[0-9]{1,4}(\.[0-9]{1,2})?$' then (d->>'price')::numeric end,
+            left(nullif(trim(d->>'description'), ''), 300),
+            case when d->>'course' in ('starter', 'main', 'side', 'dessert', 'drink') then d->>'course' end,
+            'pdf', f.uploaded_by, true)
+    on conflict (restaurant_id, name_key) do update set
+      price = coalesce(excluded.price, restaurant_dishes.price),
+      price_set_at = case when excluded.price is distinct from restaurant_dishes.price and excluded.price is not null
+                          then now() else restaurant_dishes.price_set_at end,
+      price_checked_at = now(),
+      description = coalesce(excluded.description, restaurant_dishes.description),
+      course = coalesce(excluded.course, restaurant_dishes.course),
+      owner_ok = true, hidden = false
+    returning id, (xmax = 0) into row_id, is_new;
+    if is_new then fresh := fresh + 1; end if;
+  end loop;
+  update public.restaurant_menu_files set status = 'read', read_at = now(), dishes_added = fresh, error = null where id = file;
+  perform public.refresh_menu_price(f.restaurant_id);
+  return fresh;
+end $$;
+revoke execute on function public.import_menu_file(uuid, jsonb) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.import_menu_file(uuid, jsonb) to service_role;
+  end if;
+end $$;
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

@@ -2,11 +2,13 @@
 //  #173 touches the database so a quiet week never lets it fall asleep,
 //  #172 checks the free limits and raises Admin alerts (and a push to admins, if set up),
 //  #141 reminds people about plans coming up (needs push keys),
+//  #214 in the last 3 days of a month, reads queued menu PDFs with leftover AI allowance,
 //  #89  makes the weekly backup on Mondays.
 // Without CRON_SECRET it only does the harmless wake-up read.
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
 import { limitAlerts, type LimitReport } from '@/lib/limits'
+import { isMonthEnd, leftoverAi, processMenuQueue } from '@/lib/menu-queue'
 import { runBackup } from '@/lib/run-backup'
 
 export const runtime = 'nodejs'
@@ -45,6 +47,10 @@ export async function GET(request: Request) {
       done.pushed = await pushAdmins(db, fresh ?? [])
     }
   }
+
+  // #214 Last days of the month: spend the AI allowance that's left reading queued menu PDFs.
+  if (!error && isMonthEnd())
+    done.menus = await processMenuQueue(db, leftoverAi((report as LimitReport).budgets))
 
   // #141 Plan reminders (the day before).
   done.reminders = await remindPlans(db)

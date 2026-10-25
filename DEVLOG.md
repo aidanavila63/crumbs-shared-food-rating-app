@@ -396,3 +396,11 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - **#211 owner insights** (`owner_insights()`): saved by / want to try / visits, average rating (3+), visits by month (bars, 5+ visits), $ a person by quarter (3+ each), most confirmed dishes — totals only.
 - **#212 "Find us on Crumbs" poster**: downloadable A4 PNG with a QR code → `/?add=<restaurant>` opens Crumbs and adds the place to the scanner's group (or opens it if already saved).
 - Tests 118/118; SQL tested (owner-only posts and insights); build passes; demo checked.
+
+## Round 36 - menu PDFs read with leftover AI (#214 reworked) (Oct 25, Claude in Cowork)
+Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload time; at month end leftover AI credit mass-reads them; always use allowances fully before the reset.
+- **Owners** (Your restaurants → Menu PDF): upload a PDF (up to 8 MB, public `crumbs-menus` bucket, owners/admins only) → members see "📄 The restaurant's menu (PDF)" above the menu straight away; each file shows waiting / ✓ read · N new dishes / couldn't read; delete.
+- **Queue** (`restaurant_menu_files`, `lib/menu-queue.ts`): in the **last 3 days of each month** the daily job works out the AI allowance left this month (Spending guard: ai + menu_import + menu_photo_ai + menu_pdf) and reads queued PDFs oldest first (a few per run, in parallel, to fit the 60 s limit) with the AI → `import_menu_file()` (server only) adds the dishes as owner-checked (source "pdf"). Counted in a new "menu_pdf" budget (400/month). **Admin → Menu PDFs → Read a few now** does it on demand.
+- Backups now also include posts, menu files, Good-to-know votes, notes and deal votes.
+- Note: on the free hosting plan the job has ~60 s, so it reads ~4 PDFs per run (~12 at month end + any "Read now"). Fine for now; a second scheduled run can be added if the queue grows.
+- Tests 119/119; SQL tested (owner-only upload rows, path must be the restaurant's folder, import server-only, dishes owner-checked); build passes.

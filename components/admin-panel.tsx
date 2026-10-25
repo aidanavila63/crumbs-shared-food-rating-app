@@ -276,6 +276,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       <PointsCard supabase={supabase} demo={demo} />
       <BackupsCard supabase={supabase} demo={demo} />
       <QualityCard supabase={supabase} demo={demo} />
+      <MenuQueueCard supabase={supabase} demo={demo} />
       <ClaimsCard supabase={supabase} demo={demo} />
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
@@ -1016,6 +1017,52 @@ function QualityCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </p>
         </details>
       )}
+    </section>
+  )
+}
+
+/** #214 Menu PDFs waiting to be read (end of month with leftover AI allowance, or now). */
+function MenuQueueCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [counts, setCounts] = useState<Record<string, number> | null>(
+    demo ? { queued: 3, read: 12 } : null,
+  )
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    if (demo) return
+    const { data } = await supabase.from('restaurant_menu_files').select('status')
+    if (!data) return
+    const out: Record<string, number> = {}
+    for (const row of data) out[row.status] = (out[row.status] ?? 0) + 1
+    setCounts(out)
+  }, [demo, supabase])
+  useEffect(() => {
+    const timer = setTimeout(load, 0)
+    return () => clearTimeout(timer)
+  }, [load])
+  if (!counts || !Object.keys(counts).length) return null
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Menu PDFs</h3>
+      <p className="text-sm text-muted-foreground">
+        {counts.queued ?? 0} waiting · {counts.read ?? 0} read
+        {counts.failed ? ` · ${counts.failed} couldn’t be read` : ''}. They’re read in the last 3
+        days of each month with the AI allowance that’s left.
+      </p>
+      <button
+        className="secondary"
+        disabled={busy || !counts.queued || demo}
+        onClick={async () => {
+          setBusy(true)
+          const response = await fetch('/api/menu-queue', { method: 'POST' })
+          const result = await response.json().catch(() => ({}))
+          setBusy(false)
+          if (!response.ok) return toast.error(result.error || 'Could not read them')
+          toast.success(`Read ${result.read} (${result.left} AI uses were left this month)`)
+          load()
+        }}
+      >
+        {busy ? 'Reading…' : 'Read a few now'}
+      </button>
     </section>
   )
 }

@@ -49,6 +49,11 @@ export const BACKUP_TABLES = [
   'table_orders',
   'swipe_limits',
   'group_goals',
+  'restaurant_posts',
+  'restaurant_menu_files',
+  'restaurant_attr_votes',
+  'restaurant_tips',
+  'restaurant_tip_votes',
   'waitlist',
 ] as const
 

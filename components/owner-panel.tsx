@@ -34,6 +34,7 @@ import { Overlay } from './overlay'
 import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
 import { OwnerInsights, OwnerPosts, OwnerPoster } from './owner-extras'
+import { OwnerMenuPdf } from './menu-pdf'
 
 const FIELDS: FactField[] = ['address', 'hours', 'phone', 'website', 'cuisine', 'status']
 const LABEL: Partial<Record<FactField, string>> = {
@@ -442,6 +443,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         onMenu={setMenu}
         onChanged={reload}
       />
+      <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
     </div>
   )

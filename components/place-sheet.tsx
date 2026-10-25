@@ -64,6 +64,7 @@ import { PrivateNote, usePrivateNote } from './private-note'
 import { OrderForTable } from './order-for-table'
 import { GoodToKnow } from './good-to-know'
 import { RestaurantPosts } from './restaurant-posts'
+import { MenuPdfLink } from './menu-pdf'
 import { PlanB } from './plan-b'
 import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
 import { photoUrl } from '@/lib/photos'
@@ -1445,6 +1446,9 @@ export function PlaceSheet({
             </button>
           </div>
         </div>
+        {(v4 || demo) && restaurant.restaurant && (
+          <MenuPdfLink restaurantId={restaurant.restaurant.id} supabase={supabase} demo={demo} />
+        )}
         <CommunityMenu
           store={restaurant}
           ours={dishes}
