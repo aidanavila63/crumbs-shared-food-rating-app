@@ -1851,3 +1851,79 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   color: #fff;
   background: radial-gradient(120% 120% at 0% 0%, var(--primary), #1d1a24 90%);
 }
+
+/* #112 one quiet line of reasons under your score */
+.reason-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-top: -8px;
+  padding-bottom: 2px;
+}
+.reason-row::-webkit-scrollbar {
+  display: none;
+}
+.reason-chip {
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.reason-chip-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  font-weight: 600;
+}
+
+/* #179 next-time note and #122 wishlist dishes at the top of a place */
+.next-time-note {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* #118 dish photo strip */
+.dish-gallery {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+.dish-gallery::-webkit-scrollbar {
+  display: none;
+}
+.dish-gallery figure {
+  flex: 0 0 auto;
+  width: 132px;
+  scroll-snap-align: start;
+}
+.dish-gallery img {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 16px;
+  background: var(--muted);
+}
+.dish-gallery figcaption {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* #121 Safe for me */
+.fit-tag {
+  color: #2f7d4f;
+}

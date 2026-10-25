@@ -16,6 +16,7 @@ import { receiptItems, receiptTotal, type MenuLine } from '@/lib/ocr-parse'
 import { linkRestaurant, shareDishes } from '@/lib/restaurants'
 import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
 import { recall, remember } from '@/lib/remember'
+import { usePrivateNote } from './private-note'
 
 const todayIso = () => {
   const d = new Date()
@@ -61,6 +62,8 @@ export function QuickLogSheet({
   const [pickedId, setPickedId] = useState<string | null>(null)
   const picked = places.find((place) => place.id === pickedId) ?? null
   const mine = picked?.place_ratings.find((rating) => rating.user_id === userId)
+  // #179 your "next time" note for the place you picked
+  const nextTime = usePrivateNote({ placeId: pickedId ?? '', userId, supabase, demo }).nextTime
   const [score, setScore] = useState(0)
   const [spend, setSpend] = useState('')
   const [busy, setBusy] = useState(false)
@@ -204,6 +207,11 @@ export function QuickLogSheet({
           <h2 className="font-serif text-3xl font-bold">
             {picked ? picked.name : 'Where are you eating?'}
           </h2>
+          {picked && nextTime && (
+            <p className="next-time-note rise-panel mt-2 text-sm">
+              📌 <strong>Next time:</strong> {nextTime}
+            </p>
+          )}
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×

@@ -4,7 +4,10 @@ import { track } from '@/lib/analytics'
 import { useMemo, useState } from 'react'
 import { ChefHat, Dices, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { HomeMeal, Profile } from '@/hooks/use-crumbs-data'
+import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
+import { dishAverage } from '@/lib/stats'
+import { PublicRecipes } from './public-recipes'
+import { Switch } from './switch'
 import { haptic } from '@/lib/motion'
 import { undoableDelete } from '@/lib/undoable'
 import { RatingStars } from './rating-stars'
@@ -45,7 +48,10 @@ export function HomeTab({
   supabase,
   demo,
   v4,
+  places = [],
 }: {
+  /** #123 to compare a meal with the restaurant dish it came from */
+  places?: Place[]
   meals: HomeMeal[]
   setMeals: (update: (current: HomeMeal[]) => HomeMeal[]) => void
   groupId: string
@@ -63,6 +69,7 @@ export function HomeTab({
   const [status, setStatus] = useState<HomeMeal['status']>('Cooked')
   const [busy, setBusy] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [browsing, setBrowsing] = useState(false)
   const open = meals.find((meal) => meal.id === openId) ?? null
 
   const shown = useMemo(() => {
@@ -178,6 +185,17 @@ export function HomeTab({
           <Plus className={`transition-transform ${adding ? 'rotate-45' : ''}`} />
         </button>
       </div>
+      {(v4 || demo) && (
+        <button
+          className="self-start text-sm font-semibold text-primary underline"
+          onClick={() => setBrowsing(true)}
+        >
+          🌍 Recipes people shared on Crumbs
+        </button>
+      )}
+      {browsing && (
+        <PublicRecipes supabase={supabase} demo={demo} onClose={() => setBrowsing(false)} />
+      )}
       {adding && (
         <div className="surface rise-panel flex flex-col gap-3">
           <input
@@ -286,6 +304,8 @@ export function HomeTab({
       {open && (
         <MealSheet
           meal={open}
+          places={places}
+          v4={v4 || demo}
           userId={userId}
           names={names}
           members={members}
@@ -334,6 +354,8 @@ export function HomeTab({
 
 function MealSheet({
   meal,
+  places,
+  v4,
   userId,
   names,
   groupId,
@@ -345,6 +367,8 @@ function MealSheet({
   onDelete,
 }: {
   meal: HomeMeal
+  places: Place[]
+  v4: boolean
   userId?: string
   names: Record<string, string>
   members: Profile[]
@@ -360,7 +384,15 @@ function MealSheet({
   const [note, setNote] = useState(mine?.notes ?? '')
   const [recipe, setRecipe] = useState(meal.recipe_url ?? '')
   const [notes, setNotes] = useState(meal.notes ?? '')
+  const [steps, setSteps] = useState(meal.recipe ?? '')
   const avg = mealAverage(meal)
+  // #123 the restaurant dish this was made from, to compare
+  const source = meal.from_dish
+    ? places
+        .flatMap((p) => (p.dishes ?? []).map((d) => ({ d, p })))
+        .find(({ d }) => d.id === meal.from_dish)
+    : null
+  const sourcePoints = source ? dishAverage(source.d) : null
   const link = safeUrl(meal.recipe_url)
 
   async function save(changes: Partial<HomeMeal>) {
@@ -421,6 +453,22 @@ function MealSheet({
             label="Your rating"
           />
         </div>
+        {source && (
+          <div className="surface-soft flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0">
+              <span className="block font-semibold">vs {source.p.name}</span>
+              <span className="block text-muted-foreground">
+                Their {source.d.name}: {sourcePoints !== null ? `${sourcePoints}/100` : 'not rated'}
+                {avg ? ` · yours ${Math.round(avg * 20)}/100` : ' · rate yours to compare'}
+              </span>
+            </span>
+            {avg && sourcePoints !== null ? (
+              <span className="shrink-0 font-semibold">
+                {Math.round(avg * 20) >= sourcePoints ? '🏆 Home wins' : '🍽️ They win'}
+              </span>
+            ) : null}
+          </div>
+        )}
         <button className="primary" onClick={onCook}>
           🍳 We made it today
         </button>
@@ -483,6 +531,39 @@ function MealSheet({
               notes.trim() !== (meal.notes ?? '') && save({ notes: notes.trim() || null })
             }
           />
+          {v4 && (
+            <>
+              <textarea
+                className="field min-h-24"
+                aria-label="The recipe"
+                placeholder="The recipe: ingredients and steps (optional)"
+                maxLength={6000}
+                value={steps}
+                onChange={(event) => setSteps(event.target.value)}
+                onBlur={() =>
+                  steps.trim() !== (meal.recipe ?? '') && save({ recipe: steps.trim() || null })
+                }
+              />
+              <div className="settings-row">
+                <span>
+                  <span className="font-semibold">Share this recipe on Crumbs</span>
+                  <span className="block text-sm text-muted-foreground">
+                    Everyone can see the name, photo, recipe and notes (with your first name), rate
+                    it and leave tips. Your group’s ratings stay private.
+                  </span>
+                </span>
+                <Switch
+                  label="Share this recipe on Crumbs"
+                  checked={!!meal.recipe_public}
+                  onChange={(on) => {
+                    if (on && !steps.trim() && !meal.recipe_url)
+                      return toast('Add the recipe or a link first')
+                    save({ recipe_public: on })
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {DIETARY.map((item) => {

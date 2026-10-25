@@ -99,6 +99,7 @@ export const AVOID_OPTIONS = [
   { key: 'cash', label: 'Cash only' },
 ]
 export const ALLERGENS = ['Shellfish', 'Nuts', 'Gluten', 'Dairy', 'Eggs', 'Soy', 'Pork', 'Beef']
+export const DIETARY = ['Vegetarian', 'Vegan', 'Gluten-free', 'Dairy-free', 'Halal']
 
 type Person = { display_name: string; avoid?: string[] | null }
 export type Warning = { label: string; who: string[] }

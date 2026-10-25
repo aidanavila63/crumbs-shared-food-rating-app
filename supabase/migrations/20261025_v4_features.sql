@@ -2246,6 +2246,7 @@ begin
       ('place_ratings', 'user_id'), ('place_visits', 'created_by'), ('places', 'created_by'),
       ('place_private_notes', 'user_id'), ('dishes', 'created_by'), ('dish_ratings', 'user_id'),
       ('home_meals', 'created_by'), ('home_meal_ratings', 'user_id'), ('home_meal_cooks', 'created_by'),
+      ('recipe_reviews', 'user_id'),
       ('lists', 'created_by'), ('comments', 'user_id'), ('reactions', 'user_id'), ('plans', 'created_by'),
       ('plan_rsvps', 'user_id'), ('restaurant_facts', 'user_id'), ('restaurant_dishes', 'added_by'),
       ('restaurant_dish_votes', 'user_id'), ('restaurant_dish_prices', 'user_id'),
@@ -2260,6 +2261,84 @@ begin
 end $$;
 revoke execute on function public.export_me() from public, anon;
 grant execute on function public.export_me() to authenticated;
+
+-- ============================================================================================
+-- 13i. Dishes & ratings round (#112 reasons, #121 safe for me, #123 recipes, #179 next time, #181 spice)
+-- ============================================================================================
+-- #112 One-tap reasons on a rating ("Great service", "Too salty"), max 4.
+alter table public.place_ratings add column if not exists reasons text[] not null default '{}';
+alter table public.place_ratings drop constraint if exists place_ratings_reasons_check;
+alter table public.place_ratings add constraint place_ratings_reasons_check
+  check (cardinality(reasons) <= 4 and coalesce(array_length(reasons, 1), 0) <= 4);
+
+-- #181 Spice you're happy with (0 none … 3 hot; null = anything), #121 your diet + the
+-- "Safe for me" switch (only on after accepting the note that it's people's reports, not a promise).
+alter table public.profiles add column if not exists spice_max smallint check (spice_max between 0 and 3);
+alter table public.profiles add column if not exists diet text[] not null default '{}';
+alter table public.profiles add column if not exists safe_for_me boolean not null default false;
+
+-- #179 "Next time" note, private like the rest of your notes (body can now be empty).
+alter table public.place_private_notes add column if not exists next_time text check (char_length(next_time) <= 200);
+alter table public.place_private_notes drop constraint if exists place_private_notes_body_check;
+alter table public.place_private_notes add constraint place_private_notes_body_check check (char_length(body) <= 4000);
+
+-- #123 "Make it at home" (a home meal made from a restaurant dish) and recipes you choose to share
+-- with everyone on Crumbs, which anyone can rate and leave a tip on to make it better.
+alter table public.home_meals add column if not exists from_dish uuid references public.dishes(id) on delete set null;
+alter table public.home_meals add column if not exists recipe_public boolean not null default false;
+alter table public.home_meals add column if not exists recipe text check (char_length(recipe) <= 6000);
+
+create or replace function public.is_public_recipe(meal uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select recipe_public from public.home_meals where id = meal), false)
+$$;
+
+create table if not exists public.recipe_reviews (
+  meal_id uuid not null references public.home_meals(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  score smallint not null check (score between 1 and 5),
+  tip text check (char_length(tip) <= 300),
+  created_at timestamptz not null default now(),
+  primary key (meal_id, user_id)
+);
+alter table public.recipe_reviews enable row level security;
+drop policy if exists recipe_reviews_read on public.recipe_reviews;
+drop policy if exists recipe_reviews_write on public.recipe_reviews;
+drop policy if exists recipe_reviews_delete on public.recipe_reviews;
+create policy recipe_reviews_read on public.recipe_reviews for select to authenticated
+  using (public.is_public_recipe(meal_id) or user_id = (select auth.uid()));
+create policy recipe_reviews_write on public.recipe_reviews for insert to authenticated
+  with check (user_id = (select auth.uid()) and public.is_public_recipe(meal_id));
+create policy recipe_reviews_delete on public.recipe_reviews for delete to authenticated
+  using (user_id = (select auth.uid()));
+drop policy if exists recipe_reviews_update on public.recipe_reviews;
+create policy recipe_reviews_update on public.recipe_reviews for update to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()) and public.is_public_recipe(meal_id));
+
+-- Shared recipes for the Home tab: newest or best first, with first names only and the tips.
+create or replace function public.public_recipes(q text default null, lim integer default 30)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x order by (x->>'score')::numeric desc nulls last, x->>'created_at' desc), '[]') from (
+    select jsonb_build_object(
+      'id', m.id, 'name', m.name, 'notes', m.notes, 'recipe', m.recipe, 'recipe_url', m.recipe_url,
+      'photo_path', m.photo_path, 'dietary', m.dietary, 'spice', m.spice, 'created_at', m.created_at,
+      'by', split_part(coalesce(p.display_name, 'Someone'), ' ', 1),
+      'mine', m.created_by = auth.uid(),
+      'score', (select round(avg(r.score)::numeric, 1) from public.recipe_reviews r where r.meal_id = m.id),
+      'reviews', (select count(*) from public.recipe_reviews r where r.meal_id = m.id),
+      'tips', (select coalesce(jsonb_agg(jsonb_build_object('tip', r.tip, 'score', r.score,
+                 'by', split_part(coalesce(rp.display_name, 'Someone'), ' ', 1), 'mine', r.user_id = auth.uid())
+                 order by r.created_at desc), '[]')
+                 from public.recipe_reviews r left join public.profiles rp on rp.id = r.user_id
+                where r.meal_id = m.id and (r.tip is not null or r.user_id = auth.uid()))) as x
+    from public.home_meals m left join public.profiles p on p.id = m.created_by
+    where m.recipe_public and auth.uid() is not null
+      and (q is null or m.name ilike '%' || left(q, 60) || '%')
+    order by m.created_at desc
+    limit least(greatest(lim, 1), 100)) t
+$$;
+revoke execute on function public.public_recipes(text, integer) from public, anon;
+grant execute on function public.public_recipes(text, integer) to authenticated;
 
 -- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.

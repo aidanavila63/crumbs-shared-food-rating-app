@@ -329,3 +329,13 @@ Aidan: tiers should raise limits too, top tier unlimited if you're legit; 117, 1
 - **#178 Best of a kind** (`lib/dish-kinds.ts`): chips under Best dishes — 🍜 Ramen, 🍔 Burgers, 🌮 Tacos… (21 kinds from dish names/tags), shown once a kind has 2+ rated dishes.
 - **#234 Download my data** (`export_me()`): Settings → Your data → one JSON of everything you added across all groups.
 - Tests 93/93; SQL tested (caps by tier, shaky → starter caps, admin edit, gem counts, export, anon blocked); build passes; demo checked.
+
+## Round 28 - dishes & ratings (#112 #118 #119 #121 #122 #123 #179 #181) (Oct 25, Claude in Cowork)
+- **#112 Why?** one quiet scrolling line of reason chips under your score (Great food, Great service, Good value, Cozy, Big portions, Fast / Too salty, Slow, Pricey, Small portions, Loud, Bland), up to 4 (`place_ratings.reasons`). Picked by 2+ → small "Known for great service · cozy" line under the address.
+- **#118** strip of every dish photo your group took, above Dishes.
+- **#119 Order for the table** (link in Dish highlights, `components/order-for-table.tsx`, `lib/dish-helpers.ts`): people stepper; ~1 main each, a starter/side per 2, a dessert per 3, from order-again / best-rated / shareable / wishlist; skips never-again and anything someone avoids; price estimate + each; **Share the order** (phone share sheet or copy).
+- **#121 Safe for me** (Settings → Your preferences, off by default): turning on needs ticking the note ("only what people reported… always confirm with the restaurant"). Your diet chips (Vegetarian, Vegan, Gluten-free, Dairy-free, Halal) + your allergy avoids → "✅ Fits you" / "✕ Not for you" on dishes, and a Safe for me card in Decide & Plan stats.
+- **#122** "⭐ You wanted to try: …" at the top of a place. **#179** "📌 Next time" note (private, `place_private_notes.next_time`) shown at the top of the place and in Quick log.
+- **#123 Make it at home** (dish → More): creates a linked Want-to-cook home meal; the meal shows "vs Hana Ramen: their 92 · yours 88 · 🏆". Meals get a recipe text box and **Share this recipe on Crumbs** switch; Home → "🌍 Recipes people shared on Crumbs" lists them (search, first names only) — anyone can rate and leave a tip (`recipe_reviews`, `public_recipes()`); unsharing hides them again.
+- **#181** spice you're happy with (Settings) → "🌶️ Hotter than Maya likes" on dishes.
+- Tests 98/98; SQL tested (reason cap, next-time with empty note, recipes hidden until shared, reviews only on shared ones, meal rows stay private); build passes; demo checked.

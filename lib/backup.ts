@@ -45,6 +45,7 @@ export const BACKUP_TABLES = [
   'feature_flags',
   'feedback',
   'admin_alerts',
+  'recipe_reviews',
   'waitlist',
 ] as const
 

@@ -12,6 +12,7 @@ import {
   type DishCourse,
 } from '@/lib/stats'
 import { DISH_KINDS, bestOfKind, rankedKinds } from '@/lib/dish-kinds'
+import { safeDishes } from '@/lib/dish-helpers'
 
 const COURSE_LABEL: Record<DishCourse, string> = {
   starter: 'Starters',
@@ -37,6 +38,9 @@ export function StatsPanel({
   // Year in review, spend by month and "who rates harder" were removed (backlog #62, #64, #67 = No).
   // lib/stats.ts keeps yearInReview/spendByMonth for a future "Crumbs Wrapped" (#61).
   const partner = members.find((member) => member.id !== userId)
+  const me = members.find((member) => member.id === userId)
+  // #121 Safe for me, only when you switched it on (Settings → Your preferences)
+  const safe = useMemo(() => (me?.safe_for_me ? safeDishes(places, me, 8) : []), [places, me])
   const [course, setCourse] = useState<DishCourse | null>(null)
   const courses = useMemo(() => rankedCourses(places), [places])
   // #178 Best of a kind ("Best ramen") across all your places.
@@ -130,6 +134,40 @@ export function StatsPanel({
               <span className="font-serif text-2xl text-primary">{points}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {me?.safe_for_me && (
+        <div className="surface flex flex-col gap-2">
+          <span className="tag w-fit">✅ Safe for me</span>
+          {safe.length ? (
+            safe.map(({ dish, place, points }) => (
+              <button
+                key={dish.id}
+                className="surface-soft flex items-center gap-3 text-left"
+                onClick={() => onSelect?.(place)}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{dish.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {place.name}
+                    {dish.dietary?.length ? ` · ${dish.dietary.join(', ')}` : ''}
+                  </span>
+                </span>
+                {points !== null && (
+                  <span className="font-serif text-xl text-primary">{points}</span>
+                )}
+              </button>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nothing yet — tag dishes with their diet (Vegan, Gluten-free…) and allergens and
+              they’ll show here.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Based only on what people reported. Always confirm allergies with the restaurant.
+          </p>
         </div>
       )}
 

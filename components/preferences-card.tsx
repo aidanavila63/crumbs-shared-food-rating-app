@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Profile } from '@/hooks/use-crumbs-data'
-import { ALLERGENS, AVOID_OPTIONS } from '@/lib/place-info'
+import { ALLERGENS, AVOID_OPTIONS, DIETARY } from '@/lib/place-info'
 import { Switch } from './switch'
 import { rememberOn, setRememberOn } from '@/lib/remember'
 
@@ -36,10 +36,14 @@ export function PreferencesCard({
   const avoid = profile?.avoid ?? []
   const [locating, setLocating] = useState(false)
   const [remembering, setRemembering] = useState(() => rememberOn())
+  const [waiver, setWaiver] = useState(false)
+  const [understood, setUnderstood] = useState(false)
 
   async function save(changes: Partial<Profile>) {
     if (!userId) return
-    const before = { avoid: profile?.avoid ?? [], blind_ratings: profile?.blind_ratings ?? false }
+    const before = Object.fromEntries(
+      Object.keys(changes).map((key) => [key, (profile as any)?.[key] ?? null]),
+    ) as Partial<Profile>
     onProfile(changes)
     if (demo) return
     const { error } = await supabase.from('profiles').update(changes).eq('id', userId)
@@ -101,6 +105,94 @@ export function PreferencesCard({
             )
           })}
         </div>
+      </div>
+      <div>
+        <h3 className="font-semibold">Spice you’re happy with</h3>
+        <p className="text-sm text-muted-foreground">
+          Dishes hotter than this get a heads-up for you (and your group sees it too).
+        </p>
+        <div className="chip-row mt-2" role="radiogroup" aria-label="Spice you’re happy with">
+          {[0, 1, 2, 3, null].map((level) => (
+            <button
+              key={String(level)}
+              role="radio"
+              aria-checked={(profile?.spice_max ?? null) === level}
+              className={chip((profile?.spice_max ?? null) === level)}
+              onClick={() => save({ spice_max: level })}
+            >
+              {level === null ? 'Anything' : level === 0 ? 'No spice' : '🌶️'.repeat(level)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="font-semibold">Your diet</h3>
+        <div className="chip-row mt-2">
+          {DIETARY.map((item) => {
+            const diet = profile?.diet ?? []
+            const on = diet.includes(item)
+            return (
+              <button
+                key={item}
+                aria-pressed={on}
+                className={chip(on)}
+                onClick={() =>
+                  save({ diet: on ? diet.filter((d) => d !== item) : [...diet, item] })
+                }
+              >
+                {item}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="settings-row">
+          <span>
+            <span className="font-semibold">Safe for me</span>
+            <span className="block text-sm text-muted-foreground">
+              Marks dishes that fit your diet and have none of your allergies reported, and lists
+              them across all your places.
+            </span>
+          </span>
+          <Switch
+            label="Safe for me"
+            checked={!!profile?.safe_for_me}
+            onChange={(on) => (on ? setWaiver(true) : save({ safe_for_me: false }))}
+          />
+        </div>
+        {waiver && !profile?.safe_for_me && (
+          <div className="rise-panel flex flex-col gap-2 rounded-2xl border border-destructive/40 p-3">
+            <p className="text-sm">
+              <strong>Please read:</strong> “Safe for me” only uses what people in your groups
+              reported about dishes. It can be wrong or out of date, and recipes change. Always tell
+              the restaurant about allergies and double-check with them before you order.
+            </p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={understood}
+                onChange={(event) => setUnderstood(event.target.checked)}
+              />
+              I understand — I’ll always confirm with the restaurant
+            </label>
+            <div className="flex gap-2">
+              <button className="secondary flex-1" onClick={() => setWaiver(false)}>
+                Cancel
+              </button>
+              <button
+                className="primary flex-1"
+                disabled={!understood}
+                onClick={() => {
+                  setWaiver(false)
+                  save({ safe_for_me: true })
+                }}
+              >
+                Turn on
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="settings-row">
         <span>

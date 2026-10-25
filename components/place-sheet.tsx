@@ -3,7 +3,16 @@ import { track } from '@/lib/analytics'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { pendingDeletes, undoableDelete } from '@/lib/undoable'
-import type { Dish, Group, List, Place, Profile, Rating, Status } from '@/hooks/use-crumbs-data'
+import type {
+  Dish,
+  Group,
+  HomeMeal,
+  List,
+  Place,
+  Profile,
+  Rating,
+  Status,
+} from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { ScoreDisplay, ScoreInput } from './score-input'
 import { ReactionBar } from './social'
@@ -35,7 +44,13 @@ import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
 import { VisitsPanel } from './visits-panel'
 import { dishAverage, dishPoints, mustTry } from '@/lib/stats'
-import { ALLERGENS, dishWarnings, normaliseFacts, placeWarnings } from '@/lib/place-info'
+import {
+  ALLERGENS,
+  DIETARY,
+  dishWarnings,
+  normaliseFacts,
+  placeWarnings,
+} from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
 import { basedOn } from '@/lib/based-on'
 import { FactsEditor } from './facts-editor'
@@ -44,7 +59,10 @@ import { Sheet } from './sheet'
 import { PlaceEditor } from './place-editor'
 import { usualCost, valueScore } from '@/lib/value'
 import { OtherGroups } from './other-groups'
-import { PrivateNote } from './private-note'
+import { PrivateNote, usePrivateNote } from './private-note'
+import { OrderForTable } from './order-for-table'
+import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
+import { photoUrl } from '@/lib/photos'
 function DishRow({
   dish,
   userId,
@@ -59,7 +77,12 @@ function DishRow({
   onMeta,
   onRemove,
   v4 = false,
+  fit = null,
+  onMakeAtHome,
 }: {
+  /** #121 Safe for me (only when switched on) */
+  fit?: 'fits' | 'avoid' | 'unknown' | null
+  onMakeAtHome?: () => void
   dish: Dish
   userId?: string
   names: Record<string, string>
@@ -81,6 +104,7 @@ function DishRow({
   const [tag, setTag] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
   const warnings = dishWarnings(dish, members)
+  const tooHot = tooHotFor(dish, members)
   const dietary = dish.dietary ?? []
   const tags = dish.tags ?? []
   function addTag(value: string) {
@@ -140,6 +164,15 @@ function DishRow({
             ⚠ {warning.label} · {warning.who.join(', ')} avoids
           </span>
         ))}
+        {tooHot.length > 0 && (
+          <span className="tag text-destructive">🌶️ Hotter than {tooHot.join(', ')} likes</span>
+        )}
+        {fit === 'fits' && (
+          <span className="tag fit-tag" title="From what people reported — check with the restaurant">
+            ✅ Fits you
+          </span>
+        )}
+        {fit === 'avoid' && <span className="tag text-destructive">✕ Not for you</span>}
       </div>
       {tagsOpen && (
         <div className="flex flex-col gap-2">
@@ -221,6 +254,11 @@ function DishRow({
             >
               ⭐ Want to try
             </button>
+            {onMakeAtHome && (
+              <button className="chip chip-sm" onClick={onMakeAtHome}>
+                🏠 Make it at home
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -285,7 +323,6 @@ const COURSE_LABEL: Record<(typeof COURSES)[number], string> = {
   dessert: 'Desserts',
   drink: 'Drinks',
 }
-const DIETARY = ['Vegetarian', 'Vegan', 'Gluten-free', 'Dairy-free', 'Halal']
 const RETURN = [
   { id: 'yes', label: '👍 Would go back' },
   { id: 'maybe', label: '🤷 Maybe' },
@@ -312,7 +349,10 @@ export function PlaceSheet({
   menuImport = true,
   menuAi = false,
   claims = false,
+  onMealAdded,
 }: {
+  /** #123 "Make it at home" made a home meal from a dish */
+  onMealAdded?: (meal: HomeMeal) => void
   /** #19 AI menu photo reading (admin switch "menu_ai", admins only until switched on) */
   menuAi?: boolean
   /** #100 admin switch "restaurant_claims" */
@@ -340,6 +380,8 @@ export function PlaceSheet({
 }) {
   const mine = place.place_ratings.find((rating) => rating.user_id === userId)
   const me = members.find((member) => member.id === userId) ?? null
+  const privateNote = usePrivateNote({ placeId: place.id, userId, supabase, demo })
+  const [tableOpen, setTableOpen] = useState(false)
   // #47 the rating you just saved here, so it can go to your other groups too
   const [rated, setRated] = useState<{ rating: Partial<Rating>; at: number } | null>(null)
   const [notes, setNotes] = useState(mine?.notes ?? '')
@@ -480,6 +522,8 @@ export function PlaceSheet({
         would_return: next.would_return ?? null,
         draft: !!next.draft,
       })
+    if (v4 && next.reasons?.length) row.reasons = next.reasons
+    else if (v4 && mine?.reasons?.length) row.reasons = []
     const { error } = await supabase.from('place_ratings').upsert(row)
     if (!error && shareNow && !next.draft)
       setRated((prev) => ({ rating: v4 ? next : { score: next.score }, at: (prev?.at ?? 0) + 1 }))
@@ -684,6 +728,40 @@ export function PlaceSheet({
     }
     return true
   }
+  /** #123 Make it at home: a home meal linked to this dish, so the two scores can be compared. */
+  async function makeAtHome(dish: Dish) {
+    const meal: HomeMeal = {
+      id: crypto.randomUUID(),
+      group_id: place.group_id,
+      name: dish.name.slice(0, 120),
+      status: 'Want to cook',
+      verdict: null,
+      recipe_url: null,
+      notes: `Like the ${dish.name} at ${place.name}`.slice(0, 500),
+      photo_path: null,
+      dietary: dish.dietary ?? [],
+      spice: dish.spice ?? null,
+      created_by: userId!,
+      created_at: new Date().toISOString(),
+      from_dish: dish.id,
+      home_meal_ratings: [],
+      home_meal_cooks: [],
+    }
+    if (!demo) {
+      const { home_meal_ratings, home_meal_cooks, ...row } = meal
+      void home_meal_ratings
+      void home_meal_cooks
+      const { data, error } = await supabase.from('home_meals').insert(row).select('*').single()
+      if (error) return toast.error(error.message)
+      Object.assign(meal, data)
+    }
+    haptic('success')
+    onMealAdded?.(meal)
+    toast.success(`${dish.name} is on your Home cooking list`, {
+      description: 'Rate it after you cook it to see how it compares.',
+    })
+  }
+
   async function setDishMeta(dishId: string, changes: DishMeta) {
     const before = dishes
     setDishes((current) =>
@@ -829,12 +907,36 @@ export function PlaceSheet({
               About ${restaurant.insights.per_head} a person · from Crumbs visits
             </p>
           ) : null}
+          {knownFor(place).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Known for {knownFor(place).join(' · ').toLowerCase()}
+            </p>
+          )}
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×
         </button>
       </div>
       <div className="mt-5 flex flex-col gap-5">
+        {(privateNote.nextTime || dishes.some((d) => d.wishlist)) && (
+          <div className="flex flex-col gap-2">
+            {privateNote.nextTime && (
+              <p className="next-time-note rise-panel text-sm">
+                📌 <strong>Next time:</strong> {privateNote.nextTime}
+              </p>
+            )}
+            {dishes.some((d) => d.wishlist) && (
+              <p className="next-time-note rise-panel text-sm">
+                ⭐ <strong>You wanted to try:</strong>{' '}
+                {dishes
+                  .filter((d) => d.wishlist)
+                  .slice(0, 4)
+                  .map((d) => d.name)
+                  .join(', ')}
+              </p>
+            )}
+          </div>
+        )}
         <PhotoButton
           label={place.name}
           path={place.photo_path}
@@ -866,6 +968,28 @@ export function PlaceSheet({
                 👎 Skip the {dish.name}
               </p>
             ))}
+            {dishes.length >= 2 && (
+              <button
+                className="mt-1 self-start text-sm font-semibold text-primary underline"
+                onClick={() => setTableOpen(true)}
+              >
+                🍽️ Order for the table
+              </button>
+            )}
+          </div>
+        )}
+        {/* #118 every dish photo your group took here, in one strip */}
+        {dishes.filter((d) => d.photo_path).length > 0 && (
+          <div className="dish-gallery" aria-label="Dish photos">
+            {dishes
+              .filter((d) => d.photo_path)
+              .map((d) => (
+                <figure key={d.id}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photoUrl(d.photo_path)!} alt={d.name} loading="lazy" />
+                  <figcaption>{d.name}</figcaption>
+                </figure>
+              ))}
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -908,6 +1032,33 @@ export function PlaceSheet({
           </div>
           <ScoreInput value={inputValue(mine, scale)} scale={scale} onChange={rate} />
         </div>
+        {(v4 || demo) && mine && (
+          // #112 one-tap reasons, kept to one quiet scrolling line
+          <div className="reason-row" role="group" aria-label="Why? (up to 4)">
+            <span className="text-xs text-muted-foreground">Why?</span>
+            {[...REASONS.good, ...REASONS.bad].map((reason) => {
+              const on = (mine.reasons ?? []).includes(reason)
+              return (
+                <button
+                  key={reason}
+                  aria-pressed={on}
+                  className={`reason-chip ${on ? 'reason-chip-on' : ''}`}
+                  onClick={() => {
+                    const now = mine.reasons ?? []
+                    if (!on && now.length >= MAX_REASONS)
+                      return toast(`Up to ${MAX_REASONS} — tap one to swap it out`)
+                    haptic('select')
+                    saveMine({
+                      reasons: on ? now.filter((r) => r !== reason) : [...now, reason],
+                    })
+                  }}
+                >
+                  {reason}
+                </button>
+              )
+            })}
+          </div>
+        )}
         {v4 && mine?.draft ? (
           <div className="draft-note rise-panel">
             <span className="text-sm">
@@ -1079,9 +1230,7 @@ export function PlaceSheet({
             onChange={(event) => setNotes(event.target.value)}
             onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
           />
-          {v4 && userId && (
-            <PrivateNote placeId={place.id} userId={userId} supabase={supabase} demo={demo} />
-          )}
+          {v4 && userId && <PrivateNote note={privateNote} />}
         </div>
         {(groups.length > 1 || demo) && (
           <OtherGroups
@@ -1108,6 +1257,12 @@ export function PlaceSheet({
               </button>
             )}
           </div>
+          {me?.safe_for_me && (
+            <p className="text-xs text-muted-foreground">
+              ✅ Fits you = matches your diet with none of your allergies reported. From people’s
+              reports only — always confirm with the restaurant.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <ReadPhotoButton
               label="Menu photo"
@@ -1177,6 +1332,8 @@ export function PlaceSheet({
                 onMeta={(changes) => setDishMeta(dish.id, changes)}
                 onNote={(note) => saveDishNote(dish.id, note)}
                 onRemove={() => removeDish(dish.id)}
+                fit={me?.safe_for_me ? fitsMe(dish, me) : null}
+                onMakeAtHome={v4 || demo ? () => makeAtHome(dish) : undefined}
               />
             )),
           ])}
@@ -1228,6 +1385,14 @@ export function PlaceSheet({
           </button>
         )}
       </div>
+      {tableOpen && (
+        <OrderForTable
+          placeName={place.name}
+          dishes={dishes}
+          members={members}
+          onClose={() => setTableOpen(false)}
+        />
+      )}
       {editInfo && (
         <Overlay label="Suggest an edit" title="Suggest an edit" onClose={() => setEditInfo(false)}>
           <RestaurantInfoEditor

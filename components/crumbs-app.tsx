@@ -569,6 +569,7 @@ function CrumbsShell() {
                     supabase={data.supabase}
                     demo={data.demo}
                     v4={data.v4}
+                    places={data.places}
                   />
                 </div>
               ) : placesView === 'lists' ? (
@@ -927,6 +928,7 @@ function CrumbsShell() {
           menuImport={flag('menu_import')}
           menuAi={(data.v4 || data.demo) && flag('menu_ai', isAdmin || data.demo)}
           claims={data.v4 && flag('restaurant_claims')}
+          onMealAdded={(meal) => data.setHomeMeals([meal, ...data.homeMeals])}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(

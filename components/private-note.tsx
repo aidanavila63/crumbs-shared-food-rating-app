@@ -1,64 +1,93 @@
 'use client'
 // #10 Private notes: a note on a place that only you can ever see — not your group, not admins
-// (row-level security: your own rows only). Saved when you leave the box; empty deletes it.
+// (row-level security: your own rows only). Saved when you leave the box; both empty deletes it.
+// #179 "Next time" note (ask for extra spicy, skip the fries): shows at the top of the place and
+// in Quick log the next time you go.
 import { useEffect, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { toast } from 'sonner'
 
-export function PrivateNote({
+export type PrivateNoteState = {
+  body: string
+  nextTime: string
+  loaded: boolean
+  save: (changes: { body?: string; nextTime?: string }) => Promise<void>
+}
+
+/** Loads and saves your private note + next-time note for one place. */
+export function usePrivateNote({
   placeId,
   userId,
   supabase,
   demo,
 }: {
   placeId: string
-  userId: string
+  userId?: string
   supabase: any
   demo: boolean
-}) {
-  const [saved, setSaved] = useState('')
-  const [text, setText] = useState('')
-  const [open, setOpen] = useState(false)
+}): PrivateNoteState {
+  const [note, setNote] = useState({
+    body: '',
+    nextTime: demo && placeId === 'demo-ramen' ? 'Ask for the egg extra soft' : '',
+    loaded: demo,
+  })
 
   useEffect(() => {
-    if (demo) return
+    if (demo || !userId || !placeId) return
     let cancelled = false
     supabase
       .from('place_private_notes')
-      .select('body')
+      .select('body,next_time')
       .eq('place_id', placeId)
       .eq('user_id', userId)
       .maybeSingle()
       .then(({ data }: any) => {
-        if (cancelled || !data?.body) return
-        setSaved(data.body)
-        setText(data.body)
-        setOpen(true)
+        if (!cancelled)
+          setNote({ body: data?.body ?? '', nextTime: data?.next_time ?? '', loaded: true })
       })
     return () => {
       cancelled = true
     }
   }, [demo, placeId, supabase, userId])
 
-  async function save() {
-    const body = text.trim()
-    if (body === saved) return
-    setSaved(body)
-    if (demo) return
-    const { error } = body
-      ? await supabase
-          .from('place_private_notes')
-          .upsert({
+  async function save(changes: { body?: string; nextTime?: string }) {
+    const next = {
+      body: (changes.body ?? note.body).trim(),
+      nextTime: (changes.nextTime ?? note.nextTime).trim().slice(0, 200),
+    }
+    if (next.body === note.body && next.nextTime === note.nextTime) return
+    setNote({ ...next, loaded: true })
+    if (demo || !userId) return
+    const { error } =
+      next.body || next.nextTime
+        ? await supabase.from('place_private_notes').upsert({
             place_id: placeId,
             user_id: userId,
-            body,
+            body: next.body,
+            next_time: next.nextTime || null,
             updated_at: new Date().toISOString(),
           })
-      : await supabase
-          .from('place_private_notes')
-          .delete()
-          .match({ place_id: placeId, user_id: userId })
+        : await supabase
+            .from('place_private_notes')
+            .delete()
+            .match({ place_id: placeId, user_id: userId })
     if (error) toast.error(error.message)
+  }
+
+  return { ...note, save }
+}
+
+export function PrivateNote({ note }: { note: PrivateNoteState }) {
+  const [text, setText] = useState(note.body)
+  const [next, setNext] = useState(note.nextTime)
+  const [open, setOpen] = useState(!!note.body || !!note.nextTime)
+  // Fill in once the saved note arrives.
+  const [seen, setSeen] = useState(note.loaded)
+  if (note.loaded && !seen) {
+    setSeen(true)
+    setText(note.body)
+    setNext(note.nextTime)
+    if (note.body || note.nextTime) setOpen(true)
   }
 
   if (!open)
@@ -67,22 +96,37 @@ export function PrivateNote({
         className="flex items-center gap-1 self-start text-xs font-semibold text-muted-foreground underline"
         onClick={() => setOpen(true)}
       >
-        <Lock size={12} /> Add a private note (only you see it)
+        <Lock size={12} /> Add a private note or a “next time” reminder (only you see them)
       </button>
     )
   return (
-    <label className="private-note flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
-        <Lock size={12} /> Private note — only you can see this
-      </span>
-      <textarea
-        className="field min-h-16 text-base"
-        maxLength={4000}
-        placeholder="Who you went with, what to order next time, the server’s name…"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onBlur={save}
-      />
-    </label>
+    <div className="private-note flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold text-muted-foreground">
+          📌 Next time — shows up when you come back
+        </span>
+        <input
+          className="field text-base"
+          maxLength={200}
+          placeholder="Ask for extra spicy, skip the fries…"
+          value={next}
+          onChange={(event) => setNext(event.target.value)}
+          onBlur={() => note.save({ nextTime: next })}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+          <Lock size={12} /> Private note — only you can see this
+        </span>
+        <textarea
+          className="field min-h-16 text-base"
+          maxLength={4000}
+          placeholder="Who you went with, the server’s name…"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={() => note.save({ body: text })}
+        />
+      </label>
+    </div>
   )
 }

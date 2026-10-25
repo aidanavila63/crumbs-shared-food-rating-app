@@ -20,6 +20,8 @@ export type Rating = {
   would_return?: 'yes' | 'maybe' | 'no' | null
   /** #12 only you see it until you post it */
   draft?: boolean | null
+  /** #112 one-tap reasons ("Great service") */
+  reasons?: string[] | null
 }
 export type VisitKind = 'dine_in' | 'takeout' | 'delivery'
 export type PlaceVisit = {
@@ -124,6 +126,11 @@ export type HomeMeal = {
   spice: number | null
   created_by: string
   created_at: string
+  /** #123 made from this restaurant dish */
+  from_dish?: string | null
+  /** #123 shared with everyone on Crumbs (rated + tips) */
+  recipe_public?: boolean | null
+  recipe?: string | null
   home_meal_ratings: HomeMealRating[]
   home_meal_cooks: HomeMealCook[]
 }
@@ -141,6 +148,11 @@ export type Profile = {
   /** #47 copy my ratings to my other groups that saved the same place */
   share_ratings?: 'group' | 'all' | 'ask'
   role?: 'owner' | 'admin' | 'member' | null
+  /** #181 hottest spice that's fine (0-3, null = anything) */
+  spice_max?: number | null
+  /** #121 diet (Vegetarian, Vegan, Gluten-free…) and the Safe for me switch */
+  diet?: string[] | null
+  safe_for_me?: boolean | null
 }
 export type List = {
   id: string
@@ -232,6 +244,32 @@ const demoPlaces: Place[] = [
         verdict: 'again',
         dish_ratings: [{ user_id: 'demo-user', score: 5, notes: null, points: 92 - index * 6 }],
       },
+      ...(index === 0
+        ? [
+            {
+              id: `${id}-gyoza`,
+              place_id: id,
+              name: 'Pork gyoza',
+              price: 9,
+              description: null,
+              is_ai_suggestion: false,
+              course: 'starter' as const,
+              tags: ['shareable'],
+              dish_ratings: [{ user_id: 'demo-partner', score: 4, notes: null, points: 84 }],
+            },
+            {
+              id: `${id}-karaage`,
+              place_id: id,
+              name: 'Karaage',
+              price: 12,
+              description: null,
+              is_ai_suggestion: false,
+              wishlist: true,
+              spice: 2,
+              dish_ratings: [],
+            },
+          ]
+        : []),
     ],
   })),
 ]
