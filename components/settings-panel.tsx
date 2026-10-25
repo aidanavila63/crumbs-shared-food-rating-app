@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { FileUp, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Group, Profile } from '@/hooks/use-crumbs-data'
+import type { Group, List, Place, Profile } from '@/hooks/use-crumbs-data'
 import { canVibrate, haptic, setMotionPrefs, useMotionPrefs } from '@/lib/motion'
 import { ACCENTS, TEXT_SIZES, setThemePrefs, useThemePrefs, type ThemeMode } from '@/lib/theme'
 import { Switch } from './switch'
@@ -11,6 +11,8 @@ import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
 import { GroupSettingsCard } from './group-settings'
 import { YourDataCard } from './your-data-card'
+import { ImportPlaces } from './import-places'
+import { Overlay } from './overlay'
 
 // #73: which notifications you get. Missing = on.
 const NOTIFY_TYPES = [
@@ -37,7 +39,14 @@ export function SettingsPanel({
   members = [],
   v4 = false,
   onReload = () => {},
+  places = [],
+  lists = [],
+  onImported = () => {},
 }: {
+  /** #87 import: what the group already has (to skip duplicates) */
+  places?: Place[]
+  lists?: List[]
+  onImported?: (added: Place[], newLists: List[]) => void
   profile: Profile | null
   userId?: string
   group: Group
@@ -59,6 +68,7 @@ export function SettingsPanel({
   const [vibrates] = useState(canVibrate)
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
   const [saving, setSaving] = useState<'name' | 'feedback' | null>(null)
+  const [importing, setImporting] = useState(false)
   const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
   const [feedback, setFeedback] = useState('')
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
@@ -310,6 +320,30 @@ export function SettingsPanel({
             {saving === 'feedback' ? 'Sending…' : 'Send'}
           </button>
         </section>
+      )}
+
+      <section className="surface settings-card">
+        <h3 className="settings-heading">Bring your places</h3>
+        <p className="text-sm text-muted-foreground">
+          Import places you saved or rated in another app, a spreadsheet or a list.
+        </p>
+        <button className="secondary" onClick={() => setImporting(true)}>
+          <FileUp size={18} /> Import places
+        </button>
+      </section>
+      {importing && (
+        <Overlay label="Import places" title="Import places" onClose={() => setImporting(false)}>
+          <ImportPlaces
+            supabase={supabase}
+            demo={demo}
+            groupId={group.id}
+            userId={userId}
+            places={places}
+            lists={lists}
+            near={home}
+            onImported={onImported}
+          />
+        </Overlay>
       )}
 
       {v4 && group && (

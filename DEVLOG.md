@@ -283,3 +283,13 @@ Aidan: keep making features.
   3. R2 → Manage API tokens → create token with Object Read & Write for that bucket.
   4. Vercel env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, and `NEXT_PUBLIC_R2_PUBLIC_URL` (the bucket's public URL). Redeploy.
 - Tests 73/73; SQL loads twice (bucket + admin read policy + cover column); build passes; demo clean.
+
+## Round 23 - import from other apps (#87, covers #28) (Oct 24, Claude in Cowork)
+Aidan: approved the import plan; the "where do I get my file" help may name the apps.
+- **Settings → Bring your places → Import places** (own full page, `components/import-places.tsx`). Choose a file or paste a list:
+  - **Maps-app data export** (.zip straight from the export, or the files inside): saved lists (CSV: Title, Note, URL — each list keeps its name), starred places and **your reviews** (GeoJSON: name, address, location, your stars, review text, date). Several layouts handled; needs checking against a real export.
+  - **Any spreadsheet as CSV** with a Name column (Address, City, Lat/Lng, Rating in any style — 4, 4.5, 8/10, 85, ★★★ — Notes, Date, Status optional).
+  - **Pasted list**, one a line ("Hana Ramen, Toronto - 4/5").
+- Read on the phone (`lib/importers.ts`, `fflate` for .zip, max 500 places a go, duplicates merged). Each place is matched (`lib/import-match.ts`): Crumbs' own restaurants first, then the free open-map search (~1 a second, its own bigger allowance; can stop part-way). Sure = good name match within ~200 m (or one exact name when the file has no location); otherwise "to check" with up to 3 choices, or "not found".
+- Review: tick what to add; **Add them as** As in the file (rated/visited → Been) / Want to try / Been; **Bring my ratings and notes** (→ your rating, half stars kept); **Keep my lists** (creates lists with the same names). Visit dates become visits. Places the group already has are skipped. No paid lookups are used.
+- New dependency `fflate` (unzip, ~8 KB). Tests 81/81; build passes; demo import of a sample export (3 saved + 2 reviews) works.

@@ -1732,3 +1732,11 @@ html[data-text='xl'] {
   background-position: center;
   box-shadow: inset 0 -90px 60px -30px rgb(0 0 0 / 55%);
 }
+/* #87 import review rows */
+.import-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.import-row:last-child {
+  border-bottom: 0;
+}

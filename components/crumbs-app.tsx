@@ -818,6 +818,14 @@ function CrumbsShell() {
             onReload: () => {
               data.load().catch(() => {})
             },
+            places: data.places,
+            lists: plainLists,
+            onImported: (added, newLists) => {
+              if (data.demo) {
+                data.setPlaces((current) => [...added, ...current])
+                if (newLists.length) setPlainLists([...plainLists, ...newLists])
+              } else data.load().catch(() => {})
+            },
           }}
         />
       )}

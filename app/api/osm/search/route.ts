@@ -36,10 +36,12 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (tooManyRequests(`osm:${data.user.id}`, 60))
+  const params = new URL(request.url).searchParams
+  // Imports (#87) look up many places one at a time, so they get a bigger (separate) allowance.
+  const bulk = params.get('bulk') === '1'
+  if (tooManyRequests(`osm${bulk ? '-bulk' : ''}:${data.user.id}`, bulk ? 600 : 60))
     return Response.json({ error: 'Too many searches, wait a moment' }, { status: 429 })
 
-  const params = new URL(request.url).searchParams
   const q = (params.get('q') ?? '').trim().slice(0, 120)
   if (q.length < 3) return Response.json({ results: [] })
   try {

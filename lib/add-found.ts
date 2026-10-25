@@ -20,12 +20,16 @@ export async function addFoundPlace({
   groupId,
   userId,
   found,
+  status = 'Want to try',
+  visitedOn = null,
 }: {
   supabase: any
   demo: boolean
   groupId: string
   userId: string
   found: FoundSpot
+  status?: Place['status']
+  visitedOn?: string | null
 }): Promise<Place> {
   const row = {
     group_id: groupId,
@@ -39,7 +43,8 @@ export async function addFoundPlace({
     website: found.website,
     google_maps_url: found.google_maps_url,
     google_place_id: found.google_place_id,
-    status: 'Want to try' as const,
+    status,
+    ...(visitedOn ? { visited_on: visitedOn } : {}),
   }
   if (demo)
     return {
