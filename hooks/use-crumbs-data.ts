@@ -284,6 +284,8 @@ const demoMeals: HomeMeal[] = [
     verdict: 'again',
     recipe_url: null,
     notes: 'Extra ricotta next time',
+    recipe: 'Layer ragù, béchamel, ricotta and sheets; 45 min at 190°C; rest 15 min.',
+    recipe_public: true,
     photo_path: null,
     dietary: ['vegetarian'],
     spice: 0,

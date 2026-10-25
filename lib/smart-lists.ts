@@ -143,13 +143,6 @@ export function smartLists(
       hint: 'Been, but nobody has rated it yet',
       places: places.filter((p) => p.status === 'Been' && !p.place_ratings.length),
     },
-    {
-      id: 'never',
-      emoji: '👎',
-      name: 'Never again',
-      hint: 'Group average 2★ or less',
-      places: places.filter((p) => p.place_ratings.length && average(p) <= 2),
-    },
     ...tagLists(places),
   ]
 }

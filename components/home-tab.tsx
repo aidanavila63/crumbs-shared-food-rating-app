@@ -1,7 +1,7 @@
 'use client'
 // #77 Home cooking: meals you make yourselves, kept apart from restaurants.
 import { track } from '@/lib/analytics'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChefHat, Dices, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
@@ -63,7 +63,38 @@ export function HomeTab({
   demo: boolean
   v4: boolean
 }) {
-  const [filter, setFilter] = useState<'All' | 'Cooked' | 'Want to cook'>('All')
+  const [filter, setFilter] = useState<'All' | 'Cooked' | 'Want to cook' | 'Shared'>('All')
+  // Our kitchen (your group's meals and recipes) vs everyone else's recipes on Crumbs
+  const [section, setSection] = useState<'ours' | 'everyone'>('ours')
+  const [everyoneQuery, setEveryoneQuery] = useState('')
+  // How your shared recipes are doing on Crumbs (average and count of everyone's ratings)
+  const [crumbsScores, setCrumbsScores] = useState<Record<string, { avg: number; n: number }>>({})
+  const sharedIds = meals
+    .filter((m) => m.recipe_public)
+    .map((m) => m.id)
+    .sort()
+    .join(',')
+  useEffect(() => {
+    let cancelled = false
+    if (demo || !sharedIds) return
+    supabase
+      .from('recipe_reviews')
+      .select('meal_id,score')
+      .in('meal_id', sharedIds.split(','))
+      .then(({ data }: any) => {
+        if (cancelled || !data) return
+        const out: Record<string, { avg: number; n: number }> = {}
+        for (const r of data) {
+          const hit = (out[r.meal_id] ??= { avg: 0, n: 0 })
+          hit.avg = (hit.avg * hit.n + r.score) / (hit.n + 1)
+          hit.n += 1
+        }
+        setCrumbsScores(out)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sharedIds, demo, supabase])
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Cooked lately'>('Newest')
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -78,7 +109,8 @@ export function HomeTab({
     const needle = query.trim().toLowerCase()
     const list = meals.filter(
       (meal) =>
-        (filter === 'All' || meal.status === filter) &&
+        (filter === 'All' ||
+          (filter === 'Shared' ? !!meal.recipe_public : meal.status === filter)) &&
         (!needle ||
           [meal.name, meal.notes, meal.recipe].some((t) => t?.toLowerCase().includes(needle))),
     )
@@ -181,137 +213,190 @@ export function HomeTab({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        <button className="secondary flex-1" onClick={surprise}>
-          <Dices size={18} /> What should we cook?
-        </button>
-        <button
-          className="primary size-12 shrink-0"
-          aria-label="Add a meal"
-          onClick={() => setAdding(!adding)}
-        >
-          <Plus className={`transition-transform ${adding ? 'rotate-45' : ''}`} />
-        </button>
-      </div>
-      <label className="field flex items-center gap-2">
-        <Search size={16} className="shrink-0 text-muted-foreground" />
-        <input
-          className="min-w-0 flex-1 bg-transparent outline-none"
-          aria-label="Search meals and recipes"
-          placeholder="Search your meals and recipes on Crumbs"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      {(v4 || demo) && <RecipeFinder supabase={supabase} demo={demo} query={query} />}
-      {query.trim() && (
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Your meals
-        </p>
-      )}
-      {adding && (
-        <div className="surface rise-panel flex flex-col gap-3">
-          <input
-            autoFocus
-            className="field"
-            aria-label="Meal name"
-            placeholder="What did you make? (e.g. Sunday lasagna)"
-            maxLength={120}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && add()}
+      {(v4 || demo) && (
+        <div className="segmented" role="tablist" aria-label="Our kitchen or everyone's recipes">
+          <span
+            className="segmented-thumb"
+            aria-hidden="true"
+            style={{ transform: `translateX(${section === 'ours' ? 0 : 100}%)` }}
           />
-          <div className="flex gap-2">
-            {(['Cooked', 'Want to cook'] as const).map((item) => (
-              <button
-                key={item}
-                aria-pressed={status === item}
-                className={`chip ${status === item ? 'chip-active' : ''}`}
-                onClick={() => setStatus(item)}
-              >
-                {item === 'Cooked' ? 'We made it' : 'Want to cook'}
-              </button>
-            ))}
-            <button className="primary ml-auto" disabled={busy || !name.trim()} onClick={add}>
-              Add
+          {(['ours', 'everyone'] as const).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={section === s}
+              className={section === s ? 'segmented-active' : ''}
+              onClick={() => {
+                if (s === section) return
+                haptic('tap')
+                setSection(s)
+              }}
+            >
+              {s === 'ours' ? 'Our kitchen' : 'Everyone’s recipes'}
             </button>
-          </div>
+          ))}
         </div>
       )}
-      <div className="chip-row">
-        {(['All', 'Cooked', 'Want to cook'] as const).map((item) => (
-          <button
-            key={item}
-            aria-pressed={filter === item}
-            className={`chip ${filter === item ? 'chip-active' : ''}`}
-            onClick={() => setFilter(item)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-      <div className="chip-row">
-        {(['Newest', 'Top rated', 'Cooked lately'] as const).map((item) => (
-          <button
-            key={item}
-            aria-pressed={sort === item}
-            className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-            onClick={() => setSort(item)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-      {shown.length ? (
-        <div className="stagger flex flex-col gap-3">
-          {shown.map((meal) => {
-            const avg = mealAverage(meal)
-            const last = lastCooked(meal)
-            return (
-              <button
-                key={meal.id}
-                type="button"
-                className="surface flex w-full flex-col gap-2 text-left transition-transform active:scale-[.99]"
-                aria-label={`Open ${meal.name}`}
-                onClick={() => setOpenId(meal.id)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate font-serif text-2xl font-bold">{meal.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {meal.home_meal_cooks.length
-                        ? `Made ${meal.home_meal_cooks.length}× · last ${timeAgo(`${last}T12:00:00`)}`
-                        : 'Not made yet'}
-                      {meal.verdict === 'again'
-                        ? ' · 👍 make again'
-                        : meal.verdict === 'never'
-                          ? ' · 👎 never again'
-                          : ''}
-                    </p>
-                  </div>
-                  <strong className="font-serif text-3xl leading-8 text-primary">
-                    {avg ? avg.toFixed(1) : '—'}
-                  </strong>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`chip chip-sm ${meal.status === 'Cooked' ? 'chip-active' : ''}`}>
-                    {meal.status}
-                  </span>
-                  <RatingStars value={Math.round(avg)} />
-                </div>
-              </button>
-            )
-          })}
+      {section === 'everyone' ? (
+        <div key="everyone" className="tab-pane tab-from-right flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Home recipes other people shared on Crumbs. Rate one and leave a tip to make it better.
+          </p>
+          <label className="field flex items-center gap-2">
+            <Search size={16} className="shrink-0 text-muted-foreground" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none"
+              aria-label="Search recipes on Crumbs"
+              placeholder="Search recipes on Crumbs"
+              value={everyoneQuery}
+              onChange={(event) => setEveryoneQuery(event.target.value)}
+            />
+          </label>
+          <RecipeFinder supabase={supabase} demo={demo} query={everyoneQuery} />
         </div>
       ) : (
-        <div className="surface flex flex-col items-center gap-2 text-center">
-          <ChefHat size={36} className="text-primary" />
-          <p className="font-semibold">
-            {meals.length ? 'Nothing here yet.' : 'No home meals yet.'}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Add the things you cook together and the ones you want to try making.
-          </p>
+        <div key="ours" className="tab-pane tab-from-left flex flex-col gap-4">
+          <div className="flex gap-2">
+            <button className="secondary flex-1" onClick={surprise}>
+              <Dices size={18} /> What should we cook?
+            </button>
+            <button
+              className="primary size-12 shrink-0"
+              aria-label="Add a meal"
+              onClick={() => setAdding(!adding)}
+            >
+              <Plus className={`transition-transform ${adding ? 'rotate-45' : ''}`} />
+            </button>
+          </div>
+          <label className="field flex items-center gap-2">
+            <Search size={16} className="shrink-0 text-muted-foreground" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none"
+              aria-label="Search our meals"
+              placeholder="Search our meals and recipes"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          {adding && (
+            <div className="surface rise-panel flex flex-col gap-3">
+              <input
+                autoFocus
+                className="field"
+                aria-label="Meal name"
+                placeholder="What did you make? (e.g. Sunday lasagna)"
+                maxLength={120}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => event.key === 'Enter' && add()}
+              />
+              <div className="flex gap-2">
+                {(['Cooked', 'Want to cook'] as const).map((item) => (
+                  <button
+                    key={item}
+                    aria-pressed={status === item}
+                    className={`chip ${status === item ? 'chip-active' : ''}`}
+                    onClick={() => setStatus(item)}
+                  >
+                    {item === 'Cooked' ? 'We made it' : 'Want to cook'}
+                  </button>
+                ))}
+                <button className="primary ml-auto" disabled={busy || !name.trim()} onClick={add}>
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="chip-row">
+            {(['All', 'Cooked', 'Want to cook', 'Shared'] as const).map((item) => (
+              <button
+                key={item}
+                aria-pressed={filter === item}
+                className={`chip ${filter === item ? 'chip-active' : ''}`}
+                onClick={() => setFilter(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="chip-row">
+            {(['Newest', 'Top rated', 'Cooked lately'] as const).map((item) => (
+              <button
+                key={item}
+                aria-pressed={sort === item}
+                className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
+                onClick={() => setSort(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          {shown.length ? (
+            <div className="stagger flex flex-col gap-3">
+              {shown.map((meal) => {
+                const avg = mealAverage(meal)
+                const last = lastCooked(meal)
+                return (
+                  <button
+                    key={meal.id}
+                    type="button"
+                    className="surface flex w-full flex-col gap-2 text-left transition-transform active:scale-[.99]"
+                    aria-label={`Open ${meal.name}`}
+                    onClick={() => setOpenId(meal.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-serif text-2xl font-bold">{meal.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {meal.home_meal_cooks.length
+                            ? `Made ${meal.home_meal_cooks.length}× · last ${timeAgo(`${last}T12:00:00`)}`
+                            : 'Not made yet'}
+                          {meal.verdict === 'again'
+                            ? ' · 👍 make again'
+                            : meal.verdict === 'never'
+                              ? ' · 👎 never again'
+                              : ''}
+                        </p>
+                      </div>
+                      <strong className="font-serif text-3xl leading-8 text-primary">
+                        {avg ? avg.toFixed(1) : '—'}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`chip chip-sm ${meal.status === 'Cooked' ? 'chip-active' : ''}`}
+                        >
+                          {meal.status}
+                        </span>
+                        {meal.recipe_public && (
+                          <span className="text-xs text-muted-foreground">
+                            🌍 Shared
+                            {crumbsScores[meal.id]
+                              ? ` · ${crumbsScores[meal.id].avg.toFixed(1)}★ from ${crumbsScores[meal.id].n} on Crumbs`
+                              : demo
+                                ? ' · 4.3★ from 3 on Crumbs'
+                                : ' · no ratings yet'}
+                          </span>
+                        )}
+                      </span>
+                      <RatingStars value={Math.round(avg)} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="surface flex flex-col items-center gap-2 text-center">
+              <ChefHat size={36} className="text-primary" />
+              <p className="font-semibold">
+                {meals.length ? 'Nothing here yet.' : 'No home meals yet.'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Add the things you cook together and the ones you want to try making.
+              </p>
+            </div>
+          )}
         </div>
       )}
       {open && (

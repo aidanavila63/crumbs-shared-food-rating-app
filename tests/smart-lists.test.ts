@@ -32,7 +32,7 @@ test('smart lists sort and filter from ratings and visits', () => {
   assert.deepEqual(lists.top, ['Great', 'Good'])
   assert.deepEqual(lists.regulars, ['Regular'])
   assert.deepEqual(lists.unrated, ['Unrated'])
-  assert.deepEqual(lists.never, ['Bad'])
+  assert.equal(lists.never, undefined) // removed (Aidan, Oct 25)
 })
 
 test('been a while (#33)', async () => {

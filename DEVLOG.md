@@ -347,3 +347,8 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - **#185** Decide & Plan hidden-gem card shows from day one; the 💎 smart list still waits for 5+ groups.
 - "30% takeout" now reads "30% of visits were takeout or delivery" (all Crumbs visits logged there; shown after 5+).
 - Tests 99/99; SQL tested (trending/suggested/search, own excluded from suggested, table orders group-only); build passes; demo checked.
+
+## Round 30 - Our kitchen vs Everyone's recipes; Never again list removed (Oct 25, Claude in Cowork)
+- Smart list "Never again" removed (Aidan).
+- **Home** now has two parts: **Our kitchen** (your group's meals and recipes: What should we cook?, add, search, filters incl. new **Shared**; shared meals show "🌍 Shared · 4.3★ from 3 on Crumbs") and **Everyone's recipes** (other people's shared recipes: its own search; 🔥 Trending / ✨ Suggested until you type). `public_recipes()` no longer returns your own groups' recipes.
+- Tests 99/99; SQL tested; build passes; demo checked.

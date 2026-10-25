@@ -2318,7 +2318,7 @@ create policy recipe_reviews_update on public.recipe_reviews for update to authe
 
 -- Shared recipes for the Home tab: newest or best first, with first names only and the tips.
 -- mode: 'search' (best first), 'trending' (most rated in the last 2 weeks), 'suggested' (well
--- rated, not yours, matching your diet first).
+-- rated, matching your diet first). Never your own groups' recipes (those are in "Our kitchen").
 drop function if exists public.public_recipes(text, integer);
 create or replace function public.public_recipes(q text default null, lim integer default 30, mode text default 'search')
 returns jsonb language sql stable security definer set search_path = public as $$
@@ -2343,6 +2343,7 @@ returns jsonb language sql stable security definer set search_path = public as $
                 where r.meal_id = m.id and (r.tip is not null or r.user_id = auth.uid()))) as x
     from public.home_meals m left join public.profiles p on p.id = m.created_by
     where m.recipe_public and auth.uid() is not null
+      and not public.is_group_member(m.group_id) -- your own group's recipes live in "Our kitchen"
       and (q is null or m.name ilike '%' || left(q, 60) || '%' or coalesce(m.recipe, '') ilike '%' || left(q, 60) || '%')
       and (mode <> 'trending' or exists (select 1 from public.recipe_reviews r where r.meal_id = m.id and r.created_at > now() - interval '14 days'))
       and (mode <> 'suggested' or (m.created_by <> auth.uid()
