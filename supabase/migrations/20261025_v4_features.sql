@@ -108,6 +108,25 @@ alter table public.place_ratings add column if not exists service smallint check
 alter table public.place_ratings add column if not exists vibe smallint check (vibe between 1 and 5);
 alter table public.place_ratings add column if not exists value smallint check (value between 1 and 5);
 alter table public.place_ratings add column if not exists would_return text check (would_return in ('yes', 'maybe', 'no'));
+-- #12 Draft ratings: only you see a draft until you post it (no feed line, no notification).
+alter table public.place_ratings add column if not exists draft boolean not null default false;
+drop policy if exists place_ratings_read on public.place_ratings;
+create policy place_ratings_read on public.place_ratings for select to authenticated
+  using (public.is_group_member(public.place_group(place_id)) and (not draft or user_id = (select auth.uid())));
+
+-- #10 Private notes: a note on a place only you can ever see (not your group, not admins).
+create table if not exists public.place_private_notes (
+  place_id uuid not null references public.places(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 4000),
+  updated_at timestamptz not null default now(),
+  primary key (place_id, user_id)
+);
+alter table public.place_private_notes enable row level security;
+drop policy if exists place_private_notes_own on public.place_private_notes;
+create policy place_private_notes_own on public.place_private_notes for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()) and public.is_group_member(public.place_group(place_id)));
 
 -- ============================================================================================
 -- 3. Dish details (#18 course, #17 dietary + spice, #16 wishlist)
@@ -218,7 +237,8 @@ begin
     insert into public.activity (group_id, actor, kind, place_id, detail)
     values (gid, new.created_by, 'place_added', new.id, jsonb_build_object('status', new.status));
   elsif tg_table_name = 'place_ratings' then
-    if tg_op = 'UPDATE' and new.score is not distinct from old.score then return new; end if;
+    if new.draft then return new; end if; -- drafts stay private (#12)
+    if tg_op = 'UPDATE' and new.score is not distinct from old.score and not old.draft then return new; end if;
     gid := public.place_group(new.place_id);
     -- One rating line per person per place per day (re-rating just updates it).
     delete from public.activity
@@ -257,7 +277,7 @@ end $$;
 drop trigger if exists activity_places on public.places;
 create trigger activity_places after insert on public.places for each row execute function public.log_activity();
 drop trigger if exists activity_ratings on public.place_ratings;
-create trigger activity_ratings after insert or update of score on public.place_ratings
+create trigger activity_ratings after insert or update of score, draft on public.place_ratings
   for each row execute function public.log_activity();
 drop trigger if exists activity_visits on public.place_visits;
 create trigger activity_visits after insert on public.place_visits for each row execute function public.log_activity();
@@ -1997,7 +2017,8 @@ begin
     'members', (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'name', p.display_name, 'role', m.role)), '[]')
                   from public.group_members m join public.profiles p on p.id = m.user_id where m.group_id = target_group),
     'places', (select coalesce(jsonb_agg(to_jsonb(p) || jsonb_build_object(
-                  'ratings', (select coalesce(jsonb_agg(to_jsonb(r)), '[]') from public.place_ratings r where r.place_id = p.id),
+                  'ratings', (select coalesce(jsonb_agg(to_jsonb(r)), '[]') from public.place_ratings r
+                               where r.place_id = p.id and (not r.draft or r.user_id = auth.uid())),
                   'visits', (select coalesce(jsonb_agg(to_jsonb(v)), '[]') from public.place_visits v where v.place_id = p.id),
                   'facts', (select to_jsonb(f) from public.place_facts f where f.place_id = p.id),
                   'dishes', (select coalesce(jsonb_agg(to_jsonb(d) || jsonb_build_object(

@@ -43,6 +43,7 @@ import { Sheet } from './sheet'
 import { PlaceEditor } from './place-editor'
 import { usualCost, valueScore } from '@/lib/value'
 import { OtherGroups } from './other-groups'
+import { PrivateNote } from './private-note'
 function DishRow({
   dish,
   userId,
@@ -341,6 +342,8 @@ export function PlaceSheet({
   // #47 the rating you just saved here, so it can go to your other groups too
   const [rated, setRated] = useState<{ rating: Partial<Rating>; at: number } | null>(null)
   const [notes, setNotes] = useState(mine?.notes ?? '')
+  // #12 a new rating can start as a draft (only you see it until you post it)
+  const [draftMode, setDraftMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dishName, setDishName] = useState('')
   const score = mine?.score ?? 0
@@ -439,6 +442,8 @@ export function PlaceSheet({
       ...changes,
       user_id: userId!,
     }
+    next.draft = v4 && ('draft' in changes ? !!changes.draft : mine ? !!mine.draft : draftMode)
+    const posted = !!mine?.draft && !next.draft
     if (!next.score) {
       const fromCats = overallFromCategories(next)
       if (fromCats === null) return toast('Give it an overall score first')
@@ -449,11 +454,13 @@ export function PlaceSheet({
       place_ratings: [...place.place_ratings.filter((rating) => rating.user_id !== userId), next],
     })
     const shareNow =
+      (!next.draft && posted) ||
       next.score !== mine?.score ||
       next.points !== mine?.points ||
       CATEGORIES.some(({ key }) => next[key] !== mine?.[key])
     if (demo) {
-      if (shareNow) setRated((prev) => ({ rating: next, at: (prev?.at ?? 0) + 1 }))
+      if (shareNow && !next.draft) setRated((prev) => ({ rating: next, at: (prev?.at ?? 0) + 1 }))
+      if (posted) toast.success('Posted — your group can see it now')
       return
     }
     const row: Record<string, unknown> = {
@@ -470,12 +477,15 @@ export function PlaceSheet({
         vibe: next.vibe ?? null,
         value: next.value ?? null,
         would_return: next.would_return ?? null,
+        draft: !!next.draft,
       })
     const { error } = await supabase.from('place_ratings').upsert(row)
-    if (!error && shareNow)
+    if (!error && shareNow && !next.draft)
       setRated((prev) => ({ rating: v4 ? next : { score: next.score }, at: (prev?.at ?? 0) + 1 }))
     if (error) toast.error(error.message)
-    else if (next.score !== mine?.score) {
+    else if (next.draft) return
+    else if (posted || next.score !== mine?.score) {
+      if (posted) toast.success('Posted — your group can see it now')
       track('rated', { scale, categories: CATEGORIES.some(({ key }) => next[key] != null) })
       notifyMates({ type: 'place_rating', placeId: place.id, value: next.score })
     }
@@ -886,6 +896,26 @@ export function PlaceSheet({
           </div>
           <ScoreInput value={inputValue(mine, scale)} scale={scale} onChange={rate} />
         </div>
+        {v4 && mine?.draft ? (
+          <div className="draft-note rise-panel">
+            <span className="text-sm">
+              <strong>📝 Draft</strong> — only you can see your rating.
+            </span>
+            <button className="primary !min-h-9 !px-4 text-sm" onClick={() => saveMine({ draft: false })}>
+              Post it
+            </button>
+          </div>
+        ) : v4 && !mine ? (
+          <label className="flex items-center gap-2 self-end text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="accent-[var(--primary)]"
+              checked={draftMode}
+              onChange={(event) => setDraftMode(event.target.checked)}
+            />
+            Save my rating as a draft (only I see it until I post it)
+          </label>
+        ) : null}
         {v4 && s.categories && (
           <div className="surface-soft flex flex-col gap-1">
             {CATEGORIES.map(({ key, label }) => (
@@ -1009,6 +1039,7 @@ export function PlaceSheet({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">
                     {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
+                    {rating.draft && <span className="tag ml-2">draft · only you</span>}
                   </span>
                   <ScoreDisplay rating={rating} scale={scale} />
                 </div>
@@ -1036,6 +1067,9 @@ export function PlaceSheet({
             onChange={(event) => setNotes(event.target.value)}
             onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
           />
+          {v4 && userId && (
+            <PrivateNote placeId={place.id} userId={userId} supabase={supabase} demo={demo} />
+          )}
         </div>
         {(groups.length > 1 || demo) && (
           <OtherGroups

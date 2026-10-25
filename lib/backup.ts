@@ -12,6 +12,7 @@ export const BACKUP_TABLES = [
   'group_members',
   'places',
   'place_ratings',
+  'place_private_notes',
   'place_visits',
   'place_facts',
   'dishes',

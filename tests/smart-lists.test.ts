@@ -34,3 +34,30 @@ test('smart lists sort and filter from ratings and visits', () => {
   assert.deepEqual(lists.unrated, ['Unrated'])
   assert.deepEqual(lists.never, ['Bad'])
 })
+
+test('been a while (#33)', async () => {
+  const { beenAWhile, lastVisit, sinceText } = await import('../lib/smart-lists.ts')
+  const now = new Date('2026-10-24')
+  const p = (name: string, score: number, days: string[], status = 'Been'): any => ({
+    id: name,
+    name,
+    status,
+    visited_on: null,
+    place_ratings: [{ user_id: 'a', score, notes: null }],
+    place_visits: days.map((visited_on) => ({ visited_on })),
+  })
+  const places = [
+    p('Old fave', 5, ['2026-01-10', '2026-03-01']),
+    p('Older fave', 4, ['2025-08-01']),
+    p('Recent', 5, ['2026-10-01']),
+    p('Meh', 2, ['2025-01-01']),
+    p('Wish', 5, [], 'Want to try'),
+  ]
+  assert.equal(lastVisit(places[0]), '2026-03-01')
+  assert.deepEqual(
+    beenAWhile(places, 90, now).map((x) => x.place.name),
+    ['Older fave', 'Old fave'],
+  )
+  assert.equal(sinceText('2026-03-01', now), '7 months ago')
+  assert.equal(sinceText('2025-08-01', now), '1 year ago')
+})

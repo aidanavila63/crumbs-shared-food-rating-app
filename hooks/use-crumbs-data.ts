@@ -18,6 +18,8 @@ export type Rating = {
   vibe?: number | null
   value?: number | null
   would_return?: 'yes' | 'maybe' | 'no' | null
+  /** #12 only you see it until you post it */
+  draft?: boolean | null
 }
 export type VisitKind = 'dine_in' | 'takeout' | 'delivery'
 export type PlaceVisit = {
