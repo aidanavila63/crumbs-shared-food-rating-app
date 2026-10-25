@@ -26,7 +26,22 @@ export async function POST(request: Request) {
   let text: string | null = null
   let groupId = ''
   let tag = 'crumbs'
-  if (body.type === 'craving') {
+  // #137 @mentions: only the people mentioned (and only if they're in the same group)
+  let only: string[] | null = null
+  if (body.type === 'mention') {
+    const said = String(body.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+    const { data: member } = await supabase
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', String(body.groupId ?? ''))
+      .eq('user_id', me.id)
+      .maybeSingle()
+    if (!said || !member || !Array.isArray(body.userIds)) return Response.json({ sent: 0 })
+    groupId = String(body.groupId)
+    only = body.userIds.map(String).slice(0, 10)
+    text = `${who} mentioned you: “${said}”`
+    tag = `crumbs-mention-${Date.now()}`
+  } else if (body.type === 'craving') {
     // "I'm craving ___": no place involved, just make sure the sender is in that group.
     const what = String(body.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
     const { data: member } = await supabase
@@ -63,9 +78,18 @@ export async function POST(request: Request) {
     .select('user_id')
     .eq('group_id', groupId)
   let others = (members ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id)
+  if (only) others = others.filter((id: string) => only!.includes(id))
   // #73: skip people who switched this kind of notification off (column exists from v4).
   const kind =
-    body.type === 'place_rating' ? 'rating' : body.type === 'place_added' ? 'place' : body.type === 'dish_rating' ? 'dish' : 'craving'
+    body.type === 'place_rating'
+      ? 'rating'
+      : body.type === 'place_added'
+        ? 'place'
+        : body.type === 'dish_rating'
+          ? 'dish'
+          : body.type === 'mention'
+            ? 'mention'
+            : 'craving'
   const { data: prefs, error: prefsError } = await supabase.from('profiles').select('id,notify').in('id', others)
   if (!prefsError && prefs) {
     const off = new Set(prefs.filter((row: any) => row.notify?.[kind] === false).map((row: any) => row.id))

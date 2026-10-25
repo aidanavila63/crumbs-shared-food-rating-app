@@ -20,6 +20,8 @@ const NOTIFY_TYPES = [
   ['place', 'New places', 'Maya added Baan Thai'],
   ['dish', 'Dish scores', 'Maya gave Tonkotsu 92/100'],
   ['craving', 'Cravings', 'Maya is craving ramen'],
+  ['mention', 'Mentions', 'Maya mentioned you in a comment'],
+  ['plan', 'Plan reminders', 'Coming up: Friday dinner at Hana Ramen'],
 ] as const
 
 type Home = { lat: number; lng: number } | null

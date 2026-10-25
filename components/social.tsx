@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { MessageCircle, Send, SmilePlus } from 'lucide-react'
 import { REACTION_EMOJI, useSocial } from '@/hooks/use-social'
 import { haptic } from '@/lib/motion'
+import { findMentions, mentionParts } from '@/lib/mentions'
+import { notifyMates } from '@/lib/push'
 
 export function timeAgo(iso: string) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -92,7 +94,15 @@ export function ReactionBar({ target, names }: { target: string; names: Record<s
               <strong>
                 {comment.user_id === mine ? 'You' : (names[comment.user_id] ?? 'Someone')}
               </strong>{' '}
-              {comment.body}{' '}
+              {mentionParts(comment.body, names).map((part, i) =>
+                part.mention ? (
+                  <span key={i} className="mention">
+                    {part.text}
+                  </span>
+                ) : (
+                  <span key={i}>{part.text}</span>
+                ),
+              )}{' '}
               <span className="text-xs text-muted-foreground">{timeAgo(comment.created_at)}</span>
               {comment.user_id === mine && (
                 <button
@@ -108,16 +118,21 @@ export function ReactionBar({ target, names }: { target: string; names: Record<s
             className="flex gap-2"
             onSubmit={async (event) => {
               event.preventDefault()
-              if (await social.addComment(target, draft)) {
+              const text = draft
+              if (await social.addComment(target, text)) {
                 haptic('tap')
                 setDraft('')
+                // #137 tell the people you @mentioned
+                const ids = findMentions(text, names, mine)
+                if (ids.length && social.groupId)
+                  notifyMates({ type: 'mention', groupId: social.groupId, userIds: ids, text })
               }
             }}
           >
             <input
               className="field !min-h-10 !py-2 text-sm"
               aria-label="Write a comment"
-              placeholder="Say something…"
+              placeholder="Say something… (@name to tag)"
               maxLength={500}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}

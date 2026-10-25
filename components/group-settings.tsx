@@ -265,12 +265,20 @@ export function GroupSettingsCard({
                           onClick={() =>
                             rpc(
                               'set_member_role',
-                              { target_group: group.id, target_user: member.id, new_role: role === 'admin' ? 'member' : 'admin' },
-                              role === 'admin' ? `${member.display_name} is a member again` : `${member.display_name} is now an admin`,
+                              {
+                                target_group: group.id,
+                                target_user: member.id,
+                                new_role: role === 'admin' || role === 'guest' ? 'member' : 'admin',
+                              },
+                              role === 'guest'
+                                ? `${member.display_name} is now a member`
+                                : role === 'admin'
+                                  ? `${member.display_name} is a member again`
+                                  : `${member.display_name} is now an admin`,
                             )
                           }
                         >
-                          {role === 'admin' ? 'Make member' : 'Make admin'}
+                          {role === 'admin' || role === 'guest' ? 'Make member' : 'Make admin'}
                         </button>
                       )}
                       <button
@@ -307,6 +315,57 @@ export function GroupSettingsCard({
               }}
             >
               New code
+            </button>
+          </div>
+          {/* #135 view-only guests */}
+          <div className="settings-row">
+            <span>
+              <span className="font-semibold">
+                Guests (view only){group.guest_code ? `: ${group.guest_code}` : ''}
+              </span>
+              <span className="block text-sm text-muted-foreground">
+                Guests see your places, ratings and lists but can’t change anything. Make one a
+                member from the list above.
+              </span>
+              {group.guest_code && (
+                <span className="mt-1 flex gap-3 text-sm">
+                  <button
+                    className="font-semibold text-primary underline"
+                    onClick={async () => {
+                      const link = `${window.location.origin}/?join=${group.guest_code}`
+                      try {
+                        if (navigator.share)
+                          await navigator.share({ text: `Have a look at ${group.name} on Crumbs: ${link}` })
+                        else {
+                          await navigator.clipboard.writeText(link)
+                          toast.success('Guest link copied')
+                        }
+                      } catch {}
+                    }}
+                  >
+                    Share guest link
+                  </button>
+                  <button
+                    className="text-muted-foreground underline"
+                    onClick={async () => {
+                      await rpc('guest_invite', { target_group: group.id, off: true }, 'Guest code turned off')
+                      onGroup({ ...group, guest_code: null })
+                    }}
+                  >
+                    Turn off
+                  </button>
+                </span>
+              )}
+            </span>
+            <button
+              className="secondary shrink-0 !min-h-10 !px-3 text-sm"
+              disabled={busy}
+              onClick={async () => {
+                const code = await rpc('guest_invite', { target_group: group.id }, 'Guest code ready')
+                if (typeof code === 'string') onGroup({ ...group, guest_code: code })
+              }}
+            >
+              {group.guest_code ? 'New code' : 'Invite guests'}
             </button>
           </div>
         </>

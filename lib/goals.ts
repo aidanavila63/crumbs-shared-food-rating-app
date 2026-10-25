@@ -44,7 +44,8 @@ export function monthlyChallenges(places: Place[], today = new Date()): Challeng
   const first = new Map<string, string>()
   const cuisineFirst = new Map<string, string>()
   visits.forEach((visit) => {
-    if (!first.has(visit.place.id) || visit.visited_on < first.get(visit.place.id)!) first.set(visit.place.id, visit.visited_on)
+    if (!first.has(visit.place.id) || visit.visited_on < first.get(visit.place.id)!)
+      first.set(visit.place.id, visit.visited_on)
     const cuisine = visit.place.cuisine
     if (cuisine && (!cuisineFirst.has(cuisine) || visit.visited_on < cuisineFirst.get(cuisine)!))
       cuisineFirst.set(cuisine, visit.visited_on)
@@ -54,7 +55,12 @@ export function monthlyChallenges(places: Place[], today = new Date()): Challeng
   const crossedOff = newPlaces.filter(([id]) => (byId.get(id)?.created_at ?? '9') < `${month}-01`)
   const bingo = cuisineBingo(places)
   return [
-    { id: 'visits', title: 'Eat out 6 times', done: visits.filter((v) => v.visited_on.startsWith(month)).length, target: 6 },
+    {
+      id: 'visits',
+      title: 'Eat out 6 times',
+      done: visits.filter((v) => v.visited_on.startsWith(month)).length,
+      target: 6,
+    },
     { id: 'places', title: 'Try 3 new places', done: newPlaces.length, target: 3 },
     {
       id: 'cuisines',
@@ -62,8 +68,19 @@ export function monthlyChallenges(places: Place[], today = new Date()): Challeng
       done: [...cuisineFirst.values()].filter((date) => date.startsWith(month)).length,
       target: 3,
     },
-    { id: 'wishlist', title: 'Cross 2 places off your want-to-try list', done: crossedOff.length, target: 2 },
-    { id: 'bingo', title: 'Get a cuisine bingo', done: Math.min(bingo.bingos, 1), target: 1, note: `${bingo.filled}/25 squares so far` },
+    {
+      id: 'wishlist',
+      title: 'Cross 2 places off your want-to-try list',
+      done: crossedOff.length,
+      target: 2,
+    },
+    {
+      id: 'bingo',
+      title: 'Get a cuisine bingo',
+      done: Math.min(bingo.bingos, 1),
+      target: 1,
+      note: `${bingo.filled}/25 squares so far`,
+    },
   ].map((challenge) => ({ ...challenge, done: Math.min(challenge.done, challenge.target) }))
 }
 
@@ -87,5 +104,59 @@ export function tripSummary(list: List, places: Place[], today = new Date()) {
     visited: new Set(visits.map((visit) => visit.place.id)).size,
     spend: visits.reduce((sum, visit) => sum + Number(visit.spend ?? 0), 0),
     when,
+  }
+}
+
+// ---------- #138 group goals for the year ----------
+export type GoalKind = 'new_cuisines' | 'new_places' | 'visits' | 'home_cooks' | 'dishes'
+export const GOAL_KINDS: { id: GoalKind; label: (n: number) => string; emoji: string }[] = [
+  { id: 'new_cuisines', label: (n) => `Try ${n} new cuisines`, emoji: '🌍' },
+  { id: 'new_places', label: (n) => `Go to ${n} new places`, emoji: '📍' },
+  { id: 'visits', label: (n) => `Eat out ${n} times`, emoji: '🍽️' },
+  { id: 'home_cooks', label: (n) => `Cook at home ${n} times`, emoji: '🍳' },
+  { id: 'dishes', label: (n) => `Rate ${n} dishes`, emoji: '⭐' },
+]
+
+/** How far the group is with a goal this year. */
+export function goalProgress(
+  kind: GoalKind,
+  places: Place[],
+  meals: { home_meal_cooks: { cooked_on: string }[] }[],
+  year: number,
+) {
+  const y = String(year)
+  const visits = places.flatMap((p) =>
+    (p.place_visits ?? []).filter((v) => v.visited_on.startsWith(y)).map((v) => ({ v, p })),
+  )
+  const firstVisit = new Map<string, string>()
+  for (const p of places)
+    for (const v of p.place_visits ?? [])
+      if (!firstVisit.has(p.id) || v.visited_on < firstVisit.get(p.id)!)
+        firstVisit.set(p.id, v.visited_on)
+  switch (kind) {
+    case 'visits':
+      return visits.length
+    case 'new_places':
+      return [...firstVisit.values()].filter((d) => d.startsWith(y)).length
+    case 'new_cuisines': {
+      const before = new Set(
+        places
+          .filter((p) => (firstVisit.get(p.id) ?? '9999') < `${y}-01-01` && p.cuisine)
+          .map((p) => p.cuisine!.toLowerCase()),
+      )
+      return new Set(
+        visits
+          .map(({ p }) => p.cuisine?.toLowerCase())
+          .filter((c): c is string => !!c && !before.has(c)),
+      ).size
+    }
+    case 'home_cooks':
+      return meals.flatMap((m) => m.home_meal_cooks).filter((c) => c.cooked_on.startsWith(y)).length
+    case 'dishes':
+      return places
+        .flatMap((p) => p.dishes ?? [])
+        .filter(
+          (d) => d.dish_ratings.length > 0 && (!d.created_at || d.created_at.slice(0, 4) <= y),
+        ).length
   }
 }

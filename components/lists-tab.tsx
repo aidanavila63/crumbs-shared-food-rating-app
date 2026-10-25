@@ -3,7 +3,7 @@ import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { undoableDelete } from '@/lib/undoable'
-import type { List, Place } from '@/hooks/use-crumbs-data'
+import type { Group, List, Place } from '@/hooks/use-crumbs-data'
 import { ShareList } from './share-list'
 import { TripPanel } from './trip-panel'
 import { smartLists } from '@/lib/smart-lists'
@@ -21,7 +21,10 @@ export function ListsTab({
   onShowOnMap,
   onSelect,
   trips = true,
+  groups = [],
 }: {
+  /** #136 your other groups (copy a list there) */
+  groups?: Group[]
   /** #29 group setting: trips on lists */
   trips?: boolean
   lists: List[]
@@ -280,6 +283,40 @@ export function ListsTab({
               Delete list
             </button>
           </div>
+          {groups.filter((g) => g.id !== groupId).length > 0 && (
+            <div className="mt-4 flex flex-col gap-2">
+              <p className="text-sm font-semibold">Copy this list to another group</p>
+              <div className="chip-row">
+                {groups
+                  .filter((g) => g.id !== groupId)
+                  .map((g) => (
+                    <button
+                      key={g.id}
+                      className="chip chip-sm"
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            `Copy “${active.name}” to ${g.name}? Places they don’t have are added as Want to try (no ratings or notes).`,
+                          )
+                        )
+                          return
+                        if (demo) return toast.success(`Copied to ${g.name}`)
+                        const { error } = await supabase.rpc('copy_list', {
+                          source: active.id,
+                          target_group: g.id,
+                        })
+                        if (error) return toast.error(error.message)
+                        haptic('success')
+                        toast.success(`Copied to ${g.name}`)
+                      }}
+                    >
+                      {g.emoji ? `${g.emoji} ` : ''}
+                      {g.name}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         ordered.map((list) => (

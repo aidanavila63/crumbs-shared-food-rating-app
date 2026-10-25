@@ -2684,6 +2684,178 @@ alter table public.profiles add column if not exists areas jsonb not null defaul
   check (jsonb_typeof(areas) = 'array' and jsonb_array_length(areas) <= 8);
 
 -- ============================================================================================
+-- 13n. Groups round (#135 view-only guests, #136 copy a list to another group, #138 group goals)
+-- ============================================================================================
+-- #135 Guests can see everything in the group but can't change anything. They join with a separate
+-- guest code (Group settings → Invite a guest).
+do $$ begin
+  alter table public.group_members drop constraint if exists group_members_role_check;
+  alter table public.group_members add constraint group_members_role_check check (role in ('owner', 'admin', 'member', 'guest'));
+end $$;
+alter table public.groups add column if not exists guest_code text unique check (guest_code ~ '^[A-Z0-9]{6,8}$');
+
+create or replace function public.is_group_guest(gid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.group_members where group_id = gid and user_id = (select auth.uid()) and role = 'guest')
+$$;
+
+-- Owner/admin makes (or replaces, or with off=true removes) the guest code.
+create or replace function public.guest_invite(target_group uuid, off boolean default false)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare
+  code text;
+  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  i int;
+begin
+  if not public.is_group_admin(target_group) then raise exception 'Only the owner or an admin can invite guests'; end if;
+  if off then
+    update public.groups set guest_code = null where id = target_group;
+    return null;
+  end if;
+  loop
+    code := '';
+    for i in 1..7 loop
+      code := code || substr(alphabet, 1 + (get_byte(extensions.gen_random_bytes(1), 0) % 32), 1);
+    end loop;
+    exit when not exists (select 1 from public.groups where join_code = code or guest_code = code);
+  end loop;
+  update public.groups set guest_code = code where id = target_group;
+  return code;
+end $$;
+
+-- Joining: the group code makes you a member, the guest code a guest. A guest stays a guest
+-- whatever code they use (guests can see the group's details); the owner makes them a member.
+create or replace function public.join_group(code text)
+returns public.groups language plpgsql security definer set search_path = public as $$
+declare
+  target public.groups;
+  as_guest boolean := false;
+begin
+  if auth.uid() is null then raise exception 'Please sign in first'; end if;
+  select * into target from public.groups where join_code = upper(trim(code));
+  if target.id is null then
+    select * into target from public.groups where guest_code = upper(trim(code));
+    as_guest := target.id is not null;
+  end if;
+  if target.id is null then raise exception 'That code does not match a group'; end if;
+  insert into public.group_members (group_id, user_id, role)
+    values (target.id, auth.uid(), case when as_guest then 'guest' else 'member' end)
+  on conflict (group_id, user_id) do nothing;
+  return target;
+end $$;
+revoke execute on function public.join_group(text), public.guest_invite(uuid, boolean) from public, anon;
+grant execute on function public.join_group(text), public.guest_invite(uuid, boolean) to authenticated;
+
+-- Writes by guests are refused on every group table (one trigger, told how to find the group).
+create or replace function public.block_guest_writes()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb := to_jsonb(case when tg_op = 'DELETE' then old else new end);
+  gid uuid;
+begin
+  if (select auth.uid()) is null then return case when tg_op = 'DELETE' then old else new end; end if;
+  -- Opening a place quietly links it to its shared restaurant and refreshes hours: fine for guests.
+  if tg_table_name = 'places' and tg_op = 'UPDATE'
+     and to_jsonb(new) - array['restaurant_id', 'opening_hours', 'business_status', 'hours_checked_at']
+       = to_jsonb(old) - array['restaurant_id', 'opening_hours', 'business_status', 'hours_checked_at'] then
+    return new;
+  end if;
+  gid := case tg_argv[0]
+    when 'group' then (r->>'group_id')::uuid
+    when 'place' then public.place_group((r->>'place_id')::uuid)
+    when 'dish' then public.place_group((select place_id from public.dishes where id = (r->>'dish_id')::uuid))
+    when 'list' then (select group_id from public.lists where id = (r->>'list_id')::uuid)
+    when 'meal' then (select group_id from public.home_meals where id = (r->>'meal_id')::uuid)
+    when 'plan' then (select group_id from public.plans where id = (r->>'plan_id')::uuid)
+    when 'session' then (select group_id from public.swipe_sessions where id = (r->>'session_id')::uuid)
+  end;
+  if gid is not null and public.is_group_guest(gid) then
+    raise exception 'Guests can look around but not change things — ask the group to make you a member';
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end $$;
+do $$
+declare
+  t text[];
+begin
+  foreach t slice 1 in array array[
+    ['places', 'group'], ['lists', 'group'], ['home_meals', 'group'], ['plans', 'group'], ['comments', 'group'],
+    ['reactions', 'group'], ['swipe_sessions', 'group'],
+    ['place_ratings', 'place'], ['place_visits', 'place'], ['place_facts', 'place'], ['dishes', 'place'],
+    ['table_orders', 'place'], ['place_private_notes', 'place'],
+    ['dish_ratings', 'dish'], ['list_places', 'list'], ['home_meal_ratings', 'meal'], ['home_meal_cooks', 'meal'],
+    ['plan_rsvps', 'plan'], ['swipe_votes', 'session'], ['swipe_limits', 'session']]
+  loop
+    if to_regclass('public.' || t[1]) is null then continue; end if;
+    execute format('drop trigger if exists guests_read_only on public.%I', t[1]);
+    execute format('create trigger guests_read_only before insert or update or delete on public.%I
+                    for each row execute function public.block_guest_writes(%L)', t[1], t[2]);
+  end loop;
+end $$;
+
+-- #136 Copy one of your lists into another of your groups (places it doesn't have are added as
+-- Want to try; nothing else — ratings and notes stay in the first group).
+create or replace function public.copy_list(source uuid, target_group uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  src public.lists;
+  new_id uuid;
+  p record;
+  tp uuid;
+  n integer := 0;
+begin
+  select * into src from public.lists where id = source;
+  if src.id is null or not public.is_group_member(src.group_id) then raise exception 'Not your list'; end if;
+  if not public.is_group_member(target_group) or public.is_group_guest(target_group) then
+    raise exception 'You can only copy to a group you''re a member of';
+  end if;
+  insert into public.lists (group_id, name, emoji, created_by, kind, trip_city, starts_on, ends_on)
+  values (target_group, src.name, src.emoji, auth.uid(), src.kind, src.trip_city, src.starts_on, src.ends_on)
+  returning id into new_id;
+  for p in select pl.*, lp.position from public.list_places lp join public.places pl on pl.id = lp.place_id
+            where lp.list_id = source order by lp.position nulls last limit 200 loop
+    select id into tp from public.places
+     where group_id = target_group
+       and (google_place_id = p.google_place_id or (p.restaurant_id is not null and restaurant_id = p.restaurant_id))
+     limit 1;
+    if tp is null then
+      insert into public.places (group_id, google_place_id, name, formatted_address, latitude, longitude, price_level,
+                                 cuisine, website, google_maps_url, status, created_by, restaurant_id, opening_hours,
+                                 business_status, hours_checked_at)
+      values (target_group, p.google_place_id, p.name, p.formatted_address, p.latitude, p.longitude, p.price_level,
+              p.cuisine, p.website, p.google_maps_url, 'Want to try', auth.uid(), p.restaurant_id, p.opening_hours,
+              p.business_status, p.hours_checked_at)
+      returning id into tp;
+      n := n + 1;
+    end if;
+    insert into public.list_places (list_id, place_id, added_by, position)
+    values (new_id, tp, auth.uid(), p.position) on conflict do nothing;
+  end loop;
+  return new_id;
+end $$;
+revoke execute on function public.copy_list(uuid, uuid) from public, anon;
+grant execute on function public.copy_list(uuid, uuid) to authenticated;
+
+-- #138 Group goals for the year ("10 new cuisines"); progress is worked out on the phone.
+create table if not exists public.group_goals (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  kind text not null check (kind in ('new_cuisines', 'new_places', 'visits', 'home_cooks', 'dishes')),
+  target integer not null check (target between 1 and 1000),
+  year integer not null check (year between 2020 and 2100),
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (group_id, kind, year)
+);
+alter table public.group_goals enable row level security;
+drop policy if exists group_goals_all on public.group_goals;
+create policy group_goals_all on public.group_goals for all to authenticated
+  using (public.is_group_member(group_id)) with check (public.is_group_member(group_id));
+drop trigger if exists guests_read_only on public.group_goals;
+create trigger guests_read_only before insert or update or delete on public.group_goals
+  for each row execute function public.block_guest_writes('group');
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

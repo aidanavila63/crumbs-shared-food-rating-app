@@ -52,7 +52,8 @@ export function DecideTogether({
   const [view, setView] = useState<{ id: string; mode: 'swipe' | 'list' | 'results' } | null>(
     initialSessionId ? { id: initialSessionId, mode: 'swipe' } : null,
   )
-  const memberIds = members.map((m) => m.id)
+  // guests can't vote, so they don't count towards a match (#135)
+  const memberIds = members.filter((m) => m.role !== 'guest').map((m) => m.id)
   const open = store.sessions.filter((s) => s.status === 'open')
   const closed = store.sessions.filter((s) => s.status === 'closed').slice(0, 5)
   const current = store.sessions.find((s) => s.id === view?.id) ?? null

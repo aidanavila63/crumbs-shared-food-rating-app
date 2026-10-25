@@ -82,11 +82,23 @@ async function remindPlans(db: any) {
     ]
       .filter(Boolean)
       .join(' · ')
-    sent += await pushTo(db, plan.people ?? [], {
-      title: 'Coming up 🍽️',
-      body: `${plan.title}${plan.place ? ` at ${plan.place}` : ''}${booking ? ` — ${booking}` : ''}`,
-      tag: `crumbs-plan-${plan.id}`,
-    })
+    // people who switched plan reminders off are skipped
+    const { data: prefs } = await db
+      .from('profiles')
+      .select('id,notify')
+      .in('id', plan.people ?? [])
+    const off = new Set(
+      (prefs ?? []).filter((p: any) => p.notify?.plan === false).map((p: any) => p.id),
+    )
+    sent += await pushTo(
+      db,
+      (plan.people ?? []).filter((id: string) => !off.has(id)),
+      {
+        title: 'Coming up 🍽️',
+        body: `${plan.title}${plan.place ? ` at ${plan.place}` : ''}${booking ? ` — ${booking}` : ''}`,
+        tag: `crumbs-plan-${plan.id}`,
+      },
+    )
     await db.from('plans').update({ reminded_at: new Date().toISOString() }).eq('id', plan.id)
   }
   return sent

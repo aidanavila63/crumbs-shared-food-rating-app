@@ -6,6 +6,7 @@ import { fromInput, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { ScoreDisplay, ScoreInput } from './score-input'
 import { recall, remember } from '@/lib/remember'
+import { useSocial } from '@/hooks/use-social'
 import { MEAL_TIMES, WAITS, mealTimeAt, type MealTime } from '@/lib/visit-rating'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -233,6 +234,7 @@ export function VisitsPanel({
                 <>
                   Picked by{' '}
                   {visit.picked_by === userId ? 'you' : (names[visit.picked_by] ?? 'someone')}.{' '}
+                  <Kudos visitId={visit.id} pickedBy={visit.picked_by} userId={userId} />{' '}
                 </>
               )}
               {visit.note}
@@ -377,5 +379,35 @@ export function VisitsPanel({
         </div>
       )}
     </div>
+  )
+}
+
+/** #192 Kudos on a pick ("👏 great pick!") — counts toward Whose turn. */
+function Kudos({
+  visitId,
+  pickedBy,
+  userId,
+}: {
+  visitId: string
+  pickedBy: string
+  userId?: string
+}) {
+  const social = useSocial()
+  if (!social?.enabled) return null
+  const target = `pick:${visitId}`
+  const claps = social.reactions.filter((r) => r.target === target && r.emoji === '👏')
+  const mine = claps.some((r) => r.user_id === userId)
+  if (pickedBy === userId) return claps.length ? <span>👏 {claps.length}</span> : null
+  return (
+    <button
+      className={`reaction-chip ${mine ? 'reaction-chip-on' : ''}`}
+      aria-pressed={mine}
+      onClick={() => {
+        haptic('select')
+        social.toggleReaction(target, '👏')
+      }}
+    >
+      👏 Great pick{claps.length ? ` · ${claps.length}` : ''}
+    </button>
   )
 }

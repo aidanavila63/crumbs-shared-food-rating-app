@@ -2025,3 +2025,7 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
 .spin-slice-c {
   fill: color-mix(in srgb, var(--primary) 78%, #000);
 }
+.mention {
+  color: var(--primary);
+  font-weight: 700;
+}

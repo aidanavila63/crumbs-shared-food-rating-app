@@ -224,6 +224,7 @@ export function useSocialStore({
     () => ({
       enabled,
       userId,
+      groupId,
       reactions,
       comments,
       activity,
@@ -235,6 +236,7 @@ export function useSocialStore({
     [
       enabled,
       userId,
+      groupId,
       reactions,
       comments,
       activity,

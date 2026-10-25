@@ -378,3 +378,14 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - **#133 Good pick?** 👍/👎 on the Plans card after you went; good picks' cuisines count as liked in "Next up from your list", bad ones don't (`plans.good_pick`).
 - **#128 saved areas** (Settings → Your preferences → Saved areas: name + size, saved where you stand; up to 8) → 📍 chips above your places filter to that area (`profiles.areas`).
 - Demo: two more want-to-try places. Tests 110/110; SQL tested; build passes; demo checked.
+
+## Round 34 - groups (#135 #136 #137 #138 #190 #191 #192 #193) (Oct 25, Claude in Cowork)
+- **#135 view-only guests**: Group settings → Guests → Invite guests makes a separate 7-letter guest code (Share guest link / New code / Turn off). Guests see everything but every change is refused by the database (one `block_guest_writes` trigger on all group tables; opening places still links/refreshes hours). A guest stays a guest whatever code they use; the owner taps "Make member". Guests get a banner, a 👀 guest tag, and don't count toward Decide-together matches.
+- **#136** open a list → "Copy this list to another group" (places they don't have go in as Want to try; no ratings or notes) — `copy_list()`.
+- **#137 @mentions** in comments: "@Maya" is highlighted and pushes "Jordan mentioned you: …" to Maya only (new "Mentions" notification switch; also a "Plan reminders" switch the daily job respects).
+- **#138 group goals** for the year (Decide & Plan): try N new cuisines / go to N new places / eat out N times / cook N times / rate N dishes, with progress bars (`group_goals`).
+- **#190 catch-up** card for someone who joined in the last 2 weeks: the group's favourites, must-try dishes, want-to-try count and lists (Got it hides it on that phone).
+- **#191 taste profiles**: tap a member in Group → places rated, average, generous/tough rater vs the group, top cuisines, signature order.
+- **#192 kudos**: "👏 Great pick" on visits someone else picked; Whose turn shows the best picker.
+- **#193 all my groups on the map**: "👥 All my groups" on the Map (with 2+ groups); other groups' places carry their emoji; tapping one offers to switch group.
+- Tests 115/115; SQL tested (guest join/blocks/quiet updates/promotion, copy list, goals); earlier batch tests unaffected; build passes; demo checked.

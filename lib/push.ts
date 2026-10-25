@@ -7,6 +7,7 @@ export type NotifyPayload =
   | { type: 'place_rating'; placeId: string; value: number }
   | { type: 'dish_rating'; placeId: string; dishName: string; value: number }
   | { type: 'craving'; groupId: string; text: string }
+  | { type: 'mention'; groupId: string; userIds: string[]; text: string }
 
 export function notifyMates(payload: NotifyPayload) {
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_DEMO_MODE === 'true')

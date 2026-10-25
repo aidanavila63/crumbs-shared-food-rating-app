@@ -9,6 +9,7 @@ import type { HomeMeal } from '@/hooks/use-crumbs-data'
 import { ActivityFeed, MemoriesCard } from './group-feed'
 import { OwnerTag } from './restaurant-profile'
 import { photoUrl } from '@/lib/photos'
+import { tasteProfile } from '@/lib/catch-up'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -52,6 +53,7 @@ export function GroupTab({
   onLeft?: (groupId: string) => void
 }) {
   const [showQr, setShowQr] = useState(false)
+  const [openMember, setOpenMember] = useState<string | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   // The QR library is only downloaded when someone asks for the code.
   useEffect(() => {
@@ -186,24 +188,33 @@ export function GroupTab({
               place.place_ratings.some((rating) => rating.user_id === member.id),
             ).length
             return (
-              <div className="surface-soft flex items-center justify-between gap-3" key={member.id}>
-                <span>
-                  <strong>{member.display_name}</strong>
-                  {member.id === userId ? ' (you)' : ''}
-                  {member.restaurant_owner && (
-                    <span className="ml-2 align-middle">
-                      <OwnerTag />
-                    </span>
-                  )}
-                  {member.id === group.created_by ? (
-                    <span className="tag ml-2">owner</span>
-                  ) : member.role === 'admin' ? (
-                    <span className="tag ml-2">admin</span>
-                  ) : null}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {count} rating{count === 1 ? '' : 's'}
-                </span>
+              <div className="surface-soft flex flex-col gap-2" key={member.id}>
+                <button
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  aria-expanded={openMember === member.id}
+                  onClick={() => setOpenMember(openMember === member.id ? null : member.id)}
+                >
+                  <span>
+                    <strong>{member.display_name}</strong>
+                    {member.id === userId ? ' (you)' : ''}
+                    {member.restaurant_owner && (
+                      <span className="ml-2 align-middle">
+                        <OwnerTag />
+                      </span>
+                    )}
+                    {member.id === group.created_by ? (
+                      <span className="tag ml-2">owner</span>
+                    ) : member.role === 'admin' ? (
+                      <span className="tag ml-2">admin</span>
+                    ) : member.role === 'guest' ? (
+                      <span className="tag ml-2">👀 guest</span>
+                    ) : null}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {count} rating{count === 1 ? '' : 's'} ›
+                  </span>
+                </button>
+                {openMember === member.id && <TasteProfile places={places} member={member} />}
               </div>
             )
           })}
@@ -246,5 +257,26 @@ export function GroupTab({
         Leave group
       </button>
     </section>
+  )
+}
+
+/** #191 A member's taste inside this group. */
+function TasteProfile({ places, member }: { places: Place[]; member: Profile }) {
+  const t = tasteProfile(places, member.id)
+  if (!t) return <p className="rise-panel text-sm text-muted-foreground">No ratings here yet.</p>
+  return (
+    <div className="rise-panel flex flex-col gap-1 text-sm">
+      <p>
+        <strong>{t.rated}</strong> places rated · average <strong>{t.average}★</strong>
+        {t.style ? ` · ${t.style}` : ''}
+      </p>
+      {t.cuisines.length > 0 && <p>Loves: {t.cuisines.join(', ')}</p>}
+      {t.signature && (
+        <p>
+          Signature order: <strong>{t.signature.name}</strong> at {t.signature.place} (
+          {t.signature.points}/100)
+        </p>
+      )}
+    </div>
   )
 }

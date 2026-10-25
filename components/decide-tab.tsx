@@ -7,7 +7,7 @@ import type { Place, PlaceVisit, Profile } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { TonightCard } from './tonight-card'
 import { CravingButton } from './craving-button'
-import { ChallengesCard } from './goals-cards'
+import { ChallengesCard, GroupGoalsCard } from './goals-cards'
 import { WeatherNudge } from './weather-nudge'
 import { TurnCard } from './turn-card'
 import type { Group, HomeMeal, List } from '@/hooks/use-crumbs-data'
@@ -503,6 +503,16 @@ export function DecideTab({
       )}
 
       <ChallengesCard places={allPlaces} />
+      {(decide?.enabled || demo) && groupId && (
+        <GroupGoalsCard
+          groupId={groupId}
+          places={allPlaces}
+          meals={meals}
+          supabase={supabase}
+          demo={demo}
+          year={new Date().getFullYear()}
+        />
+      )}
 
       {aiIdeas && (
         <div className="surface flex flex-col gap-3">

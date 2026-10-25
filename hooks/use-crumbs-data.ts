@@ -104,6 +104,8 @@ export type Group = {
   id: string
   name: string
   join_code: string
+  /** #135 code for view-only guests (owner/admin) */
+  guest_code?: string | null
   created_by: string
   settings?: GroupSettings | null
   emoji?: string | null
@@ -152,7 +154,10 @@ export type Profile = {
   restaurant_owner?: boolean | null
   /** #47 copy my ratings to my other groups that saved the same place */
   share_ratings?: 'group' | 'all' | 'ask'
-  role?: 'owner' | 'admin' | 'member' | null
+  /** #135 guests can look but not change anything */
+  role?: 'owner' | 'admin' | 'member' | 'guest' | null
+  /** #190 when they joined this group */
+  joined_at?: string | null
   /** #181 hottest spice that's fine (0-3, null = anything) */
   spice_max?: number | null
   /** #121 diet (Vegetarian, Vegan, Gluten-free…) and the Safe for me switch */
@@ -408,16 +413,20 @@ export function useCrumbsData() {
     if (listsError) throw listsError
     const { data: memberRows } = await supabase
       .from('group_members')
-      .select('user_id,role')
+      .select('*')
       .eq('group_id', group.id)
     const ids = (memberRows ?? []).map((row: any) => row.user_id)
     const roles = Object.fromEntries((memberRows ?? []).map((row: any) => [row.user_id, row.role]))
+    const joined = Object.fromEntries(
+      (memberRows ?? []).map((row: any) => [row.user_id, row.joined_at ?? null]),
+    )
     let profileRows: Profile[] = []
     if (ids.length) {
       const { data: rows } = await supabase.from('profiles').select('*').in('id', ids)
       profileRows = ((rows ?? []) as Profile[]).map((row) => ({
         ...row,
         role: row.id === group.created_by ? 'owner' : (roles[row.id] ?? 'member'),
+        joined_at: joined[row.id] ?? null,
       }))
     }
     // Is the v4 database update in? (home_meals only exists after it.)

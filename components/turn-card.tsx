@@ -1,6 +1,7 @@
 'use client'
 import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { whoseTurn } from '@/lib/turns'
+import { useSocial } from '@/hooks/use-social'
 
 /** #37 Whose turn to pick the restaurant (and to cook, when you log who cooked). */
 export function TurnCard({
@@ -35,6 +36,18 @@ export function TurnCard({
     ),
   )
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  // #192 kudos on picks: 👏 reactions on visits, counted for whoever picked
+  const social = useSocial()
+  const kudos = new Map<string, number>()
+  for (const place of places)
+    for (const visit of place.place_visits ?? [])
+      if (visit.picked_by) {
+        const n = (social?.reactions ?? []).filter(
+          (r) => r.target === `pick:${visit.id}` && r.emoji === '👏',
+        ).length
+        if (n) kudos.set(visit.picked_by, (kudos.get(visit.picked_by) ?? 0) + n)
+      }
+  const star = [...kudos.entries()].sort((a, b) => b[1] - a[1])[0]
   return (
     <div className="surface turn-card flex flex-col gap-3">
       <h3 className="font-serif text-2xl font-bold">Whose turn?</h3>
@@ -57,6 +70,11 @@ export function TurnCard({
       ) : (
         <p className="text-sm text-muted-foreground">
           When you log a visit, open “More details” and choose who picked. Crumbs keeps score.
+        </p>
+      )}
+      {star && (
+        <p className="text-sm">
+          👏 Best picker: <strong>{cap(name(star[0]))}</strong> ({star[1]} kudos)
         </p>
       )}
       {cook && (

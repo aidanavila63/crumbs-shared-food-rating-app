@@ -42,6 +42,8 @@ import { flushQueue } from '@/lib/offline-queue'
 import { addFoundPlace } from '@/lib/add-found'
 import { fromShare } from '@/lib/maps-link'
 import { inArea } from '@/lib/decide-more'
+import { catchUpSeen, isNewMember } from '@/lib/catch-up'
+import { CatchUpCard } from './catch-up-card'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -193,11 +195,44 @@ function CrumbsShell() {
   }
   const [tripMapId, setTripMapId] = useState<string | null>(null)
   const tripList = data.lists.find((list) => list.id === tripMapId) ?? null
+  // #193 All my groups on one read-only map
+  const [allGroups, setAllGroups] = useState(false)
+  const [otherPlaces, setOtherPlaces] = useState<Place[]>([])
+  useEffect(() => {
+    if (!allGroups || !data.group || data.demo) return
+    const others = data.groups.filter((g) => g.id !== data.group!.id)
+    if (!others.length) return
+    let cancelled = false
+    data.supabase
+      .from('places')
+      .select('*,place_ratings(*)')
+      .in(
+        'group_id',
+        others.map((g) => g.id),
+      )
+      .then(({ data: rows }: any) => {
+        if (cancelled) return
+        setOtherPlaces(
+          (rows ?? []).map((p: Place) => {
+            const g = others.find((x) => x.id === p.group_id)
+            return { ...p, name: `${g?.emoji ?? '👥'} ${p.name}` }
+          }),
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allGroups, data.group?.id, data.groups.length])
   const mapPlaces = useMemo(() => {
-    if (!tripList) return view
+    if (!tripList) {
+      if (!allGroups) return view
+      const here = new Set(view.map((p) => p.google_place_id))
+      return [...view, ...otherPlaces.filter((p) => !here.has(p.google_place_id))]
+    }
     const ids = new Set((tripList.list_places ?? []).map((item) => item.place_id))
     return view.filter((place) => ids.has(place.id))
-  }, [view, tripList])
+  }, [view, tripList, allGroups, otherPlaces])
   // #26 A crawl shown on the map gets a walking line through its stops, in order.
   const crawl = useMemo(() => {
     if (tripList?.kind !== 'crawl') return { route: [], labels: {} }
@@ -234,6 +269,14 @@ function CrumbsShell() {
     () => Object.fromEntries(data.members.map((m) => [m.id, m.display_name])),
     [data.members],
   )
+  // #190 catch-up card for someone who just joined (dismissed per group on this phone)
+  const [catchUpSeenNow, setCatchUpSeen] = useState(false)
+  const catchUp =
+    !!data.group &&
+    !catchUpSeenNow &&
+    isNewMember(me) &&
+    data.places.length >= 3 &&
+    !catchUpSeen(data.group.id)
   // #128 a saved area to filter the list by
   const [areaName, setAreaName] = useState<string | null>(null)
   const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
@@ -533,6 +576,21 @@ function CrumbsShell() {
             </select>
           )}
         </div>
+        {me?.role === 'guest' && (
+          <p className="next-time-note mb-4 text-sm">
+            👀 You’re a guest in {data.group.name} — look around as much as you like. To add or
+            rate places, ask them to make you a member.
+          </p>
+        )}
+        {catchUp && (
+          <CatchUpCard
+            group={data.group}
+            places={data.places}
+            lists={data.lists}
+            onSelect={setSelected}
+            onDone={() => setCatchUpSeen(true)}
+          />
+        )}
         <div key={tab} className={`tab-pane tab-from-${direction}`}>
           {tab === 'Places' && (
             <section className="flex flex-col gap-4">
@@ -593,6 +651,7 @@ function CrumbsShell() {
                     }}
                     onSelect={setSelected}
                     trips={settingsOf(data.group).trips}
+                    groups={data.groups}
                   />
                 </div>
               ) : (
@@ -722,10 +781,30 @@ function CrumbsShell() {
                   </button>
                 </div>
               )}
+              {data.groups.length > 1 && !tripList && (
+                <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">
+                    {allGroups ? 'Showing places from all your groups' : 'Showing this group'}
+                  </span>
+                  <button
+                    className={`chip chip-sm ${allGroups ? 'chip-active' : ''}`}
+                    aria-pressed={allGroups}
+                    onClick={() => setAllGroups(!allGroups)}
+                  >
+                    👥 All my groups
+                  </button>
+                </div>
+              )}
               <MapTab
                 places={mapPlaces}
                 apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-                onSelect={setSelected}
+                onSelect={(place) => {
+                  if (place.group_id === data.group?.id) return setSelected(place)
+                  const g = data.groups.find((x) => x.id === place.group_id)
+                  toast(`${place.name.replace(/^\S+\s/, '')} is in ${g?.name ?? 'another group'}`, {
+                    action: g ? { label: 'Switch', onClick: () => data.setGroup(g) } : undefined,
+                  })
+                }}
                 route={crawl.route}
                 labels={crawl.labels}
                 demo={data.demo}
