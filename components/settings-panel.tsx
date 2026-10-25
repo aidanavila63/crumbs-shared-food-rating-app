@@ -13,6 +13,8 @@ import { GroupSettingsCard } from './group-settings'
 import { YourDataCard } from './your-data-card'
 import { ImportPlaces } from './import-places'
 import { Overlay } from './overlay'
+import { Guidebook, Walkthrough } from './guidebook'
+import { setTourDone } from '@/lib/guidebook'
 
 // #73: which notifications you get. Missing = on.
 const NOTIFY_TYPES = [
@@ -63,6 +65,8 @@ export function SettingsPanel({
   v4?: boolean
   onReload?: () => void
 }) {
+  const [guide, setGuide] = useState(false)
+  const [tour, setTour] = useState(false)
   const prefs = useMotionPrefs()
   const theme = useThemePrefs()
   const themes: ThemeMode[] = ['auto', 'light', 'dark']
@@ -118,6 +122,32 @@ export function SettingsPanel({
 
   return (
     <div className="stagger flex flex-col gap-4">
+      <button
+        className="surface settings-card flex items-center gap-3 text-left"
+        onClick={() => setGuide(true)}
+      >
+        <span className="text-2xl" aria-hidden="true">
+          📖
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Guidebook</span>
+          <span className="block text-sm text-muted-foreground">
+            How everything works + tips & tricks
+          </span>
+        </span>
+        <span className="text-muted-foreground">›</span>
+      </button>
+      {guide && (
+        <Guidebook
+          onClose={() => setGuide(false)}
+          onReplay={() => {
+            setGuide(false)
+            setTourDone(false)
+            setTour(true)
+          }}
+        />
+      )}
+      {tour && <Walkthrough onDone={() => setTour(false)} />}
       <section className="surface settings-card">
         <h3 className="settings-heading">Look &amp; feel</h3>
         <div className="flex flex-col gap-2">

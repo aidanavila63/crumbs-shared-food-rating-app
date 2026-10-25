@@ -63,6 +63,7 @@ import { OtherGroups } from './other-groups'
 import { PrivateNote, usePrivateNote } from './private-note'
 import { OrderForTable } from './order-for-table'
 import { GoodToKnow } from './good-to-know'
+import { writeOrDraft } from '@/lib/offline-drafts'
 import { RestaurantPosts } from './restaurant-posts'
 import { MenuPdfLink } from './menu-pdf'
 import { PlanB } from './plan-b'
@@ -533,7 +534,13 @@ export function PlaceSheet({
       })
     if (v4 && next.reasons?.length) row.reasons = next.reasons
     else if (v4 && mine?.reasons?.length) row.reasons = []
-    const { error } = await supabase.from('place_ratings').upsert(row)
+    const { error, drafted } = await writeOrDraft(supabase, {
+      label: `Your rating for ${place.name}`,
+      table: 'place_ratings',
+      op: 'upsert',
+      values: row,
+    })
+    if (drafted) return toast('No signal — your rating is saved on this phone as a draft')
     if (!error && shareNow && !next.draft)
       setRated((prev) => ({ rating: v4 ? next : { score: next.score }, at: (prev?.at ?? 0) + 1 }))
     if (error) toast.error(error.message)
@@ -554,7 +561,14 @@ export function PlaceSheet({
       : [...(place.tags ?? []), tag]
     onUpdate({ ...place, tags })
     if (demo) return
-    const { error } = await supabase.from('places').update({ tags }).eq('id', place.id)
+    const { error, drafted } = await writeOrDraft(supabase, {
+      label: `Tags on ${place.name}`,
+      table: 'places',
+      op: 'update',
+      values: { tags },
+      match: { id: place.id },
+    })
+    if (drafted) return
     if (error) {
       onUpdate(place)
       toast.error(error.message)
@@ -564,7 +578,13 @@ export function PlaceSheet({
     const optimistic = { ...place, status: next }
     onUpdate(optimistic)
     if (!demo) {
-      const { error } = await supabase.from('places').update({ status: next }).eq('id', place.id)
+      const { error } = await writeOrDraft(supabase, {
+        label: `${place.name}: ${next}`,
+        table: 'places',
+        op: 'update',
+        values: { status: next },
+        match: { id: place.id },
+      })
       if (error) toast.error(error.message)
     }
   }
@@ -743,10 +763,14 @@ export function PlaceSheet({
     )
     if (demo) return
     // Keep the old 1-5 `score` in step so older screens and the AI still understand it.
-    const { error } = await supabase
-      .from('dish_ratings')
-      .upsert({ dish_id: dishId, user_id: userId, score: stars, points })
+    const { error, drafted } = await writeOrDraft(supabase, {
+      label: `${dish?.name ?? 'Dish'} at ${place.name}: ${points}/100`,
+      table: 'dish_ratings',
+      op: 'upsert',
+      values: { dish_id: dishId, user_id: userId, score: stars, points },
+    })
     if (error) return toast.error(error.message)
+    if (drafted) return toast('No signal — saved on this phone as a draft')
     if (dish)
       notifyMates({ type: 'dish_rating', placeId: place.id, dishName: dish.name, value: points })
   }

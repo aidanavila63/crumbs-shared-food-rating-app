@@ -2093,3 +2093,18 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
 :root[data-motion='off'] .wrap-dot {
   animation: none;
 }
+.tour-dots {
+  display: flex;
+  gap: 6px;
+}
+.tour-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: width 0.25s ease;
+}
+.tour-dot-on {
+  width: 22px;
+  background: var(--primary);
+}

@@ -44,6 +44,10 @@ import { fromShare } from '@/lib/maps-link'
 import { inArea } from '@/lib/decide-more'
 import { catchUpSeen, isNewMember } from '@/lib/catch-up'
 import { CatchUpCard } from './catch-up-card'
+import { DraftsReview } from './drafts-review'
+import { Walkthrough } from './guidebook'
+import { tourDone } from '@/lib/guidebook'
+import { searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -269,6 +273,13 @@ function CrumbsShell() {
     () => Object.fromEntries(data.members.map((m) => [m.id, m.display_name])),
     [data.members],
   )
+  // #168 the welcome tour, once per phone (skippable; replay from Settings → Guidebook)
+  const [touring, setTouring] = useState(false)
+  useEffect(() => {
+    if (!data.group || data.demo || data.loading || tourDone()) return
+    const timer = setTimeout(() => setTouring(true), 600)
+    return () => clearTimeout(timer)
+  }, [data.group, data.demo, data.loading])
   // #190 catch-up card for someone who just joined (dismissed per group on this phone)
   const [catchUpSeenNow, setCatchUpSeen] = useState(false)
   const catchUp =
@@ -277,6 +288,17 @@ function CrumbsShell() {
     isNewMember(me) &&
     data.places.length >= 3 &&
     !catchUpSeen(data.group.id)
+  // #225 search everything
+  const found = useMemo(
+    () =>
+      searchAll(query, {
+        places: data.places,
+        lists: data.lists,
+        meals: data.homeMeals,
+        plans: decide?.plans ?? [],
+      }),
+    [query, data.places, data.lists, data.homeMeals, decide?.plans],
+  )
   // #128 a saved area to filter the list by
   const [areaName, setAreaName] = useState<string | null>(null)
   const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
@@ -622,6 +644,19 @@ function CrumbsShell() {
             </select>
           )}
         </div>
+        {touring && <Walkthrough onDone={() => setTouring(false)} />}
+        {data.offlineCopy && (
+          <p className="next-time-note mb-4 text-sm">
+            📴 No signal — showing the copy saved on this phone (
+            {new Date(data.offlineCopy).toLocaleString(undefined, {
+              weekday: 'short',
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+            ). Changes you make are kept as drafts to review when you’re back.
+          </p>
+        )}
+        {!data.demo && <DraftsReview supabase={data.supabase} onApplied={() => data.load().catch(() => {})} />}
         {me?.role === 'guest' && (
           <p className="next-time-note mb-4 text-sm">
             👀 You’re a guest in {data.group.name} — look around as much as you like. To add or
@@ -731,6 +766,60 @@ function CrumbsShell() {
                       <Plus />
                     </button>
                   </div>
+                  {found && (
+                    // #225 everything else that matches, grouped (places are the list below)
+                    <div className="surface-soft rise-panel flex flex-col gap-2 text-sm">
+                      {found.dishes.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Dishes
+                          </p>
+                          {found.dishes.map(({ dish, place }) => (
+                            <button key={dish.id} className="text-left" onClick={() => setSelected(place)}>
+                              <strong>{dish.name}</strong>{' '}
+                              <span className="text-muted-foreground">at {place.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found.lists.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Lists
+                          </p>
+                          {found.lists.map((l) => (
+                            <button key={l.id} className="text-left" onClick={() => setPlacesView('lists')}>
+                              {l.emoji} <strong>{l.name}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found.plans.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Plans
+                          </p>
+                          {found.plans.map((p) => (
+                            <button key={p.id} className="text-left" onClick={() => setTab('Decide')}>
+                              📅 <strong>{p.title}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found.meals.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Home cooking
+                          </p>
+                          {found.meals.map((m) => (
+                            <button key={m.id} className="text-left" onClick={() => setPlacesView('home')}>
+                              🍳 <strong>{m.name}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="chip-row">
                     {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
                       <button

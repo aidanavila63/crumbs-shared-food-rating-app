@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { toast } from 'sonner'
+import { writeOrDraft } from '@/lib/offline-drafts'
 
 export type PrivateNoteState = {
   body: string
@@ -68,20 +69,28 @@ export function usePrivateNote({
       return
     setNote({ ...next, loaded: true })
     if (demo || !userId) return
-    const { error } =
+    const { error, drafted } =
       next.body || next.nextTime || next.loyalty
-        ? await supabase.from('place_private_notes').upsert({
-            place_id: placeId,
-            user_id: userId,
-            body: next.body,
-            next_time: next.nextTime || null,
-            ...(next.loyalty || note.loyalty ? { loyalty: next.loyalty || null } : {}),
-            updated_at: new Date().toISOString(),
+        ? await writeOrDraft(supabase, {
+            label: 'Your private note',
+            table: 'place_private_notes',
+            op: 'upsert',
+            values: {
+              place_id: placeId,
+              user_id: userId,
+              body: next.body,
+              next_time: next.nextTime || null,
+              ...(next.loyalty || note.loyalty ? { loyalty: next.loyalty || null } : {}),
+              updated_at: new Date().toISOString(),
+            },
           })
-        : await supabase
-            .from('place_private_notes')
-            .delete()
-            .match({ place_id: placeId, user_id: userId })
+        : await writeOrDraft(supabase, {
+            label: 'Delete your private note',
+            table: 'place_private_notes',
+            op: 'delete',
+            match: { place_id: placeId, user_id: userId },
+          })
+    if (drafted) toast('No signal — saved on this phone as a draft')
     if (error) toast.error(error.message)
   }
 

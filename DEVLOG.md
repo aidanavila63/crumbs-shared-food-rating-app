@@ -411,3 +411,9 @@ Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload 
 - **#218 year map** in Wrapped: every place you ate at that year as dots in the shape of your map (no map tiles needed, free). **#219 since last year** slide: cuisines you tried for the first time, your go-to cuisine changing, rating higher/tougher than last year.
 - **#152 new near your favourites**: once a week the phone quietly looks around your top 2 favourites on the open map and remembers what's there; anything new since last time shows "🆕 N new" on the favourite and a NEW tag in the results (stored on the phone; free).
 - Tests 122/122; build passes; demo checked.
+
+## Round 38 - offline drafts, walkthrough + Guidebook, search everything (#166 #168 #225) (Oct 25, Claude in Cowork)
+- **#166 offline**: every successful load keeps a copy of the group on the phone (`crumbs-cache-<group>` + the groups list). With no signal the app opens on that copy with "📴 No signal — showing the copy saved on this phone (Sat 3:41 PM)". Changes made offline — your rating, dish scores, status, tags, private/next-time notes — are kept as **drafts** (`lib/offline-drafts.ts`; a later change to the same thing replaces the earlier draft). Back online: "📝 N changes made offline — tap to review" → Apply / Discard each, or Apply all. Quick logs still send themselves.
+- **#168 walkthrough**: 6 short cards the first time someone opens a group on a phone (Skip any time). **Guidebook** at the top of Settings: how each area works (places & lists, rating, dishes & menus, deciding & plans, home cooking, building Crumbs, offline) + Tips & tricks, and "Replay the welcome tour".
+- **#225 search everything**: typing 2+ letters in the Places search also shows matching dishes (opens the place), lists, plans and home meals, grouped above your places.
+- Tests 124/124; build passes; demo checked.

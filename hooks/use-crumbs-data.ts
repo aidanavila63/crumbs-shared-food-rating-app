@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { pendingDeletes } from '@/lib/undoable'
 import { createClient } from '@/lib/supabase'
 import type { Facts, Hours } from '@/lib/place-info'
+import { cacheGroup, cachedGroup, isNetworkError, isOffline } from '@/lib/offline-drafts'
 
 export type Status = 'Been' | 'Want to try'
 export type Rating = {
@@ -390,6 +391,8 @@ export function useCrumbsData() {
   const [homeMeals, setHomeMeals] = useState<HomeMeal[]>(demo ? demoMeals : [])
   // v4 = the 20261025 database update has been run. Until then new features stay hidden.
   const [v4, setV4] = useState(demo)
+  // #166 when the network is down: the saved copy's time (null = live data)
+  const [offlineCopy, setOfflineCopy] = useState<string | null>(null)
   const [loading, setLoading] = useState(!demo)
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
   const loadedOnce = useRef(false)
@@ -442,6 +445,15 @@ export function useCrumbsData() {
     setMembers(profileRows)
     setPlaces(((placeRows ?? []) as Place[]).filter((place) => !pendingDeletes.has(place.id)))
     setLists(((listRows ?? []) as List[]).filter((list) => !pendingDeletes.has(list.id)))
+    setOfflineCopy(null)
+    // #166 keep a copy on the phone for when there's no signal
+    cacheGroup(group.id, {
+      places: placeRows ?? [],
+      lists: listRows ?? [],
+      members: profileRows,
+      homeMeals: meals.error ? [] : (meals.data ?? []),
+      v4: !meals.error,
+    })
     loadedOnce.current = true
     setLoading(false)
   }, [group, supabase, user])
@@ -482,8 +494,12 @@ export function useCrumbsData() {
       .select('groups(*)')
       .eq('user_id', user.id)
       .then(({ data, error }: any) => {
-        if (error) toast.error(error.message)
-        const list = (data ?? []).map((row: any) => row.groups).filter(Boolean) as Group[]
+        let list = (data ?? []).map((row: any) => row.groups).filter(Boolean) as Group[]
+        // #166 offline: use the groups saved on this phone last time
+        if (error && (isOffline() || isNetworkError(error)))
+          list = cachedGroup<{ groups: Group[] }>('groups')?.groups ?? []
+        else if (error) toast.error(error.message)
+        else cacheGroup('groups', { groups: list })
         setGroups(list)
         const saved = localStorage.getItem('crumbs-group')
         setGroup((current) => current ?? list.find((g) => g.id === saved) ?? list[0] ?? null)
@@ -497,7 +513,16 @@ export function useCrumbsData() {
   useEffect(() => {
     load().catch((error) => {
       console.error(error)
-      toast.error(error?.message || 'Could not load your places')
+      // #166 no signal: show the copy saved on this phone (read-only, edits become drafts)
+      const copy = group ? cachedGroup<any>(group.id) : null
+      if (copy && (isOffline() || isNetworkError(error))) {
+        setPlaces(copy.places ?? [])
+        setLists(copy.lists ?? [])
+        setMembers(copy.members ?? [])
+        setHomeMeals(copy.homeMeals ?? [])
+        setV4(!!copy.v4)
+        setOfflineCopy(copy.at)
+      } else toast.error(error?.message || 'Could not load your places')
       setLoading(false)
     })
   }, [load])
@@ -608,5 +633,6 @@ export function useCrumbsData() {
     demo,
     load,
     mutate,
+    offlineCopy,
   }
 }

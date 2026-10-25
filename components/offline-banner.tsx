@@ -28,7 +28,7 @@ export function OfflineBanner() {
       style={{ paddingTop: 'calc(8px + env(safe-area-inset-top))' }}
     >
       {offline
-        ? `You're offline. Quick logs are kept on your phone${waiting ? ` (${waiting} waiting)` : ''}; other changes need signal.`
+        ? `You're offline. Quick logs are sent when you're back${waiting ? ` (${waiting} waiting)` : ''}; other changes are kept as drafts to review.`
         : `Sending ${waiting} saved log${waiting === 1 ? '' : 's'}…`}
     </div>
   )
