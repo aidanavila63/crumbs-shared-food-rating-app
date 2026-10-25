@@ -91,3 +91,41 @@ test('crawl route distances, directions link and tidy order', () => {
     ['a', 'c', 'b'],
   )
 })
+
+test('booking text and "did you go?" (#141, #198)', async () => {
+  const { bookingText, didYouGo, planIcs } = await import('../lib/decide.ts')
+  assert.equal(
+    bookingText({ booked_under: 'Maya', booking_ref: '#A1B2', party: 4 }),
+    'Booked under Maya · #A1B2 · table for 4',
+  )
+  assert.equal(bookingText({ booked_under: null, booking_ref: null, party: null }), null)
+  const now = new Date('2026-10-25T20:00:00Z')
+  const plan = (id: string, at: string, extra: Record<string, unknown> = {}) =>
+    ({ id, place_id: 'p', starts_at: at, outcome: null, ...extra }) as any
+  assert.deepEqual(
+    didYouGo(
+      [
+        plan('yesterday', '2026-10-24T19:00:00Z'),
+        plan('tonight', '2026-10-25T19:00:00Z'),
+        plan('old', '2026-10-10T19:00:00Z'),
+        plan('answered', '2026-10-23T19:00:00Z', { outcome: 'went' }),
+        plan('noplace', '2026-10-23T19:00:00Z', { place_id: null }),
+      ],
+      now,
+    ).map((p) => p.id),
+    ['yesterday'],
+  )
+  const ics = planIcs(
+    {
+      id: 'x',
+      title: 'Dinner',
+      starts_at: '2026-10-30T23:00:00Z',
+      note: 'Bring cash',
+      booked_under: 'Maya',
+      booking_ref: null,
+      party: 2,
+    },
+    null,
+  )!
+  assert.match(ics, /DESCRIPTION:Booked under Maya · table for 2\\nBring cash/)
+})

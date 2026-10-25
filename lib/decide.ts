@@ -106,9 +106,35 @@ const icsText = (s: string) =>
     .replace(/\n/g, '\\n')
     .replace(/[,;]/g, (m) => `\\${m}`)
 
+/** #141 "Booked under Maya · #A1B2 · table for 4" (or null with no booking). */
+export function bookingText(plan: Pick<Plan, 'booked_under' | 'booking_ref' | 'party'>) {
+  const parts = [
+    plan.booked_under ? `Booked under ${plan.booked_under}` : null,
+    plan.booking_ref ? `#${plan.booking_ref.replace(/^#/, '')}` : null,
+    plan.party ? `table for ${plan.party}` : null,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
+}
+
+/** #198 Plans with a place whose time has passed (up to a week ago) and nobody said if you went. */
+export function didYouGo(plans: Plan[], now = new Date()) {
+  const t = now.getTime()
+  return plans.filter(
+    (p) =>
+      p.place_id &&
+      p.starts_at &&
+      !p.outcome &&
+      new Date(p.starts_at).getTime() < t - 2 * 36e5 &&
+      new Date(p.starts_at).getTime() > t - 7 * 864e5,
+  )
+}
+
 /** A one-event .ics file any calendar app can open. Default length 2 hours. */
 export function planIcs(
-  plan: Pick<Plan, 'id' | 'title' | 'starts_at' | 'note'>,
+  plan: Pick<
+    Plan,
+    'id' | 'title' | 'starts_at' | 'note' | 'booked_under' | 'booking_ref' | 'party'
+  >,
   place?: Place | null,
   now = new Date(),
 ) {
@@ -127,7 +153,9 @@ export function planIcs(
     `DTEND:${icsDate(end)}`,
     `SUMMARY:${icsText(plan.title + (place ? ` · ${place.name}` : ''))}`,
     place?.formatted_address ? `LOCATION:${icsText(place.formatted_address)}` : null,
-    plan.note ? `DESCRIPTION:${icsText(plan.note)}` : null,
+    bookingText(plan) || plan.note
+      ? `DESCRIPTION:${icsText([bookingText(plan), plan.note].filter(Boolean).join('\n'))}`
+      : null,
     'BEGIN:VALARM',
     'TRIGGER:-PT2H',
     'ACTION:DISPLAY',

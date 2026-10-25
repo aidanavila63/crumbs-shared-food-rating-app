@@ -352,3 +352,10 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - Smart list "Never again" removed (Aidan).
 - **Home** now has two parts: **Our kitchen** (your group's meals and recipes: What should we cook?, add, search, filters incl. new **Shared**; shared meals show "🌍 Shared · 4.3★ from 3 on Crumbs") and **Everyone's recipes** (other people's shared recipes: its own search; 🔥 Trending / ✨ Suggested until you type). `public_recipes()` no longer returns your own groups' recipes.
 - Tests 99/99; SQL tested; build passes; demo checked.
+
+## Round 31 - visits & plans (#113b #145 #146 #147 #141 #198) (Oct 25, Claude in Cowork)
+- **#113b** your rating comes from your scored visits, recent ones counting most (a visit's weight halves every 6 months; `lib/visit-rating.ts`). Logging a scored visit (place page or Quick log) updates your rating; "Your rating comes from your 3 visits — recent ones count most" under the average.
+- **#147** meal chip on visits (Breakfast / Lunch / Dinner / Late; Quick log guesses from the clock) → "Lunch ~$16 · dinner ~$31 a person" (3+ visits each). **#145** wait chips for dine-in (No wait / ~10 / ~20 / 30+) → "Usual wait ~15 min" (3+). **#146** "Usually busy Fri–Sat evenings" (8+ visits with a meal time). All totals across Crumbs, never per group (`restaurant_insights`).
+- **#141** plans: "+ Add reservation details" (booked under, table for, confirmation #) → "🎟️ Booked under Maya · #A1B2 · table for 4" on the plan and in the calendar file; the daily job pushes a "Coming up" reminder ~a day before to everyone who didn't say they can't come (`plans_to_remind()`, needs push keys).
+- **#198** "Did you go to Hana Ramen?" on the Plans card for plans that passed in the last week: Yes → logs the visit on that day (meal time from the plan's time, people from the booking) and opens the place to rate; "We didn't" hides it.
+- Tests 103/103; SQL tested (insights with lunch/dinner/wait/busy, reminders server-only); build passes; demo checked.

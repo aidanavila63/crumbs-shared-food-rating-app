@@ -2376,6 +2376,72 @@ create policy table_orders_group on public.table_orders for all to authenticated
   with check (public.is_group_member(public.place_group(place_id)));
 
 -- ============================================================================================
+-- 13k. Visits & plans round (#113b, #145 wait, #146 busy times, #147 lunch vs dinner, #141 bookings,
+--      #198 "Did you go?")
+-- ============================================================================================
+alter table public.place_visits add column if not exists meal_time text
+  check (meal_time in ('breakfast', 'lunch', 'dinner', 'late'));
+alter table public.place_visits add column if not exists wait_minutes smallint check (wait_minutes between 0 and 240);
+alter table public.plans add column if not exists booked_under text check (char_length(booked_under) <= 60);
+alter table public.plans add column if not exists booking_ref text check (char_length(booking_ref) <= 60);
+alter table public.plans add column if not exists party smallint check (party between 1 and 50);
+alter table public.plans add column if not exists outcome text check (outcome in ('went', 'skipped'));
+alter table public.plans add column if not exists reminded_at timestamptz;
+
+-- Insights now also give lunch vs dinner cost a person, the usual wait and the busiest times.
+create or replace function public.restaurant_insights(target uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  result jsonb;
+begin
+  if not (public.my_restaurant(target) or public.manages_restaurant(target)) then raise exception 'Not one of your restaurants'; end if;
+  with v as (
+    select v.* from public.place_visits v join public.places p on p.id = v.place_id where p.restaurant_id = target
+  )
+  select jsonb_build_object(
+    'visits', (select count(*) from v),
+    'groups', (select count(distinct p.group_id) from public.place_visits x join public.places p on p.id = x.place_id where p.restaurant_id = target),
+    'per_head', (select case when count(*) >= 3 then round(avg(spend / people), 0) end from v where spend > 0 and people > 0),
+    'lunch_per_head', (select case when count(*) >= 3 then round(avg(spend / people), 0) end
+                         from v where spend > 0 and people > 0 and meal_time in ('breakfast', 'lunch')),
+    'dinner_per_head', (select case when count(*) >= 3 then round(avg(spend / people), 0) end
+                          from v where spend > 0 and people > 0 and meal_time in ('dinner', 'late')),
+    'takeout_share', (select case when count(*) >= 5
+                        then round(100.0 * count(*) filter (where kind in ('takeout', 'delivery')) / count(*)) end from v),
+    'typical_wait', (select case when count(*) >= 3
+                       then round(percentile_cont(0.5) within group (order by wait_minutes))::int end
+                       from v where wait_minutes is not null and coalesce(kind, 'dine_in') = 'dine_in'),
+    'busy', (select case when (select count(*) from v where meal_time is not null) >= 8 then
+               coalesce(jsonb_agg(jsonb_build_object('dow', dow, 'meal', meal_time, 'n', n) order by n desc), '[]') end
+             from (select extract(dow from visited_on)::int as dow, meal_time, count(*) as n
+                     from v where meal_time is not null group by 1, 2 order by 3 desc limit 6) b)
+  ) into result;
+  return result;
+end $$;
+revoke execute on function public.restaurant_insights(uuid) from public, anon;
+grant execute on function public.restaurant_insights(uuid) to authenticated;
+
+-- #141 The daily job's reminder list: plans in the next 30 hours not reminded yet (server only).
+create or replace function public.plans_to_remind()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', pl.id, 'group_id', pl.group_id, 'title', pl.title, 'starts_at', pl.starts_at,
+    'place', (select name from public.places where id = pl.place_id),
+    'booked_under', pl.booked_under, 'booking_ref', pl.booking_ref,
+    'people', (select coalesce(jsonb_agg(m.user_id), '[]') from public.group_members m
+                where m.group_id = pl.group_id
+                  and not exists (select 1 from public.plan_rsvps r where r.plan_id = pl.id and r.user_id = m.user_id and r.answer = 'no')))), '[]')
+  from public.plans pl
+  where pl.reminded_at is null and pl.starts_at between now() and now() + interval '30 hours'
+$$;
+revoke execute on function public.plans_to_remind() from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.plans_to_remind() to service_role;
+  end if;
+end $$;
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

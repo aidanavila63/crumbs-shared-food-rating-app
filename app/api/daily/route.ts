@@ -1,6 +1,7 @@
 // The one daily job (scheduled in vercel.json, free):
 //  #173 touches the database so a quiet week never lets it fall asleep,
 //  #172 checks the free limits and raises Admin alerts (and a push to admins, if set up),
+//  #141 reminds people about plans coming up (needs push keys),
 //  #89  makes the weekly backup on Mondays.
 // Without CRON_SECRET it only does the harmless wake-up read.
 import webpush from 'web-push'
@@ -45,6 +46,9 @@ export async function GET(request: Request) {
     }
   }
 
+  // #141 Plan reminders (the day before).
+  done.reminders = await remindPlans(db)
+
   // #89 Weekly backup (Mondays).
   if (new Date().getUTCDay() === 1) done.backup = await (await runBackup()).json()
   return Response.json(done)
@@ -52,27 +56,60 @@ export async function GET(request: Request) {
 
 /** New (not already raised today) warnings reach the admins' phones, if push is set up. */
 async function pushAdmins(db: any, alerts: { level: string; message: string }[]) {
+  const urgent = alerts.filter((a) => a.level !== 'info')
+  if (!urgent.length) return 0
+  const { data: admins } = await db.from('profiles').select('id').eq('is_admin', true)
+  return pushTo(
+    db,
+    (admins ?? []).map((a: any) => a.id),
+    {
+      title: 'Crumbs admin',
+      body: urgent.length === 1 ? urgent[0].message : `${urgent.length} limit warnings — see Admin`,
+      tag: 'crumbs-admin',
+    },
+  )
+}
+
+/** #141 A reminder for plans in the next ~30 hours to everyone who hasn't said they can't come. */
+async function remindPlans(db: any) {
+  const { data: plans, error } = await db.rpc('plans_to_remind')
+  if (error || !plans?.length) return 0
+  let sent = 0
+  for (const plan of plans as any[]) {
+    const booking = [
+      plan.booked_under ? `booked under ${plan.booked_under}` : null,
+      plan.booking_ref ? `#${String(plan.booking_ref).replace(/^#/, '')}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    sent += await pushTo(db, plan.people ?? [], {
+      title: 'Coming up 🍽️',
+      body: `${plan.title}${plan.place ? ` at ${plan.place}` : ''}${booking ? ` — ${booking}` : ''}`,
+      tag: `crumbs-plan-${plan.id}`,
+    })
+    await db.from('plans').update({ reminded_at: new Date().toISOString() }).eq('id', plan.id)
+  }
+  return sent
+}
+
+async function pushTo(
+  db: any,
+  userIds: string[],
+  message: { title: string; body: string; tag: string },
+) {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   const privateKey = process.env.VAPID_PRIVATE_KEY
-  const urgent = alerts.filter((a) => a.level !== 'info')
-  if (!publicKey || !privateKey || !urgent.length) return 0
-  const { data: admins } = await db.from('profiles').select('id').eq('is_admin', true)
-  const ids = (admins ?? []).map((a: any) => a.id)
-  if (!ids.length) return 0
+  if (!publicKey || !privateKey || !userIds.length) return 0
   const { data: subs } = await db
     .from('push_subscriptions')
     .select('endpoint,p256dh,auth')
-    .in('user_id', ids)
+    .in('user_id', userIds)
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'mailto:crumbs@example.com',
     publicKey,
     privateKey,
   )
-  const payload = JSON.stringify({
-    title: 'Crumbs admin',
-    body: urgent.length === 1 ? urgent[0].message : `${urgent.length} limit warnings — see Admin`,
-    tag: 'crumbs-admin',
-  })
+  const payload = JSON.stringify(message)
   let sent = 0
   await Promise.all(
     (subs ?? []).map(async (sub: any) => {

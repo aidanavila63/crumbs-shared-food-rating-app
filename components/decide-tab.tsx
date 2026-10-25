@@ -3,7 +3,7 @@ import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { Dices, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Place, Profile } from '@/hooks/use-crumbs-data'
+import type { Place, PlaceVisit, Profile } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { TonightCard } from './tonight-card'
 import { CravingButton } from './craving-button'
@@ -22,6 +22,7 @@ import { NearbyRecs } from './nearby-recs'
 import { beenAWhile, hiddenGems, sinceText } from '@/lib/smart-lists'
 import { useGems } from '@/hooks/use-gems'
 import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
+import { mealTimeAt } from '@/lib/visit-rating'
 
 type Idea = { title: string; why: string }
 
@@ -50,8 +51,11 @@ export function DecideTab({
   demo = false,
   onShowOnMap = () => {},
   onPlaceAdded = () => {},
+  onPlaceUpdated = () => {},
 }: {
   onPlaceAdded?: (place: Place) => void
+  /** #198 a visit logged from "Did you go?" */
+  onPlaceUpdated?: (place: Place) => void
   /** #30/#40/#48 store (null until the v4 database update has run) */
   decide?: DecideStore | null
   lists?: List[]
@@ -270,6 +274,44 @@ export function DecideTab({
           places={allPlaces}
           userId={userId}
           onOpen={() => setPage('plans')}
+          onWent={async (plan, place) => {
+            // #198 log the visit on the plan's day, then open the place to rate it
+            const at = new Date(plan.starts_at!)
+            const pad = (n: number) => String(n).padStart(2, '0')
+            const day = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+            let visit: PlaceVisit = {
+              id: crypto.randomUUID(),
+              place_id: place.id,
+              visited_on: day,
+              spend: null,
+              created_by: userId,
+              kind: 'dine_in',
+              people: plan.party ?? null,
+              meal_time: mealTimeAt(at),
+            }
+            if (!demo) {
+              const { id, ...row } = visit
+              void id
+              const { data, error } = await supabase
+                .from('place_visits')
+                .insert(row)
+                .select('*')
+                .single()
+              if (error) return toast.error(error.message)
+              visit = data
+              if (place.status !== 'Been')
+                await supabase.from('places').update({ status: 'Been' }).eq('id', place.id)
+            }
+            const updated: Place = {
+              ...place,
+              status: 'Been',
+              visited_on: day > (place.visited_on ?? '') ? day : place.visited_on,
+              place_visits: [...(place.place_visits ?? []), visit],
+            }
+            onPlaceUpdated(updated)
+            toast.success(`Logged ${place.name} — how was it?`)
+            onSelect?.(updated)
+          }}
         />
       )}
       {!loading && turns && (

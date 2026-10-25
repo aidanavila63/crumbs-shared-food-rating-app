@@ -26,6 +26,12 @@ export type Plan = {
   note: string | null
   created_by: string
   created_at: string
+  /** #141 booking details */
+  booked_under?: string | null
+  booking_ref?: string | null
+  party?: number | null
+  /** #198 did you go? */
+  outcome?: 'went' | 'skipped' | null
 }
 export type Rsvp = { plan_id: string; user_id: string; answer: 'yes' | 'maybe' | 'no' }
 
@@ -228,6 +234,9 @@ export function useDecide({
       place_id: plan.place_id ?? null,
       session_id: plan.session_id ?? null,
       note: plan.note?.trim().slice(0, 500) || null,
+      booked_under: plan.booked_under?.trim().slice(0, 60) || null,
+      booking_ref: plan.booking_ref?.trim().slice(0, 60) || null,
+      party: plan.party ?? null,
     }
     if (plan.id) {
       setPlans((current) => current.map((p) => (p.id === plan.id ? { ...p, ...fields } : p)))
@@ -274,6 +283,14 @@ export function useDecide({
     }
   }
 
+  /** #198 "Did you go?" */
+  async function setOutcome(planId: string, outcome: 'went' | 'skipped') {
+    setPlans((current) => current.map((p) => (p.id === planId ? { ...p, outcome } : p)))
+    if (demo) return
+    const { error } = await supabase.from('plans').update({ outcome }).eq('id', planId)
+    if (error) toast.error(error.message)
+  }
+
   async function answer(planId: string, value: Rsvp['answer']) {
     if (!userId) return
     const row = { plan_id: planId, user_id: userId, answer: value }
@@ -294,6 +311,7 @@ export function useDecide({
     votes,
     plans,
     rsvps,
+    setOutcome,
     startSession,
     vote,
     closeSession,

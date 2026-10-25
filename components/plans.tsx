@@ -5,7 +5,7 @@ import { CalendarPlus, CalendarDays, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import type { DecideStore, Plan, Rsvp } from '@/hooks/use-decide'
-import { planIcs } from '@/lib/decide'
+import { bookingText, didYouGo, planIcs } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
 
 export type PlanDraft = Partial<Plan> & { title: string }
@@ -65,13 +65,17 @@ export function PlansCard({
   places,
   userId,
   onOpen,
+  onWent,
 }: {
   store: DecideStore
   places: Place[]
   userId?: string
   onOpen: () => void
+  /** #198 "Yes, we went": logs the visit and opens the place to rate it */
+  onWent?: (plan: Plan, place: Place) => void
 }) {
   const next = upcomingPlans(store.plans).slice(0, 2)
+  const asks = didYouGo(store.plans).slice(0, 2)
   return (
     <div className="surface flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -80,6 +84,36 @@ export function PlansCard({
           <CalendarPlus size={16} /> Plan a dinner
         </button>
       </div>
+      {asks.map((plan) => {
+        const place = places.find((p) => p.id === plan.place_id)
+        if (!place) return null
+        return (
+          <div key={`ask-${plan.id}`} className="next-time-note rise-panel flex flex-col gap-2">
+            <p className="text-sm">
+              <strong>Did you go to {place.name}?</strong>{' '}
+              <span className="text-muted-foreground">({planWhen(plan.starts_at)})</span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="primary !min-h-9 flex-1 text-sm"
+                onClick={() => {
+                  haptic('success')
+                  store.setOutcome(plan.id, 'went')
+                  onWent?.(plan, place)
+                }}
+              >
+                Yes — log it
+              </button>
+              <button
+                className="secondary !min-h-9 flex-1 text-sm"
+                onClick={() => store.setOutcome(plan.id, 'skipped')}
+              >
+                We didn’t
+              </button>
+            </div>
+          </div>
+        )
+      })}
       {next.length === 0 && (
         <p className="text-sm text-muted-foreground">
           Nothing planned. Pick a time and place, everyone says if they’re in.
@@ -228,6 +262,7 @@ function PlanCard({
           ) : (
             <p className="text-sm text-muted-foreground">Place not picked yet</p>
           )}
+          {bookingText(plan) && <p className="mt-1 text-sm">🎟️ {bookingText(plan)}</p>}
           {plan.note && <p className="mt-1 text-sm text-muted-foreground">{plan.note}</p>}
         </div>
         <button className="text-xs font-bold text-primary underline" onClick={onEdit}>
@@ -317,6 +352,10 @@ function PlanForm({
   const [when, setWhen] = useState(toLocalInput(draft.starts_at))
   const [placeId, setPlaceId] = useState(draft.place_id ?? '')
   const [note, setNote] = useState(draft.note ?? '')
+  const [bookedUnder, setBookedUnder] = useState(draft.booked_under ?? '')
+  const [ref, setRef] = useState(draft.booking_ref ?? '')
+  const [party, setParty] = useState(draft.party ? String(draft.party) : '')
+  const [booking, setBooking] = useState(!!(draft.booked_under || draft.booking_ref || draft.party))
   const [busy, setBusy] = useState(false)
   const sorted = [...places].sort((a, b) =>
     a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'Want to try' ? -1 : 1,
@@ -331,6 +370,9 @@ function PlanForm({
       starts_at: when ? new Date(when).toISOString() : null,
       place_id: placeId || null,
       note,
+      booked_under: bookedUnder,
+      booking_ref: ref,
+      party: party ? Math.min(50, Math.max(1, Number(party))) : null,
     })
     setBusy(false)
     if (!id) return
@@ -376,6 +418,49 @@ function PlanForm({
           ))}
         </select>
       </label>
+      {booking ? (
+        <div className="rise-panel flex flex-col gap-2">
+          <p className="text-sm font-semibold">🎟️ Reservation</p>
+          <div className="flex gap-2">
+            <input
+              className="field min-w-0 flex-1"
+              aria-label="Booked under"
+              placeholder="Booked under (name)"
+              maxLength={60}
+              value={bookedUnder}
+              onChange={(event) => setBookedUnder(event.target.value)}
+            />
+            <input
+              className="field"
+              style={{ width: 90 }}
+              aria-label="Table for"
+              inputMode="numeric"
+              placeholder="Table for"
+              value={party}
+              onChange={(event) => setParty(event.target.value.replace(/\D/g, '').slice(0, 2))}
+            />
+          </div>
+          <input
+            className="field"
+            aria-label="Confirmation number"
+            placeholder="Confirmation # (optional)"
+            maxLength={60}
+            value={ref}
+            onChange={(event) => setRef(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Everyone coming gets a reminder the day before (if notifications are on), and it’s in
+            the calendar file.
+          </p>
+        </div>
+      ) : (
+        <button
+          className="self-start text-sm font-semibold text-primary underline"
+          onClick={() => setBooking(true)}
+        >
+          + Add reservation details
+        </button>
+      )}
       <textarea
         className="field min-h-16"
         aria-label="Note"

@@ -53,6 +53,7 @@ import {
 } from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
 import { basedOn } from '@/lib/based-on'
+import { busyText, ratingFromVisits, ratingRow, waitText } from '@/lib/visit-rating'
 import { FactsEditor } from './facts-editor'
 import { notifyMates } from '@/lib/push'
 import { Sheet } from './sheet'
@@ -478,7 +479,7 @@ export function PlaceSheet({
     setDishes((place.dishes ?? []).filter((dish) => !pendingDeletes.has(dish.id)))
   }, [place.dishes])
   /** Saves your rating row with whatever changed (overall, categories, would-go-back, notes). */
-  async function saveMine(changes: Partial<Rating>) {
+  async function saveMine(changes: Partial<Rating>, base: Place = place) {
     const next: Rating = {
       ...(mine ?? { user_id: userId!, score: 0, notes: null }),
       notes,
@@ -493,8 +494,8 @@ export function PlaceSheet({
       Object.assign(next, fromInput(fromCats, 'half'))
     }
     onUpdate({
-      ...place,
-      place_ratings: [...place.place_ratings.filter((rating) => rating.user_id !== userId), next],
+      ...base,
+      place_ratings: [...base.place_ratings.filter((rating) => rating.user_id !== userId), next],
     })
     const shareNow =
       (!next.draft && posted) ||
@@ -928,11 +929,23 @@ export function PlaceSheet({
               restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
             }
           />
-          {restaurant.insights?.per_head ? (
+          {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
+            <p className="text-sm text-muted-foreground">
+              Lunch ~${restaurant.insights.lunch_per_head} · dinner ~$
+              {restaurant.insights.dinner_per_head} a person · from Crumbs visits
+            </p>
+          ) : restaurant.insights?.per_head ? (
             <p className="text-sm text-muted-foreground">
               About ${restaurant.insights.per_head} a person · from Crumbs visits
             </p>
           ) : null}
+          {(busyText(restaurant.insights?.busy) || waitText(restaurant.insights?.typical_wait)) && (
+            <p className="text-sm text-muted-foreground">
+              {[busyText(restaurant.insights?.busy), waitText(restaurant.insights?.typical_wait)]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
           {knownFor(place).length > 0 && (
             <p className="text-xs text-muted-foreground">
               Known for {knownFor(place).join(' · ').toLowerCase()}
@@ -1027,6 +1040,12 @@ export function PlaceSheet({
             </p>
             {basedOn(place) && (
               <p className="text-xs text-muted-foreground">from {basedOn(place)}</p>
+            )}
+            {(ratingFromVisits(place.place_visits ?? [], userId)?.count ?? 0) >= 2 && (
+              <p className="text-xs text-muted-foreground">
+                Your rating comes from your {ratingFromVisits(place.place_visits ?? [], userId)!.count}{' '}
+                visits — recent ones count most
+              </p>
             )}
             {balanced !== null && (
               <button
@@ -1181,6 +1200,12 @@ export function PlaceSheet({
             members={members}
             names={names}
             turns={v4 && s.turns}
+            onScored={(visits) => {
+              // #113b your rating = your visits, recent ones counting most
+              const r = ratingFromVisits(visits, userId)
+              const latest = visits.map((v) => v.visited_on).sort().at(-1) ?? null
+              if (r) saveMine(ratingRow(r.value), { ...place, place_visits: visits, visited_on: latest })
+            }}
           />
         )}
         {lists.length > 0 && (

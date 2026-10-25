@@ -17,6 +17,14 @@ import { linkRestaurant, shareDishes } from '@/lib/restaurants'
 import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
 import { recall, remember } from '@/lib/remember'
 import { usePrivateNote } from './private-note'
+import {
+  MEAL_TIMES,
+  WAITS,
+  mealTimeAt,
+  ratingFromVisits,
+  ratingRow,
+  type MealTime,
+} from '@/lib/visit-rating'
 
 const todayIso = () => {
   const d = new Date()
@@ -74,6 +82,9 @@ export function QuickLogSheet({
   const [people, setPeople] = useState(() => recall('visit', 'people', ''))
   const [pickedBy, setPickedBy] = useState('')
   const [occasion, setOccasion] = useState<'date' | 'celebration' | null>(null)
+  // #147 meal from the clock (tap to change), #145 the wait for a table
+  const [mealTime, setMealTime] = useState<MealTime>(() => mealTimeAt())
+  const [wait, setWait] = useState<number | null>(null)
 
   const options = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -122,16 +133,30 @@ export function QuickLogSheet({
     remember('visit', { kind, people })
     setBusy(true)
     const date = todayIso()
-    const saved = score ? (scale === '5' ? { score, points: null } : fromInput(score, scale)) : null
+    const given = score ? (scale === '5' ? { score, points: null } : fromInput(score, scale)) : null
     const extra = v4
       ? {
           kind,
           people: heads,
           picked_by: pickedBy || null,
           occasion,
-          score: saved ? (saved.points ?? saved.score * 20) / 20 : null,
+          score: given ? (given.points ?? given.score * 20) / 20 : null,
+          meal_time: mealTime,
+          wait_minutes: kind === 'dine_in' ? wait : null,
         }
       : {}
+    // #113b your rating = this visit plus your earlier ones, recent ones counting most
+    const weighted =
+      v4 && given
+        ? ratingFromVisits(
+            [
+              ...(picked.place_visits ?? []),
+              { visited_on: date, score: (extra as any).score, created_by: userId },
+            ],
+            userId,
+          )
+        : null
+    const saved = weighted ? ratingRow(weighted.value) : given
     const job: QuickLogJob = {
       id: crypto.randomUUID(),
       userId,
@@ -393,6 +418,35 @@ export function QuickLogSheet({
                   </button>
                 ))}
               </div>
+              <div className="chip-row" role="radiogroup" aria-label="Meal">
+                {MEAL_TIMES.map((item) => (
+                  <button
+                    key={item.id}
+                    role="radio"
+                    aria-checked={mealTime === item.id}
+                    className={`chip chip-sm ${mealTime === item.id ? 'chip-active' : ''}`}
+                    onClick={() => setMealTime(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {kind === 'dine_in' && (
+                <div className="chip-row" role="radiogroup" aria-label="Wait for a table">
+                  <span className="text-xs text-muted-foreground">Wait</span>
+                  {WAITS.map((item) => (
+                    <button
+                      key={item.minutes}
+                      role="radio"
+                      aria-checked={wait === item.minutes}
+                      className={`chip chip-sm ${wait === item.minutes ? 'chip-active' : ''}`}
+                      onClick={() => setWait(wait === item.minutes ? null : item.minutes)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input
                   className="field !w-24"

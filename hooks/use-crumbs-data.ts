@@ -38,6 +38,9 @@ export type PlaceVisit = {
   milestone?: string | null
   note?: string | null
   created_by?: string | null
+  /** #147 breakfast / lunch / dinner / late, #145 how long you waited */
+  meal_time?: 'breakfast' | 'lunch' | 'dinner' | 'late' | null
+  wait_minutes?: number | null
 }
 export type Dish = {
   verdict?: 'again' | 'never' | null

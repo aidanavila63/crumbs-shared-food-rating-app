@@ -6,6 +6,7 @@ import { fromInput, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { ScoreDisplay, ScoreInput } from './score-input'
 import { recall, remember } from '@/lib/remember'
+import { MEAL_TIMES, WAITS, mealTimeAt, type MealTime } from '@/lib/visit-rating'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const money = (n: number) => `$${n.toFixed(n % 1 ? 2 : 0)}`
@@ -43,7 +44,10 @@ export function VisitsPanel({
   members = [],
   names = {},
   turns = false,
+  onScored,
 }: {
+  /** #113b a visit with a score was logged: your rating is worked out from your visits */
+  onScored?: (visits: PlaceVisit[]) => void
   place: Place
   userId?: string
   supabase: any
@@ -66,6 +70,8 @@ export function VisitsPanel({
   const [occasion, setOccasion] = useState<'date' | 'celebration' | null>(null)
   const [milestone, setMilestone] = useState('')
   const [note, setNote] = useState('')
+  const [mealTime, setMealTime] = useState<MealTime | null>(null)
+  const [wait, setWait] = useState<number | null>(null)
   const visits = [...(place.place_visits ?? [])].sort((a, b) =>
     b.visited_on.localeCompare(a.visited_on),
   )
@@ -106,6 +112,9 @@ export function VisitsPanel({
             occasion,
             milestone: milestone.trim() || null,
             note: note.trim() || null,
+            // #147 if you didn't say, a visit logged for today takes the time of day
+            meal_time: mealTime ?? (date === today() ? mealTimeAt() : null),
+            wait_minutes: kind === 'dine_in' ? wait : null,
           }
         : {}
       let row: PlaceVisit = {
@@ -133,10 +142,13 @@ export function VisitsPanel({
       }
       await apply([...(place.place_visits ?? []), row])
       haptic('success')
+      if (typeof row.score === 'number') onScored?.([...(place.place_visits ?? []), row])
       if (more) remember('visit', { kind, people })
       setSpend('')
       setPeople(recall('visit', 'people', ''))
       setScore(0)
+      setMealTime(null)
+      setWait(null)
       setOccasion(null)
       setMilestone('')
       setNote('')
@@ -273,6 +285,35 @@ export function VisitsPanel({
               </button>
             ))}
           </div>
+          <div className="chip-row" role="radiogroup" aria-label="Meal">
+            {MEAL_TIMES.map((item) => (
+              <button
+                key={item.id}
+                role="radio"
+                aria-checked={mealTime === item.id}
+                className={`chip chip-sm ${mealTime === item.id ? 'chip-active' : ''}`}
+                onClick={() => setMealTime(mealTime === item.id ? null : item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {kind === 'dine_in' && (
+            <div className="chip-row" role="radiogroup" aria-label="Wait for a table">
+              <span className="text-xs text-muted-foreground">Wait</span>
+              {WAITS.map((item) => (
+                <button
+                  key={item.minutes}
+                  role="radio"
+                  aria-checked={wait === item.minutes}
+                  className={`chip chip-sm ${wait === item.minutes ? 'chip-active' : ''}`}
+                  onClick={() => setWait(wait === item.minutes ? null : item.minutes)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-semibold">This visit</span>
             <ScoreInput value={score} scale={scale} onChange={setScore} label="This visit" />

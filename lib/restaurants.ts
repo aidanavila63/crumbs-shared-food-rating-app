@@ -290,6 +290,11 @@ export type Insights = {
   groups: number
   per_head: number | null
   takeout_share: number | null
+  /** #147 #145 #146 (after the batch-22 database update) */
+  lunch_per_head?: number | null
+  dinner_per_head?: number | null
+  typical_wait?: number | null
+  busy?: { dow: number; meal: 'breakfast' | 'lunch' | 'dinner' | 'late'; n: number }[] | null
 }
 /** Totals from every group's visits (never per group). */
 export async function loadInsights(supabase: any, restaurantId: string): Promise<Insights | null> {

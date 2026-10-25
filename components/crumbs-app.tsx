@@ -760,6 +760,9 @@ function CrumbsShell() {
                 setTab('Map')
               }}
               onPlaceAdded={(place) => data.setPlaces((current) => [place, ...current])}
+              onPlaceUpdated={(place) =>
+                data.setPlaces((current) => current.map((p) => (p.id === place.id ? place : p)))
+              }
             />
           )}
           {tab === 'Group' && (
