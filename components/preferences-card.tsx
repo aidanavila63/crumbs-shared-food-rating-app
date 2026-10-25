@@ -37,6 +37,8 @@ export function PreferencesCard({
   const [locating, setLocating] = useState(false)
   const [remembering, setRemembering] = useState(() => rememberOn())
   const [waiver, setWaiver] = useState(false)
+  const [areaName, setAreaName] = useState('')
+  const [areaKm, setAreaKm] = useState(2)
   const [understood, setUnderstood] = useState(false)
 
   async function save(changes: Partial<Profile>) {
@@ -271,6 +273,88 @@ export function PreferencesCard({
             <button className="secondary" onClick={() => onHome(null)}>
               Clear
             </button>
+          )}
+        </div>
+      </div>
+      <div>
+        <p className="font-semibold">Saved areas</p>
+        <p className="text-sm text-muted-foreground">
+          Work, the cottage, your parents’ place… then filter your places to just that area.
+        </p>
+        <div className="mt-2 flex flex-col gap-2">
+          {(profile?.areas ?? []).map((a) => (
+            <div key={a.name} className="flex items-center justify-between gap-2 text-sm">
+              <span>
+                📍 <strong>{a.name}</strong> · within {a.km} km
+              </span>
+              <button
+                className="text-xs text-primary underline"
+                onClick={() =>
+                  save({ areas: (profile?.areas ?? []).filter((x) => x.name !== a.name) })
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {(profile?.areas?.length ?? 0) < 8 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  className="field min-w-0 flex-1"
+                  placeholder="Name (e.g. Work)"
+                  maxLength={20}
+                  value={areaName}
+                  onChange={(event) => setAreaName(event.target.value)}
+                />
+                <select
+                  className="field"
+                  style={{ width: 96 }}
+                  aria-label="Area size"
+                  value={areaKm}
+                  onChange={(event) => setAreaKm(Number(event.target.value))}
+                >
+                  {[1, 2, 5, 10, 25].map((km) => (
+                    <option key={km} value={km}>
+                      {km} km
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="secondary"
+                disabled={!areaName.trim() || locating}
+                onClick={() => {
+                  setLocating(true)
+                  navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                      setLocating(false)
+                      const name = areaName.trim().slice(0, 20)
+                      save({
+                        areas: [
+                          ...(profile?.areas ?? []).filter((x) => x.name !== name),
+                          {
+                            name,
+                            lat: Math.round(position.coords.latitude * 1e4) / 1e4,
+                            lng: Math.round(position.coords.longitude * 1e4) / 1e4,
+                            km: areaKm,
+                          },
+                        ],
+                      })
+                      setAreaName('')
+                      toast.success(`${name} saved — find it above your places`)
+                    },
+                    () => {
+                      setLocating(false)
+                      toast.error('Could not get your location. Allow location and try again.')
+                    },
+                    { enableHighAccuracy: false, timeout: 10000 },
+                  )
+                }}
+              >
+                📍 Save “{areaName.trim() || 'area'}” as where I am now
+              </button>
+            </div>
           )}
         </div>
       </div>

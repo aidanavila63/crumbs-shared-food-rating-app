@@ -41,6 +41,7 @@ import { installErrorReporter } from '@/lib/report-errors'
 import { flushQueue } from '@/lib/offline-queue'
 import { addFoundPlace } from '@/lib/add-found'
 import { fromShare } from '@/lib/maps-link'
+import { inArea } from '@/lib/decide-more'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -233,9 +234,13 @@ function CrumbsShell() {
     () => Object.fromEntries(data.members.map((m) => [m.id, m.display_name])),
     [data.members],
   )
+  // #128 a saved area to filter the list by
+  const [areaName, setAreaName] = useState<string | null>(null)
+  const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const list = view.filter((place) => {
+      if (area && !inArea(place, area)) return false
       const inFilter =
         filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
       // #82: search also looks inside dishes and everyone's notes.
@@ -266,7 +271,7 @@ function CrumbsShell() {
       return [...list].sort((a, b) => km(a) - km(b))
     }
     return list
-  }, [view, filter, query, sort, origin])
+  }, [view, filter, query, sort, origin, area])
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -645,6 +650,20 @@ function CrumbsShell() {
                       </button>
                     ))}
                   </div>
+                  {(me?.areas?.length ?? 0) > 0 && (
+                    <div className="chip-row min-w-0" aria-label="Saved areas">
+                      {me!.areas!.map((a) => (
+                        <button
+                          key={a.name}
+                          aria-pressed={areaName === a.name}
+                          className={`chip chip-sm ${areaName === a.name ? 'chip-active' : ''}`}
+                          onClick={() => setAreaName(areaName === a.name ? null : a.name)}
+                        >
+                          📍 {a.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {sort === 'Nearest' && !origin && (
                     <p className="text-xs text-muted-foreground">
                       Finding you… If location is blocked, set Home in Settings to sort by distance.
@@ -932,6 +951,7 @@ function CrumbsShell() {
           menuAi={(data.v4 || data.demo) && flag('menu_ai', isAdmin || data.demo)}
           claims={data.v4 && flag('restaurant_claims')}
           onMealAdded={(meal) => data.setHomeMeals([meal, ...data.homeMeals])}
+          onOpenPlace={(p) => setSelected(p)}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(

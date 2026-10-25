@@ -63,6 +63,7 @@ import { OtherGroups } from './other-groups'
 import { PrivateNote, usePrivateNote } from './private-note'
 import { OrderForTable } from './order-for-table'
 import { GoodToKnow } from './good-to-know'
+import { PlanB } from './plan-b'
 import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
 import { photoUrl } from '@/lib/photos'
 function DishRow({
@@ -352,7 +353,10 @@ export function PlaceSheet({
   menuAi = false,
   claims = false,
   onMealAdded,
+  onOpenPlace,
 }: {
+  /** #189 open another place (Plan B) */
+  onOpenPlace?: (place: Place) => void
   /** #123 "Make it at home" made a home meal from a dish */
   onMealAdded?: (meal: HomeMeal) => void
   /** #19 AI menu photo reading (admin switch "menu_ai", admins only until switched on) */
@@ -384,6 +388,7 @@ export function PlaceSheet({
   const me = members.find((member) => member.id === userId) ?? null
   const privateNote = usePrivateNote({ placeId: place.id, userId, supabase, demo })
   const [tableOpen, setTableOpen] = useState(false)
+  const [planBOpen, setPlanBOpen] = useState(false)
   // #47 the rating you just saved here, so it can go to your other groups too
   const [rated, setRated] = useState<{ rating: Partial<Rating>; at: number } | null>(null)
   const [notes, setNotes] = useState(mine?.notes ?? '')
@@ -930,6 +935,14 @@ export function PlaceSheet({
               restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
             }
           />
+          {onOpenPlace && allPlaces.length > 1 && (
+            <button
+              className="text-sm font-semibold text-primary underline"
+              onClick={() => setPlanBOpen(true)}
+            >
+              Closed or full? 🔁 Plan B
+            </button>
+          )}
           {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
             <p className="text-sm text-muted-foreground">
               Lunch ~${restaurant.insights.lunch_per_head} · dinner ~$
@@ -1457,6 +1470,17 @@ export function PlaceSheet({
           </button>
         )}
       </div>
+      {planBOpen && onOpenPlace && (
+        <PlanB
+          place={place}
+          places={allPlaces}
+          onClose={() => setPlanBOpen(false)}
+          onPick={(p) => {
+            setPlanBOpen(false)
+            onOpenPlace(p)
+          }}
+        />
+      )}
       {tableOpen && (
         <OrderForTable
           placeId={place.id}

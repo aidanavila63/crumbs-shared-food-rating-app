@@ -2630,6 +2630,60 @@ create trigger restaurants_spread_status after update of business_status on publ
 alter table public.place_private_notes add column if not exists loyalty text check (char_length(loyalty) <= 120);
 
 -- ============================================================================================
+-- 13m. Deciding round (#131 veto, #187 private limits, #133 good pick, #128 saved areas)
+-- ============================================================================================
+-- #131 One veto each per vote: a vetoed place can't win.
+alter table public.swipe_votes add column if not exists veto boolean not null default false;
+create unique index if not exists swipe_votes_one_veto on public.swipe_votes (session_id, user_id) where veto;
+
+-- #187 Private limits: what you'll spend, how far you'll go, what you're craving. Nobody sees
+-- anyone else's — only the overlap (the tightest budget and distance, and shared cravings).
+create table if not exists public.swipe_limits (
+  session_id uuid not null references public.swipe_sessions(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  max_price smallint check (max_price between 1 and 4),
+  max_km numeric check (max_km > 0 and max_km <= 100),
+  cravings text[] not null default '{}' check (cardinality(cravings) <= 10),
+  updated_at timestamptz not null default now(),
+  primary key (session_id, user_id)
+);
+alter table public.swipe_limits enable row level security;
+drop policy if exists swipe_limits_own on public.swipe_limits;
+create policy swipe_limits_own on public.swipe_limits for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid())
+              and public.is_group_member((select group_id from public.swipe_sessions where id = session_id)));
+create or replace function public.session_overlap(target uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  craving_sets integer;
+begin
+  if not public.is_group_member((select group_id from public.swipe_sessions where id = target)) then
+    raise exception 'Not your group';
+  end if;
+  select count(*) into craving_sets from public.swipe_limits where session_id = target and cardinality(cravings) > 0;
+  return (select jsonb_build_object(
+    'people', count(*),
+    'max_price', min(max_price),
+    'max_km', min(max_km),
+    -- cravings everyone who named some shares (case-insensitive)
+    'cravings', (select coalesce(jsonb_agg(c), '[]') from (
+        select lower(c) as c from public.swipe_limits l, unnest(l.cravings) c
+         where l.session_id = target group by lower(c) having count(distinct l.user_id) = craving_sets) x
+        where craving_sets > 0)
+  ) from public.swipe_limits where session_id = target);
+end $$;
+revoke execute on function public.session_overlap(uuid) from public, anon;
+grant execute on function public.session_overlap(uuid) to authenticated;
+
+-- #133 "Good pick?" after a plan you went to (feeds suggestions).
+alter table public.plans add column if not exists good_pick boolean;
+
+-- #128 Your saved areas (Home, Work, Cottage…) to filter by: [{name, lat, lng, km}].
+alter table public.profiles add column if not exists areas jsonb not null default '[]'
+  check (jsonb_typeof(areas) = 'array' and jsonb_array_length(areas) <= 8);
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

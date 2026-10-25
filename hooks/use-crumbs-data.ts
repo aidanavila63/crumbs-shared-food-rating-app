@@ -158,6 +158,8 @@ export type Profile = {
   /** #121 diet (Vegetarian, Vegan, Gluten-free…) and the Safe for me switch */
   diet?: string[] | null
   safe_for_me?: boolean | null
+  /** #128 saved areas to filter by */
+  areas?: { name: string; lat: number; lng: number; km: number }[] | null
 }
 export type List = {
   id: string
@@ -202,6 +204,32 @@ const demoPlaces: Place[] = [
     place_ratings: [],
     dishes: [],
   },
+  ...(
+    [
+      ['demo-dumpling', 'Golden Dumpling House', 'Chinese', 37.7712, -122.4313, 1],
+      ['demo-pizza', 'Forno Bianco', 'Pizza', 37.7765, -122.4241, 2],
+    ] as const
+  ).map(
+    ([id, name, cuisine, latitude, longitude, price], i): Place => ({
+      id,
+      group_id: demoGroup.id,
+      name,
+      formatted_address: `${40 + i * 9} Mission Street`,
+      latitude,
+      longitude,
+      google_place_id: id,
+      price_level: price,
+      cuisine,
+      website: null,
+      google_maps_url: 'https://maps.google.com',
+      status: 'Want to try',
+      pinned: false,
+      tags: [],
+      created_at: new Date(Date.now() - (i + 5) * 864e5).toISOString(),
+      place_ratings: [],
+      dishes: [],
+    }),
+  ),
   // A few rated places so demo mode shows stats, badges, challenges and map pins.
   ...(
     [

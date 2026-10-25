@@ -69,11 +69,14 @@ export function sessionResults(session: SwipeSession, votes: SwipeVote[], member
     const here = mine.filter((v) => v.place_id === placeId)
     const yes = here.filter((v) => v.yes).map((v) => v.user_id)
     const no = here.filter((v) => !v.yes).map((v) => v.user_id)
+    // #131 a vetoed place can't win
+    const vetoedBy = here.filter((v) => v.veto).map((v) => v.user_id)
     return {
       placeId,
       yes,
       no,
-      match: memberIds.length > 0 && memberIds.every((id) => yes.includes(id)),
+      vetoedBy,
+      match: !vetoedBy.length && memberIds.length > 0 && memberIds.every((id) => yes.includes(id)),
     }
   })
   const progress = Object.fromEntries(
@@ -83,7 +86,12 @@ export function sessionResults(session: SwipeSession, votes: SwipeVote[], member
     ]),
   )
   const everyoneDone = memberIds.every((id) => progress[id] >= session.place_ids.length)
-  const ranked = [...rows].sort((a, b) => b.yes.length - a.yes.length || a.no.length - b.no.length)
+  const ranked = [...rows].sort(
+    (a, b) =>
+      Number(a.vetoedBy.length > 0) - Number(b.vetoedBy.length > 0) ||
+      b.yes.length - a.yes.length ||
+      a.no.length - b.no.length,
+  )
   return { rows, ranked, matches: rows.filter((r) => r.match), progress, everyoneDone }
 }
 
@@ -126,6 +134,18 @@ export function didYouGo(plans: Plan[], now = new Date()) {
       !p.outcome &&
       new Date(p.starts_at).getTime() < t - 2 * 36e5 &&
       new Date(p.starts_at).getTime() > t - 7 * 864e5,
+  )
+}
+
+/** #133 Plans you went to in the last week that nobody rated as a pick yet. */
+export function goodPickAsks(plans: Plan[], now = new Date()) {
+  const weekAgo = now.getTime() - 7 * 864e5
+  return plans.filter(
+    (p) =>
+      p.outcome === 'went' &&
+      (p.good_pick === null || p.good_pick === undefined) &&
+      !!p.starts_at &&
+      new Date(p.starts_at).getTime() > weekAgo,
   )
 }
 

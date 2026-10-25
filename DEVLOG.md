@@ -368,3 +368,13 @@ Aidan: Order for the table should be a way to add shareables and save them; reci
 - **#202** private "🎟️ Loyalty / punch card" note (with your private notes; banner at the top of the place).
 - **#203** "This menu is 6+ months old — snap a Menu photo" on the shared menu. **#204** price level cross-checked with Crumbs visits ("Crumbs visits say $$$ (~$41 a person)").
 - Tests 105/105; SQL tested (points first/confirm, private votes, bad keys, tips delete own only, group dealbreakers, closed spreads); build passes; demo checked.
+
+## Round 33 - deciding (#131 #132 #133 #186 #187 #189 #128) (Oct 25, Claude in Cowork)
+- **#131 one veto each** in Decide together (🚫 in List view; tap again to take it back). A vetoed place can't match and drops to the bottom of Results ("Vetoed by you"). `swipe_votes.veto`, one per person per vote.
+- **#187 private limits** per vote: "🔒 Set my private limits" (budget, distance, craving). Nobody sees anyone's own; everyone sees only the overlap ("up to $$ · within 2 km · craving ramen"). Places outside it are faded in List and skipped in Swipe. `swipe_limits` (own rows only) + `session_overlap()`.
+- **#132 spin the wheel** in Surprise us: up to 8 matching places on a wheel that spins (3 s) and lands on the pick (instant with animations off).
+- **#186 Decide in 60 seconds** (Decide & Plan): a favourite, something new and a wildcard, a 60 s timer (picks the first when it runs out), Shuffle; then Make it tonight's plan or Open it.
+- **#189 Plan B**: "Closed or full? 🔁 Plan B" on a place, and 🔁 Plan B on a plan (Switch updates the plan): same cuisine or a place you love, within 3 km, open now if known, similar price.
+- **#133 Good pick?** 👍/👎 on the Plans card after you went; good picks' cuisines count as liked in "Next up from your list", bad ones don't (`plans.good_pick`).
+- **#128 saved areas** (Settings → Your preferences → Saved areas: name + size, saved where you stand; up to 8) → 📍 chips above your places filter to that area (`profiles.areas`).
+- Demo: two more want-to-try places. Tests 110/110; SQL tested; build passes; demo checked.

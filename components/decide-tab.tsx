@@ -23,6 +23,8 @@ import { beenAWhile, hiddenGems, sinceText } from '@/lib/smart-lists'
 import { useGems } from '@/hooks/use-gems'
 import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
 import { mealTimeAt } from '@/lib/visit-rating'
+import { pickLearning } from '@/lib/decide-more'
+import { QuickDecide } from './quick-decide'
 
 type Idea = { title: string; why: string }
 
@@ -128,6 +130,7 @@ export function DecideTab({
   const openVotes = decide?.sessions.filter((s) => s.status === 'open').length ?? 0
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
+  const [quick, setQuick] = useState(false)
 
   // #61 Wrapped teaser: December to February, when there's a year to show
   const wrapYear = useMemo(() => {
@@ -169,13 +172,17 @@ export function DecideTab({
       .sort((a, b) => b.average - a.average)
       .slice(0, 3)
     const liked = new Set(topCuisines.map((item) => item.cuisine))
+    // #133 cuisines from plans you called good picks count as liked; bad picks don't
+    const learned = pickLearning(decide?.plans ?? [], places)
+    learned.good.forEach((c) => liked.add(c))
+    learned.bad.forEach((c) => liked.delete(c))
     const wishlist = places.filter((place) => place.status === 'Want to try')
     const picks = [
       ...wishlist.filter((place) => place.cuisine && liked.has(place.cuisine)),
       ...wishlist.filter((place) => !(place.cuisine && liked.has(place.cuisine))),
     ].slice(0, 3)
     return { rated, favourites, disagreements, topCuisines, picks, liked }
-  }, [places])
+  }, [places, decide?.plans])
 
   async function getIdeas() {
     setThinking(true)
@@ -217,6 +224,40 @@ export function DecideTab({
         </button>
         <CravingButton groupId={groupId} />
       </div>
+      <button
+        className="secondary"
+        onClick={() => {
+          haptic('select')
+          setQuick(true)
+        }}
+      >
+        ⏱️ Can’t decide? Decide in 60 seconds
+      </button>
+      {quick && (
+        <QuickDecide
+          places={places}
+          onClose={() => setQuick(false)}
+          onPick={(place) => {
+            setQuick(false)
+            onSelect?.(place)
+          }}
+          onPlan={
+            decide?.enabled
+              ? async (place) => {
+                  const at = new Date()
+                  at.setHours(Math.max(at.getHours() + 1, 19), 0, 0, 0)
+                  const id = await decide.savePlan({
+                    title: `Tonight at ${place.name}`,
+                    starts_at: at.toISOString(),
+                    place_id: place.id,
+                  })
+                  if (id) toast.success('Plan made — everyone can say if they’re in')
+                  setQuick(false)
+                }
+              : undefined
+          }
+        />
+      )}
 
       {!loading && weather && <WeatherNudge places={places} home={home} onSelect={onSelect} />}
 

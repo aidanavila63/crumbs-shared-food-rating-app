@@ -1,11 +1,13 @@
 'use client'
 // Decide together page: #30 swipe to match, #40 vote on a list, #34 occasion picker.
 // Everyone in the group votes yes/no on the same short list; places everyone said yes to match.
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Heart, ListChecks, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { List, Place, Profile } from '@/hooks/use-crumbs-data'
-import type { DecideStore, SwipeSession } from '@/hooks/use-decide'
+import type { DecideStore, Overlap, SwipeSession } from '@/hooks/use-decide'
+import { fitsOverlap } from '@/lib/decide-more'
+import { useUserLocation } from '@/lib/use-user-location'
 import { nextToVote, occasionsFor, sessionResults } from '@/lib/decide'
 import { average5 } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
@@ -360,6 +362,23 @@ function SessionView({
 }) {
   const byId = (id: string) => places.find((p) => p.id === id)
   const results = sessionResults(session, store.votes, memberIds)
+  // #131 your one veto in this vote
+  const myVeto = store.votes.find(
+    (v) => v.session_id === session.id && v.user_id === userId && v.veto,
+  )?.place_id
+  // #187 everyone's private limits, overlapped
+  const [overlap, setOverlap] = useState<Overlap | null>(null)
+  const [limitsOpen, setLimitsOpen] = useState(false)
+  const here = useUserLocation(!!overlap?.max_km)
+  useEffect(() => {
+    let cancelled = false
+    store.overlap(session.id).then((o) => !cancelled && setOverlap(o))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id, limitsOpen])
+  const fits = (place: Place) => fitsOverlap(place, overlap, here)
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
@@ -392,12 +411,48 @@ function SessionView({
         </div>
       </div>
       <h3 className="font-serif text-2xl font-bold">{session.title || 'Decide together'}</h3>
+      <div className="flex flex-col gap-2">
+        {overlap?.people ? (
+          <p className="next-time-note text-sm">
+            🔒 Everyone’s limits ({overlap.people} set):{' '}
+            {[
+              overlap.max_price ? `up to ${'$'.repeat(overlap.max_price)}` : null,
+              overlap.max_km ? `within ${Number(overlap.max_km)} km` : null,
+              overlap.cravings?.length ? `craving ${overlap.cravings.join(' or ')}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || 'no limits'}
+            . Places outside them are faded.
+          </p>
+        ) : null}
+        <button
+          className="self-start text-sm font-semibold text-primary underline"
+          onClick={() => setLimitsOpen(!limitsOpen)}
+        >
+          {limitsOpen ? 'Close my limits' : '🔒 Set my private limits'}
+        </button>
+        {limitsOpen && (
+          <LimitsForm
+            sessionId={session.id}
+            store={store}
+            cuisines={[
+              ...new Set(
+                session.place_ids.map((id) => byId(id)?.cuisine).filter(Boolean) as string[],
+              ),
+            ]}
+            onSaved={() => setLimitsOpen(false)}
+          />
+        )}
+      </div>
       {mode === 'swipe' && userId && (
         <SwipeDeck
           session={session}
           store={store}
           userId={userId}
-          byId={byId}
+          byId={(id) => {
+            const place = byId(id)
+            return place && fits(place) ? place : undefined
+          }}
           onDone={() => onMode('results')}
         />
       )}
@@ -410,7 +465,10 @@ function SessionView({
               (v) => v.session_id === session.id && v.place_id === id && v.user_id === userId,
             )
             return (
-              <div key={id} className="surface-soft flex items-center justify-between gap-2">
+              <div
+                key={id}
+                className={`surface-soft flex items-center justify-between gap-2 ${fits(place) ? '' : 'opacity-50'}`}
+              >
                 <button className="min-w-0 text-left" onClick={() => onOpenPlace(place)}>
                   <span className="block truncate font-semibold">{place.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">
@@ -420,6 +478,20 @@ function SessionView({
                   </span>
                 </button>
                 <span className="flex shrink-0 gap-2">
+                  <button
+                    aria-label={myVeto === id ? `Take back your veto` : `Veto ${place.name}`}
+                    aria-pressed={myVeto === id}
+                    title="One veto each — a vetoed place can’t win"
+                    className={`vote-btn ${myVeto === id ? 'vote-veto' : ''} ${myVeto && myVeto !== id ? 'opacity-30' : ''}`}
+                    onClick={() => {
+                      haptic('select')
+                      if (myVeto && myVeto !== id)
+                        return toast('You’ve used your veto — tap it again to take it back')
+                      store.veto(session.id, myVeto === id ? null : id)
+                    }}
+                  >
+                    🚫
+                  </button>
                   <button
                     aria-label={`No to ${place.name}`}
                     aria-pressed={mine?.yes === false}
@@ -507,14 +579,21 @@ function SessionView({
                     onClick={() => onOpenPlace(place)}
                   >
                     {row.match ? '💘 ' : ''}
+                    {row.vetoedBy.length ? '🚫 ' : ''}
                     {place.name}
+                    {row.vetoedBy.length > 0 && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        Vetoed by{' '}
+                        {row.vetoedBy.map((u) => (u === userId ? 'you' : names[u])).join(', ')}
+                      </span>
+                    )}
                   </button>
                   <span className="flex shrink-0 items-center gap-2 text-sm">
                     <span title={row.yes.map((u) => (u === userId ? 'You' : names[u])).join(', ')}>
                       👍 {row.yes.length}
                     </span>
                     <span className="text-muted-foreground">👎 {row.no.length}</span>
-                    {!row.match && row.yes.length > 0 && (
+                    {!row.match && !row.vetoedBy.length && row.yes.length > 0 && (
                       <button
                         className="text-xs font-bold text-primary underline"
                         onClick={() => onPlan(place.id, session)}
@@ -675,6 +754,90 @@ function SwipeDeck({
           <Heart size={30} strokeWidth={2.6} />
         </button>
       </div>
+    </div>
+  )
+}
+
+/** #187 Your private limits for this vote — nobody else sees them, only the overlap. */
+function LimitsForm({
+  sessionId,
+  store,
+  cuisines,
+  onSaved,
+}: {
+  sessionId: string
+  store: DecideStore
+  cuisines: string[]
+  onSaved: () => void
+}) {
+  const [maxPrice, setMaxPrice] = useState<number | null>(null)
+  const [maxKm, setMaxKm] = useState<number | null>(null)
+  const [cravings, setCravings] = useState<string[]>([])
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    store.myLimits(sessionId).then((mine) => {
+      if (mine) {
+        setMaxPrice(mine.max_price)
+        setMaxKm(mine.max_km ? Number(mine.max_km) : null)
+        setCravings(mine.cravings ?? [])
+      }
+      setLoaded(true)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+  const chip = (on: boolean) => `chip chip-sm ${on ? 'chip-active' : ''}`
+  if (!loaded) return null
+  return (
+    <div className="surface-soft rise-panel flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Only you see these. The group only sees where everyone’s limits overlap.
+      </p>
+      <div className="chip-row" role="radiogroup" aria-label="Budget">
+        {[null, 1, 2, 3].map((n) => (
+          <button key={String(n)} className={chip(maxPrice === n)} onClick={() => setMaxPrice(n)}>
+            {n ? `Up to ${'$'.repeat(n)}` : 'Any price'}
+          </button>
+        ))}
+      </div>
+      <div className="chip-row" role="radiogroup" aria-label="Distance">
+        {[null, 1, 3, 5, 10].map((n) => (
+          <button key={String(n)} className={chip(maxKm === n)} onClick={() => setMaxKm(n)}>
+            {n ? `Within ${n} km` : 'Any distance'}
+          </button>
+        ))}
+      </div>
+      {cuisines.length > 0 && (
+        <div className="chip-row" aria-label="Craving">
+          {cuisines.map((c) => {
+            const on = cravings.includes(c.toLowerCase())
+            return (
+              <button
+                key={c}
+                aria-pressed={on}
+                className={chip(on)}
+                onClick={() =>
+                  setCravings((all) =>
+                    on ? all.filter((x) => x !== c.toLowerCase()) : [...all, c.toLowerCase()],
+                  )
+                }
+              >
+                {c}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <button
+        className="primary"
+        onClick={async () => {
+          await store.setLimits(sessionId, { max_price: maxPrice, max_km: maxKm, cravings })
+          haptic('success')
+          toast.success('Saved — only the overlap is shown')
+          onSaved()
+        }}
+      >
+        Save my limits
+      </button>
     </div>
   )
 }

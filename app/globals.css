@@ -1982,3 +1982,46 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   color: var(--destructive);
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
 }
+.vote-btn.vote-veto {
+  background: var(--destructive);
+  border-color: var(--destructive);
+}
+
+/* #132 spin the wheel */
+.spin-wheel-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding-top: 14px;
+}
+.spin-pointer {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  color: var(--primary);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.spin-wheel {
+  width: min(78vw, 300px);
+  height: min(78vw, 300px);
+  transition: transform 3s cubic-bezier(0.12, 0.8, 0.2, 1);
+  filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.12));
+}
+.spin-slice-a {
+  fill: var(--primary);
+}
+.spin-slice-b {
+  fill: color-mix(in srgb, var(--primary) 55%, var(--card));
+}
+.spin-label {
+  fill: var(--primary-foreground);
+  font-size: 9px;
+  font-weight: 700;
+}
+.spin-hub {
+  fill: var(--card);
+}
+.spin-slice-c {
+  fill: color-mix(in srgb, var(--primary) 78%, #000);
+}

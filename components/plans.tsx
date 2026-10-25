@@ -5,8 +5,9 @@ import { CalendarPlus, CalendarDays, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import type { DecideStore, Plan, Rsvp } from '@/hooks/use-decide'
-import { bookingText, didYouGo, planIcs } from '@/lib/decide'
+import { bookingText, didYouGo, goodPickAsks, planIcs } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
+import { PlanB } from './plan-b'
 
 export type PlanDraft = Partial<Plan> & { title: string }
 
@@ -76,6 +77,8 @@ export function PlansCard({
 }) {
   const next = upcomingPlans(store.plans).slice(0, 2)
   const asks = didYouGo(store.plans).slice(0, 2)
+  // #133 "Good pick?" for plans you went to in the last week
+  const rate = goodPickAsks(store.plans).slice(0, 1)
   return (
     <div className="surface flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -111,6 +114,39 @@ export function PlansCard({
                 We didn’t
               </button>
             </div>
+          </div>
+        )
+      })}
+      {rate.map((plan) => {
+        const place = places.find((p) => p.id === plan.place_id)
+        if (!place) return null
+        return (
+          <div
+            key={`pick-${plan.id}`}
+            className="next-time-note flex items-center justify-between gap-2"
+          >
+            <span className="text-sm">
+              Was <strong>{place.name}</strong> a good pick?
+            </span>
+            <span className="flex shrink-0 gap-2">
+              <button
+                className="yn-btn"
+                aria-label="Good pick"
+                onClick={() => {
+                  haptic('success')
+                  store.setOutcome(plan.id, 'went', true)
+                }}
+              >
+                👍
+              </button>
+              <button
+                className="yn-btn"
+                aria-label="Not a good pick"
+                onClick={() => store.setOutcome(plan.id, 'went', false)}
+              >
+                👎
+              </button>
+            </span>
           </div>
         )
       })}
@@ -243,6 +279,7 @@ function PlanCard({
   onVoteForPlace: () => void
 }) {
   const place = places.find((p) => p.id === plan.place_id)
+  const [planB, setPlanB] = useState(false)
   const answers = store.rsvps.filter((r) => r.plan_id === plan.id)
   const mine = answers.find((r) => r.user_id === userId)?.answer
   const voting = plan.session_id ? store.sessions.find((s) => s.id === plan.session_id) : null
@@ -317,6 +354,25 @@ function PlanCard({
           >
             <CalendarPlus size={16} /> Add to calendar
           </button>
+        )}
+        {place && (
+          <button className="secondary flex-1 !min-h-10 text-sm" onClick={() => setPlanB(true)}>
+            🔁 Plan B
+          </button>
+        )}
+        {planB && place && (
+          <PlanB
+            place={place}
+            places={places}
+            pickLabel="Switch"
+            onClose={() => setPlanB(false)}
+            onPick={async (p) => {
+              await store.savePlan({ ...plan, place_id: p.id, title: plan.title })
+              haptic('success')
+              toast.success(`Switched to ${p.name}`)
+              setPlanB(false)
+            }}
+          />
         )}
         {!place && (
           <button className="secondary flex-1 !min-h-10 text-sm" onClick={onVoteForPlace}>

@@ -15,7 +15,20 @@ export type SwipeSession = {
   status: 'open' | 'closed'
   created_at: string
 }
-export type SwipeVote = { session_id: string; place_id: string; user_id: string; yes: boolean }
+export type SwipeVote = {
+  session_id: string
+  place_id: string
+  user_id: string
+  yes: boolean
+  /** #131 one veto each per vote */
+  veto?: boolean
+}
+export type Overlap = {
+  people: number
+  max_price: number | null
+  max_km: number | null
+  cravings: string[]
+}
 export type Plan = {
   id: string
   group_id: string
@@ -32,6 +45,8 @@ export type Plan = {
   party?: number | null
   /** #198 did you go? */
   outcome?: 'went' | 'skipped' | null
+  /** #133 was it a good pick? */
+  good_pick?: boolean | null
 }
 export type Rsvp = { plan_id: string; user_id: string; answer: 'yes' | 'maybe' | 'no' }
 
@@ -112,7 +127,7 @@ export function useDecide({
     const [s, p] = await Promise.all([
       supabase
         .from('swipe_sessions')
-        .select('*,swipe_votes(session_id,place_id,user_id,yes)')
+        .select('*,swipe_votes(*)')
         .eq('group_id', groupId)
         .gte('created_at', since)
         .order('created_at', { ascending: false })
@@ -283,12 +298,89 @@ export function useDecide({
     }
   }
 
-  /** #198 "Did you go?" */
-  async function setOutcome(planId: string, outcome: 'went' | 'skipped') {
-    setPlans((current) => current.map((p) => (p.id === planId ? { ...p, outcome } : p)))
+  /** #198 "Did you go?" and #133 "Good pick?" */
+  async function setOutcome(
+    planId: string,
+    outcome: 'went' | 'skipped',
+    goodPick: boolean | null = null,
+  ) {
+    const changes = goodPick === null ? { outcome } : { outcome, good_pick: goodPick }
+    setPlans((current) => current.map((p) => (p.id === planId ? { ...p, ...changes } : p)))
     if (demo) return
-    const { error } = await supabase.from('plans').update({ outcome }).eq('id', planId)
+    const { error } = await supabase.from('plans').update(changes).eq('id', planId)
     if (error) toast.error(error.message)
+  }
+
+  /** #131 Use (or take back) your one veto in a vote. */
+  async function veto(sessionId: string, placeId: string | null) {
+    if (!userId) return
+    const before = votes
+    setVotes((current) =>
+      current.map((v) =>
+        v.session_id === sessionId && v.user_id === userId
+          ? { ...v, veto: v.place_id === placeId, yes: v.place_id === placeId ? false : v.yes }
+          : v,
+      ),
+    )
+    if (
+      placeId &&
+      !votes.some(
+        (v) => v.session_id === sessionId && v.place_id === placeId && v.user_id === userId,
+      )
+    )
+      setVotes((current) => [
+        ...current,
+        { session_id: sessionId, place_id: placeId, user_id: userId, yes: false, veto: true },
+      ])
+    if (demo) return
+    const clear = await supabase
+      .from('swipe_votes')
+      .update({ veto: false })
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .eq('veto', true)
+    const set = placeId
+      ? await supabase
+          .from('swipe_votes')
+          .upsert({
+            session_id: sessionId,
+            place_id: placeId,
+            user_id: userId,
+            yes: false,
+            veto: true,
+          })
+      : { error: null }
+    if (clear.error || set.error) {
+      setVotes(before)
+      toast.error((clear.error ?? set.error).message)
+    }
+  }
+
+  /** #187 your private limits for a vote, and the group's overlap (never anyone's own). */
+  async function setLimits(
+    sessionId: string,
+    limits: { max_price: number | null; max_km: number | null; cravings: string[] },
+  ) {
+    if (demo) return
+    const { error } = await supabase
+      .from('swipe_limits')
+      .upsert({ session_id: sessionId, ...limits, updated_at: new Date().toISOString() })
+    if (error) toast.error(error.message)
+  }
+  async function myLimits(sessionId: string) {
+    if (demo || !userId) return null
+    const { data } = await supabase
+      .from('swipe_limits')
+      .select('max_price,max_km,cravings')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .maybeSingle()
+    return data as { max_price: number | null; max_km: number | null; cravings: string[] } | null
+  }
+  async function overlap(sessionId: string): Promise<Overlap | null> {
+    if (demo) return null
+    const { data, error } = await supabase.rpc('session_overlap', { target: sessionId })
+    return error ? null : data
   }
 
   async function answer(planId: string, value: Rsvp['answer']) {
@@ -312,6 +404,10 @@ export function useDecide({
     plans,
     rsvps,
     setOutcome,
+    veto,
+    setLimits,
+    myLimits,
+    overlap,
     startSession,
     vote,
     closeSession,
