@@ -141,3 +141,48 @@ export function tableText(
       : ''
   return `🍽️ Order for the table at ${placeName} (${people} ${people === 1 ? 'person' : 'people'})\n${lines.join('\n')}${cost}\n— from Crumbs`
 }
+
+// ---------- #119 v2: the saved table order (shareables) ----------
+export type OrderItem = { dish_id: string; qty: number }
+
+/** Total before tax and tip, each person's share, and roughly how many people it feeds. */
+export function orderTotals(items: OrderItem[], dishes: Dish[], people: number) {
+  let total = 0
+  let unpriced = 0
+  let feeds = 0
+  for (const item of items) {
+    const dish = dishes.find((d) => d.id === item.dish_id)
+    if (!dish || item.qty <= 0) continue
+    if (dish.price != null) total += Number(dish.price) * item.qty
+    else unpriced += item.qty
+    feeds += (dish.shares ?? 1) * item.qty
+  }
+  const n = Math.max(1, people)
+  return {
+    total: Math.round(total * 100) / 100,
+    each: Math.round((total / n) * 100) / 100,
+    unpriced,
+    feeds,
+  }
+}
+
+/** Starting suggestion as order items (one of each pick). */
+export function suggestedItems(dishes: Dish[], people: number, avoids?: (dish: Dish) => boolean) {
+  return orderForTable(dishes, people, avoids).picks.map((p) => ({ dish_id: p.dish.id, qty: 1 }))
+}
+
+/** Text to share for a saved order. */
+export function orderText(placeName: string, people: number, items: OrderItem[], dishes: Dish[]) {
+  const t = orderTotals(items, dishes, people)
+  const lines = items
+    .map((item) => ({ item, dish: dishes.find((d) => d.id === item.dish_id) }))
+    .filter((x) => x.dish && x.item.qty > 0)
+    .map(
+      ({ item, dish }) =>
+        `• ${item.qty > 1 ? `${item.qty}× ` : ''}${dish!.name}${dish!.price != null ? ` ($${(Number(dish!.price) * item.qty).toFixed(0)})` : ''}${dish!.shares && dish!.shares > 1 ? ` — shares ${dish!.shares}` : ''}`,
+    )
+  const cost = t.total
+    ? `\nAbout $${t.total.toFixed(0)} before tax and tip · ~$${t.each.toFixed(0)} each${t.unpriced ? ` (+${t.unpriced} without a price)` : ''}`
+    : ''
+  return `🍽️ Our order at ${placeName} (${people} ${people === 1 ? 'person' : 'people'})\n${lines.join('\n')}${cost}\n— from Crumbs`
+}

@@ -49,8 +49,12 @@ export const GEMS_FROM_GROUPS = 5
 
 /** #185 Places your group loves (4.3★+) that hardly anyone else on Crumbs has saved (≤2 groups,
  *  yours included). Off until Crumbs has 5+ groups. Best first. */
-export function hiddenGems(places: Place[], counts: GemCounts | null) {
-  if (!counts || counts.groups < GEMS_FROM_GROUPS) return []
+export function hiddenGems(
+  places: Place[],
+  counts: GemCounts | null,
+  minGroups = GEMS_FROM_GROUPS,
+) {
+  if (!counts || counts.groups < minGroups) return []
   return places
     .filter((p) => {
       const saved = p.restaurant_id ? counts.saved[p.restaurant_id] : undefined

@@ -2195,6 +2195,7 @@ begin
                                where r.place_id = p.id and (not r.draft or r.user_id = auth.uid())),
                   'visits', (select coalesce(jsonb_agg(to_jsonb(v)), '[]') from public.place_visits v where v.place_id = p.id),
                   'facts', (select to_jsonb(f) from public.place_facts f where f.place_id = p.id),
+                  'table_order', (select to_jsonb(t) from public.table_orders t where t.place_id = p.id),
                   'dishes', (select coalesce(jsonb_agg(to_jsonb(d) || jsonb_build_object(
                      'ratings', (select coalesce(jsonb_agg(to_jsonb(dr)), '[]') from public.dish_ratings dr where dr.dish_id = d.id))), '[]')
                      from public.dishes d where d.place_id = p.id))), '[]')
@@ -2316,9 +2317,15 @@ create policy recipe_reviews_update on public.recipe_reviews for update to authe
   using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()) and public.is_public_recipe(meal_id));
 
 -- Shared recipes for the Home tab: newest or best first, with first names only and the tips.
-create or replace function public.public_recipes(q text default null, lim integer default 30)
+-- mode: 'search' (best first), 'trending' (most rated in the last 2 weeks), 'suggested' (well
+-- rated, not yours, matching your diet first).
+drop function if exists public.public_recipes(text, integer);
+create or replace function public.public_recipes(q text default null, lim integer default 30, mode text default 'search')
 returns jsonb language sql stable security definer set search_path = public as $$
-  select coalesce(jsonb_agg(x order by (x->>'score')::numeric desc nulls last, x->>'created_at' desc), '[]') from (
+  select coalesce(jsonb_agg(x order by
+      case when mode = 'trending' then (x->>'recent')::numeric end desc nulls last,
+      case when mode = 'suggested' then (x->>'diet_match')::numeric end desc nulls last,
+      (x->>'score')::numeric desc nulls last, x->>'created_at' desc), '[]') from (
     select jsonb_build_object(
       'id', m.id, 'name', m.name, 'notes', m.notes, 'recipe', m.recipe, 'recipe_url', m.recipe_url,
       'photo_path', m.photo_path, 'dietary', m.dietary, 'spice', m.spice, 'created_at', m.created_at,
@@ -2326,6 +2333,9 @@ returns jsonb language sql stable security definer set search_path = public as $
       'mine', m.created_by = auth.uid(),
       'score', (select round(avg(r.score)::numeric, 1) from public.recipe_reviews r where r.meal_id = m.id),
       'reviews', (select count(*) from public.recipe_reviews r where r.meal_id = m.id),
+      'recent', (select count(*) from public.recipe_reviews r where r.meal_id = m.id and r.created_at > now() - interval '14 days'),
+      'diet_match', (select count(*) from unnest(m.dietary) d
+                      where d = any(coalesce((select diet from public.profiles where id = auth.uid()), '{}'))),
       'tips', (select coalesce(jsonb_agg(jsonb_build_object('tip', r.tip, 'score', r.score,
                  'by', split_part(coalesce(rp.display_name, 'Someone'), ' ', 1), 'mine', r.user_id = auth.uid())
                  order by r.created_at desc), '[]')
@@ -2333,12 +2343,36 @@ returns jsonb language sql stable security definer set search_path = public as $
                 where r.meal_id = m.id and (r.tip is not null or r.user_id = auth.uid()))) as x
     from public.home_meals m left join public.profiles p on p.id = m.created_by
     where m.recipe_public and auth.uid() is not null
-      and (q is null or m.name ilike '%' || left(q, 60) || '%')
-    order by m.created_at desc
+      and (q is null or m.name ilike '%' || left(q, 60) || '%' or coalesce(m.recipe, '') ilike '%' || left(q, 60) || '%')
+      and (mode <> 'trending' or exists (select 1 from public.recipe_reviews r where r.meal_id = m.id and r.created_at > now() - interval '14 days'))
+      and (mode <> 'suggested' or (m.created_by <> auth.uid()
+           and coalesce((select avg(r.score) from public.recipe_reviews r where r.meal_id = m.id), 0) >= 4))
+    order by case when mode = 'trending'
+                  then (select count(*) from public.recipe_reviews r where r.meal_id = m.id and r.created_at > now() - interval '14 days') end desc nulls last,
+             m.created_at desc
     limit least(greatest(lim, 1), 100)) t
 $$;
-revoke execute on function public.public_recipes(text, integer) from public, anon;
-grant execute on function public.public_recipes(text, integer) to authenticated;
+revoke execute on function public.public_recipes(text, integer, text) from public, anon;
+grant execute on function public.public_recipes(text, integer, text) to authenticated;
+
+-- ============================================================================================
+-- 13j. Shareables & the saved table order (#119)
+-- ============================================================================================
+-- How many people a dish is good to share between (a big platter = 4).
+alter table public.dishes add column if not exists shares smallint check (shares between 1 and 12);
+-- The group's saved "order for the table" at a place: which dishes and how many of each.
+create table if not exists public.table_orders (
+  place_id uuid primary key references public.places(id) on delete cascade,
+  people smallint not null default 2 check (people between 1 and 30),
+  items jsonb not null default '[]' check (jsonb_typeof(items) = 'array' and jsonb_array_length(items) <= 40),
+  updated_by uuid references auth.users(id) on delete set null default auth.uid(),
+  updated_at timestamptz not null default now()
+);
+alter table public.table_orders enable row level security;
+drop policy if exists table_orders_group on public.table_orders;
+create policy table_orders_group on public.table_orders for all to authenticated
+  using (public.is_group_member(public.place_group(place_id)))
+  with check (public.is_group_member(public.place_group(place_id)));
 
 -- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.

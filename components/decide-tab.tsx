@@ -135,7 +135,8 @@ export function DecideTab({
   // #33 favourites you haven't been back to in 3+ months
   const whileAgo = useMemo(() => beenAWhile(places), [places])
   const gemCounts = useGems(places, supabase, demo)
-  const gems = useMemo(() => hiddenGems(places, gemCounts), [places, gemCounts])
+  // The Decide & Plan card works from day one; the smart list waits for 5+ groups on Crumbs.
+  const gems = useMemo(() => hiddenGems(places, gemCounts, 1), [places, gemCounts])
   const insights = useMemo(() => {
     const rated = places.filter((place) => place.place_ratings.length)
     const favourites = rated

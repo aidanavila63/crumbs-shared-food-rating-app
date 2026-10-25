@@ -339,3 +339,11 @@ Aidan: tiers should raise limits too, top tier unlimited if you're legit; 117, 1
 - **#123 Make it at home** (dish → More): creates a linked Want-to-cook home meal; the meal shows "vs Hana Ramen: their 92 · yours 88 · 🏆". Meals get a recipe text box and **Share this recipe on Crumbs** switch; Home → "🌍 Recipes people shared on Crumbs" lists them (search, first names only) — anyone can rate and leave a tip (`recipe_reviews`, `public_recipes()`); unsharing hides them again.
 - **#181** spice you're happy with (Settings) → "🌶️ Hotter than Maya likes" on dishes.
 - Tests 98/98; SQL tested (reason cap, next-time with empty note, recipes hidden until shared, reviews only on shared ones, meal rows stay private); build passes; demo checked.
+
+## Round 29 - shareables, recipe search, gems now (Oct 25, Claude in Cowork)
+Aidan: Order for the table should be a way to add shareables and save them; recipes need a search bar with Suggested/Trending; the Decide & Plan gem card can be on now.
+- **#119 v2 Order for the table** (`components/order-for-table.tsx`, `table_orders`, `dishes.shares`): the group's saved order at a place — add dishes from your list or type a new one (name, price, "shares between N"), − / + for how many, edit price and shares inline; "About $37 before tax and tip · ~$19 each · feeds about 6 people"; Fill with favourites / Start over; Share. **Saves for the group when you close (✕)**. One saved order per place. Placement still to revisit (now: Dish highlights, or next to Dishes when there are no highlights).
+- **Recipes search** (Home): search bar for your meals + recipes shared on Crumbs. Empty search shows "Trending on Crumbs" (most rated in the last 2 weeks) and "Suggested for you" (4★+, not yours, your diet first), each card tagged 🔥 Trending / ✨ Suggested. `public_recipes(q, lim, mode)`.
+- **#185** Decide & Plan hidden-gem card shows from day one; the 💎 smart list still waits for 5+ groups.
+- "30% takeout" now reads "30% of visits were takeout or delivery" (all Crumbs visits logged there; shown after 5+).
+- Tests 99/99; SQL tested (trending/suggested/search, own excluded from suggested, table orders group-only); build passes; demo checked.

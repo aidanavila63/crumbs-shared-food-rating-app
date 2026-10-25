@@ -1927,3 +1927,32 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
 .fit-tag {
   color: #2f7d4f;
 }
+
+/* #119 order for the table */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+.stepper-sm {
+  gap: 6px;
+}
+.stepper-sm button {
+  width: 26px;
+  height: 26px;
+}
+.order-total {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+}

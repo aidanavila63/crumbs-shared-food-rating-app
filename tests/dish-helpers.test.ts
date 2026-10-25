@@ -80,3 +80,22 @@ test('order for the table without courses: best dishes, about 1.5 a person', () 
     ['a', 'b', 'c'],
   )
 })
+
+test('saved table order: totals before tip, split per person, how many it feeds', async () => {
+  const { orderTotals, orderText } = await import('../lib/dish-helpers.ts')
+  const dishes = [
+    dish('Nachos', { price: 18, shares: 4 }),
+    dish('Wings', { price: 14, shares: 2 }),
+    dish('Soup'),
+  ]
+  const items = [
+    { dish_id: 'Nachos', qty: 1 },
+    { dish_id: 'Wings', qty: 2 },
+    { dish_id: 'Soup', qty: 1 },
+  ]
+  assert.deepEqual(orderTotals(items, dishes, 4), { total: 46, each: 11.5, unpriced: 1, feeds: 9 })
+  const text = orderText('Pub', 4, items, dishes)
+  assert.match(text, /2× Wings \(\$28\)/)
+  assert.match(text, /Nachos \(\$18\) — shares 4/)
+  assert.match(text, /About \$46 before tax and tip · ~\$12 each/)
+})

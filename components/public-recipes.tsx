@@ -3,10 +3,8 @@
 // recipe"). Anyone can rate one and leave a tip to make it better; only first names are shown.
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Search } from 'lucide-react'
 import { photoUrl } from '@/lib/photos'
 import { haptic } from '@/lib/motion'
-import { Overlay } from './overlay'
 import { RatingStars } from './rating-stars'
 
 type Tip = { tip: string | null; score: number; by: string; mine: boolean }
@@ -26,105 +24,154 @@ type Recipe = {
   tips: Tip[]
 }
 
-const DEMO: Recipe[] = [
-  {
+const recipe = (r: Partial<Recipe> & Pick<Recipe, 'id' | 'name' | 'by'>): Recipe => ({
+  notes: null,
+  recipe: null,
+  recipe_url: null,
+  photo_path: null,
+  dietary: [],
+  spice: null,
+  mine: false,
+  score: null,
+  reviews: 0,
+  tips: [],
+  ...r,
+})
+const DEMO_TRENDING: Recipe[] = [
+  recipe({
     id: 'demo-recipe-1',
     name: 'Weeknight tonkotsu-ish ramen',
     notes: 'Cheat broth: pork stock + a spoon of tahini + garlic oil.',
     recipe:
       '1. Simmer 1 L pork stock with garlic and ginger 20 min.\n2. Whisk in 1 tbsp tahini and soy to taste.\n3. Soft-boil eggs 6½ min, marinate in soy + mirin.\n4. Noodles, broth, egg, scallions, chili oil.',
-    recipe_url: null,
-    photo_path: null,
-    dietary: [],
     spice: 1,
     by: 'Priya',
-    mine: false,
     score: 4.5,
     reviews: 6,
     tips: [
       { tip: 'A splash of rice vinegar at the end makes it pop', score: 5, by: 'Sam', mine: false },
     ],
-  },
+  }),
+  recipe({ id: 'demo-recipe-2', name: 'Crispy smash tacos', by: 'Leo', score: 4.7, reviews: 9 }),
+]
+const DEMO_SUGGESTED: Recipe[] = [
+  recipe({
+    id: 'demo-recipe-3',
+    name: 'Sheet-pan chickpea curry',
+    by: 'Ana',
+    dietary: ['Vegan'],
+    score: 4.4,
+    reviews: 4,
+  }),
 ]
 
-export function PublicRecipes({
-  supabase,
-  demo,
-  onClose,
-}: {
-  supabase: any
-  demo: boolean
-  onClose: () => void
-}) {
-  const [recipes, setRecipes] = useState<Recipe[] | null>(demo ? DEMO : null)
-  const [query, setQuery] = useState('')
-  const [openId, setOpenId] = useState<string | null>(null)
+export type RecipeMode = 'search' | 'trending' | 'suggested'
 
+/** Shared recipes for one mode (debounced while typing). */
+function useRecipes(supabase: any, demo: boolean, mode: RecipeMode, query: string, lim: number) {
+  const [recipes, setRecipes] = useState<Recipe[] | null>(null)
+  const q = query.trim()
   useEffect(() => {
-    if (demo) return
     let cancelled = false
+    if (demo) {
+      const pool =
+        mode === 'suggested'
+          ? DEMO_SUGGESTED
+          : mode === 'trending'
+            ? DEMO_TRENDING
+            : [...DEMO_TRENDING, ...DEMO_SUGGESTED].filter((r) =>
+                r.name.toLowerCase().includes(q.toLowerCase()),
+              )
+      Promise.resolve().then(() => !cancelled && setRecipes(pool))
+      return () => {
+        cancelled = true
+      }
+    }
+    if (mode === 'search' && !q) return
     const timer = setTimeout(() => {
       supabase
-        .rpc('public_recipes', { q: query.trim() || null, lim: 40 })
-        .then(({ data, error }: any) => {
-          if (cancelled) return
-          if (error) toast.error(error.message)
-          setRecipes(data ?? [])
-        })
+        .rpc('public_recipes', { q: q || null, lim, mode })
+        .then(({ data, error }: any) => !cancelled && setRecipes(error ? [] : (data ?? [])))
     }, 250)
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [demo, query, supabase])
+  }, [supabase, demo, mode, q, lim])
+  return [recipes, setRecipes] as const
+}
 
-  const shown = (recipes ?? []).filter(
-    (r) => !demo || r.name.toLowerCase().includes(query.trim().toLowerCase()),
-  )
+/** Home cooking's recipe finder: Trending and Suggested until you type, then search results. */
+export function RecipeFinder({
+  supabase,
+  demo,
+  query,
+}: {
+  supabase: any
+  demo: boolean
+  query: string
+}) {
+  const searching = !!query.trim()
+  const [trending, setTrending] = useRecipes(supabase, demo, 'trending', '', 3)
+  const [suggested, setSuggested] = useRecipes(supabase, demo, 'suggested', '', 3)
+  const [found, setFound] = useRecipes(supabase, demo, 'search', query, 20)
+  const [openId, setOpenId] = useState<string | null>(null)
 
-  return (
-    <Overlay label="Recipes from Crumbs" title="Recipes from Crumbs" onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
-          Home recipes people shared with everyone. Rate one and leave a tip to make it better.
+  const section = (
+    title: string,
+    tag: string | null,
+    list: Recipe[] | null,
+    set: (update: (all: Recipe[] | null) => Recipe[] | null) => void,
+    empty: string | null,
+  ) =>
+    list === null ? null : list.length ? (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {title}
         </p>
-        <label className="field flex items-center gap-2">
-          <Search size={16} className="text-muted-foreground" />
-          <input
-            className="min-w-0 flex-1 bg-transparent outline-none"
-            placeholder="Search recipes"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+        {list.map((r) => (
+          <RecipeCard
+            key={r.id}
+            recipe={r}
+            tag={tag}
+            open={openId === r.id}
+            onToggle={() => setOpenId(openId === r.id ? null : r.id)}
+            supabase={supabase}
+            demo={demo}
+            onChange={(next) => set((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)))}
           />
-        </label>
-        {recipes === null ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : shown.length ? (
-          shown.map((recipe) => (
-            <RecipeCard
-              key={recipe.id}
-              recipe={recipe}
-              open={openId === recipe.id}
-              onToggle={() => setOpenId(openId === recipe.id ? null : recipe.id)}
-              supabase={supabase}
-              demo={demo}
-              onChange={(next) =>
-                setRecipes((all) => (all ?? []).map((r) => (r.id === next.id ? next : r)))
-              }
-            />
-          ))
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No shared recipes yet. Open one of your home meals and switch on “Share this recipe”.
-          </p>
-        )}
+        ))}
       </div>
-    </Overlay>
+    ) : empty ? (
+      <p className="text-sm text-muted-foreground">{empty}</p>
+    ) : null
+
+  if (searching)
+    return section(
+      'Recipes on Crumbs',
+      null,
+      found,
+      setFound,
+      'No shared recipes match. Try another word.',
+    )
+  const nothing = trending?.length === 0 && suggested?.length === 0
+  return (
+    <>
+      {section('Trending on Crumbs', '🔥 Trending', trending, setTrending, null)}
+      {section('Suggested for you', '✨ Suggested', suggested, setSuggested, null)}
+      {nothing && (
+        <p className="text-sm text-muted-foreground">
+          Recipes people share show up here. Share one of yours: open a meal → “Share this recipe on
+          Crumbs”.
+        </p>
+      )}
+    </>
   )
 }
 
 function RecipeCard({
   recipe,
+  tag = null,
   open,
   onToggle,
   supabase,
@@ -132,6 +179,8 @@ function RecipeCard({
   onChange,
 }: {
   recipe: Recipe
+  /** "🔥 Trending" / "✨ Suggested" */
+  tag?: string | null
   open: boolean
   onToggle: () => void
   supabase: any
@@ -171,6 +220,7 @@ function RecipeCard({
           <img src={photo} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
         )}
         <span className="min-w-0 flex-1">
+          {tag && <span className="tag mb-1 inline-block !text-[0.7rem]">{tag}</span>}
           <span className="block font-semibold">{recipe.name}</span>
           <span className="block text-xs text-muted-foreground">
             by {recipe.mine ? 'you' : recipe.by}

@@ -47,6 +47,8 @@ export type Dish = {
   dietary?: string[]
   spice?: number | null
   wishlist?: boolean
+  /** #119 good to share between this many people */
+  shares?: number | null
   id: string
   place_id: string
   name: string

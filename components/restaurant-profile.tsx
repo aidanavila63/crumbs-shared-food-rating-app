@@ -169,7 +169,7 @@ export function RestaurantInfoEditor({
               {store.insights.groups > 1 ? ` by ${store.insights.groups} groups` : ''}
               {store.insights.per_head ? ` · about $${store.insights.per_head} a person` : ''}
               {store.insights.takeout_share !== null
-                ? ` · ${store.insights.takeout_share}% takeout`
+                ? ` · ${store.insights.takeout_share}% of visits were takeout or delivery`
                 : ''}
             </p>
           )}

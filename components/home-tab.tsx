@@ -6,7 +6,8 @@ import { ChefHat, Dices, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { dishAverage } from '@/lib/stats'
-import { PublicRecipes } from './public-recipes'
+import { RecipeFinder } from './public-recipes'
+import { Search } from 'lucide-react'
 import { Switch } from './switch'
 import { haptic } from '@/lib/motion'
 import { undoableDelete } from '@/lib/undoable'
@@ -69,16 +70,23 @@ export function HomeTab({
   const [status, setStatus] = useState<HomeMeal['status']>('Cooked')
   const [busy, setBusy] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [browsing, setBrowsing] = useState(false)
+  // #123 search your meals and recipes shared on Crumbs
+  const [query, setQuery] = useState('')
   const open = meals.find((meal) => meal.id === openId) ?? null
 
   const shown = useMemo(() => {
-    const list = meals.filter((meal) => filter === 'All' || meal.status === filter)
+    const needle = query.trim().toLowerCase()
+    const list = meals.filter(
+      (meal) =>
+        (filter === 'All' || meal.status === filter) &&
+        (!needle ||
+          [meal.name, meal.notes, meal.recipe].some((t) => t?.toLowerCase().includes(needle))),
+    )
     if (sort === 'Top rated') return [...list].sort((a, b) => mealAverage(b) - mealAverage(a))
     if (sort === 'Cooked lately')
       return [...list].sort((a, b) => (lastCooked(b) ?? '').localeCompare(lastCooked(a) ?? ''))
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  }, [meals, filter, sort])
+  }, [meals, filter, sort, query])
 
   if (!v4 && !demo)
     return (
@@ -185,16 +193,21 @@ export function HomeTab({
           <Plus className={`transition-transform ${adding ? 'rotate-45' : ''}`} />
         </button>
       </div>
-      {(v4 || demo) && (
-        <button
-          className="self-start text-sm font-semibold text-primary underline"
-          onClick={() => setBrowsing(true)}
-        >
-          🌍 Recipes people shared on Crumbs
-        </button>
-      )}
-      {browsing && (
-        <PublicRecipes supabase={supabase} demo={demo} onClose={() => setBrowsing(false)} />
+      <label className="field flex items-center gap-2">
+        <Search size={16} className="shrink-0 text-muted-foreground" />
+        <input
+          className="min-w-0 flex-1 bg-transparent outline-none"
+          aria-label="Search meals and recipes"
+          placeholder="Search your meals and recipes on Crumbs"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {(v4 || demo) && <RecipeFinder supabase={supabase} demo={demo} query={query} />}
+      {query.trim() && (
+        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Your meals
+        </p>
       )}
       {adding && (
         <div className="surface rise-panel flex flex-col gap-3">

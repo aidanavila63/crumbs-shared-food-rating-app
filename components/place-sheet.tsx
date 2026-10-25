@@ -313,7 +313,7 @@ function DishRow({
 }
 
 type DishMeta = Partial<
-  Pick<Dish, 'verdict' | 'tags' | 'course' | 'dietary' | 'spice' | 'wishlist'>
+  Pick<Dish, 'verdict' | 'tags' | 'course' | 'dietary' | 'spice' | 'wishlist' | 'price' | 'shares'>
 >
 const COURSES = ['starter', 'main', 'side', 'dessert', 'drink'] as const
 const COURSE_LABEL: Record<(typeof COURSES)[number], string> = {
@@ -558,6 +558,32 @@ export function PlaceSheet({
       const { error } = await supabase.from('places').update({ status: next }).eq('id', place.id)
       if (error) toast.error(error.message)
     }
+  }
+  /** #119 a dish added from Order for the table (with price and how many it shares between) */
+  async function addDishFrom(name: string, price: number | null, shares: number | null) {
+    const base = { place_id: place.id, name: name.slice(0, 120), price, shares }
+    if (demo) {
+      const dish: Dish = {
+        ...base,
+        id: crypto.randomUUID(),
+        description: null,
+        is_ai_suggestion: false,
+        dish_ratings: [],
+      }
+      setDishes((current) => [...current, dish])
+      return dish
+    }
+    const { data, error } = await supabase
+      .from('dishes')
+      .insert({ ...base, created_by: userId })
+      .select('*,dish_ratings(score,points,user_id,notes)')
+      .single()
+    if (error) {
+      toast.error(error.message)
+      return null
+    }
+    setDishes((current) => [...current, data])
+    return data as Dish
   }
   async function addDish() {
     if (!dishName.trim()) return
@@ -968,14 +994,12 @@ export function PlaceSheet({
                 👎 Skip the {dish.name}
               </p>
             ))}
-            {dishes.length >= 2 && (
-              <button
-                className="mt-1 self-start text-sm font-semibold text-primary underline"
-                onClick={() => setTableOpen(true)}
-              >
-                🍽️ Order for the table
-              </button>
-            )}
+            <button
+              className="mt-1 self-start text-sm font-semibold text-primary underline"
+              onClick={() => setTableOpen(true)}
+            >
+              🍽️ Order for the table
+            </button>
           </div>
         )}
         {/* #118 every dish photo your group took here, in one strip */}
@@ -1247,6 +1271,14 @@ export function PlaceSheet({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="font-serif text-xl font-bold">Dishes</h3>
+            {order.length === 0 && skip.length === 0 && (
+              <button
+                className="text-sm font-semibold text-primary underline"
+                onClick={() => setTableOpen(true)}
+              >
+                🍽️ Order for the table
+              </button>
+            )}
             {menuImport && (
               <button
                 className="secondary !min-h-10 !px-3 text-sm"
@@ -1387,9 +1419,14 @@ export function PlaceSheet({
       </div>
       {tableOpen && (
         <OrderForTable
+          placeId={place.id}
           placeName={place.name}
           dishes={dishes}
           members={members}
+          supabase={supabase}
+          demo={demo}
+          onDishMeta={(id, changes) => setDishMeta(id, changes)}
+          onAddDish={addDishFrom}
           onClose={() => setTableOpen(false)}
         />
       )}
