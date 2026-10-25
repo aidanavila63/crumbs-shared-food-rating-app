@@ -10,8 +10,10 @@ import { toast } from 'sonner'
 export type PrivateNoteState = {
   body: string
   nextTime: string
+  /** #202 loyalty / punch card */
+  loyalty: string
   loaded: boolean
-  save: (changes: { body?: string; nextTime?: string }) => Promise<void>
+  save: (changes: { body?: string; nextTime?: string; loyalty?: string }) => Promise<void>
 }
 
 /** Loads and saves your private note + next-time note for one place. */
@@ -29,6 +31,7 @@ export function usePrivateNote({
   const [note, setNote] = useState({
     body: '',
     nextTime: demo && placeId === 'demo-ramen' ? 'Ask for the egg extra soft' : '',
+    loyalty: '',
     loaded: demo,
   })
 
@@ -37,34 +40,42 @@ export function usePrivateNote({
     let cancelled = false
     supabase
       .from('place_private_notes')
-      .select('body,next_time')
+      .select('*')
       .eq('place_id', placeId)
       .eq('user_id', userId)
       .maybeSingle()
       .then(({ data }: any) => {
         if (!cancelled)
-          setNote({ body: data?.body ?? '', nextTime: data?.next_time ?? '', loaded: true })
+          setNote({
+            body: data?.body ?? '',
+            nextTime: data?.next_time ?? '',
+            loyalty: data?.loyalty ?? '',
+            loaded: true,
+          })
       })
     return () => {
       cancelled = true
     }
   }, [demo, placeId, supabase, userId])
 
-  async function save(changes: { body?: string; nextTime?: string }) {
+  async function save(changes: { body?: string; nextTime?: string; loyalty?: string }) {
     const next = {
       body: (changes.body ?? note.body).trim(),
       nextTime: (changes.nextTime ?? note.nextTime).trim().slice(0, 200),
+      loyalty: (changes.loyalty ?? note.loyalty).trim().slice(0, 120),
     }
-    if (next.body === note.body && next.nextTime === note.nextTime) return
+    if (next.body === note.body && next.nextTime === note.nextTime && next.loyalty === note.loyalty)
+      return
     setNote({ ...next, loaded: true })
     if (demo || !userId) return
     const { error } =
-      next.body || next.nextTime
+      next.body || next.nextTime || next.loyalty
         ? await supabase.from('place_private_notes').upsert({
             place_id: placeId,
             user_id: userId,
             body: next.body,
             next_time: next.nextTime || null,
+            ...(next.loyalty || note.loyalty ? { loyalty: next.loyalty || null } : {}),
             updated_at: new Date().toISOString(),
           })
         : await supabase
@@ -80,14 +91,16 @@ export function usePrivateNote({
 export function PrivateNote({ note }: { note: PrivateNoteState }) {
   const [text, setText] = useState(note.body)
   const [next, setNext] = useState(note.nextTime)
-  const [open, setOpen] = useState(!!note.body || !!note.nextTime)
+  const [loyalty, setLoyalty] = useState(note.loyalty)
+  const [open, setOpen] = useState(!!note.body || !!note.nextTime || !!note.loyalty)
   // Fill in once the saved note arrives.
   const [seen, setSeen] = useState(note.loaded)
   if (note.loaded && !seen) {
     setSeen(true)
     setText(note.body)
     setNext(note.nextTime)
-    if (note.body || note.nextTime) setOpen(true)
+    setLoyalty(note.loyalty)
+    if (note.body || note.nextTime || note.loyalty) setOpen(true)
   }
 
   if (!open)
@@ -112,6 +125,19 @@ export function PrivateNote({ note }: { note: PrivateNoteState }) {
           value={next}
           onChange={(event) => setNext(event.target.value)}
           onBlur={() => note.save({ nextTime: next })}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold text-muted-foreground">
+          🎟️ Loyalty / punch card (only you see it)
+        </span>
+        <input
+          className="field text-base"
+          maxLength={120}
+          placeholder="e.g. 7 of 10 stamps, free coffee next"
+          value={loyalty}
+          onChange={(event) => setLoyalty(event.target.value)}
+          onBlur={() => note.save({ loyalty })}
         />
       </label>
       <label className="flex flex-col gap-1">

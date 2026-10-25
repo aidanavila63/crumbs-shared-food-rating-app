@@ -1956,3 +1956,29 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   border-radius: 16px;
   background: color-mix(in srgb, var(--primary) 7%, var(--card));
 }
+
+/* Good to know: yes / no answers */
+.yn-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+.yn-yes {
+  background: #2f7d4f;
+  border-color: #2f7d4f;
+  color: #fff;
+}
+.yn-no {
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: #fff;
+}
+.tag.tag-warn {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}

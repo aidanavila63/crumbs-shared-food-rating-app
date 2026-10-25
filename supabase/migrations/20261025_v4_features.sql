@@ -2442,6 +2442,194 @@ do $$ begin
 end $$;
 
 -- ============================================================================================
+-- 13l. "Good to know" about a restaurant (#206 payments, #207 bookings, #208 patio / late-night /
+--      BYOB / licensed, #140 family, #148 accessibility, #149 diet options, #209 dealbreakers,
+--      #205 entrance & parking notes, #201 deals, #150 storefront photo, #151 closed for good,
+--      #202 loyalty note). Crumbs-owned data: everyone answers yes/no, 2 agreeing (or the owner)
+--      makes it show for everyone. Votes are private; only totals are shown.
+-- ============================================================================================
+create or replace function public.attr_keys()
+returns text[] language sql immutable as $$
+  select array['cards', 'tap', 'cash_only', 'takes_bookings', 'walk_ins', 'patio', 'late_night', 'byob',
+               'licensed', 'kids_menu', 'high_chairs', 'change_table', 'step_free', 'accessible_washroom',
+               'vegan_options', 'gluten_free_options', 'halal_options', 'parking_lot']
+$$;
+create table if not exists public.restaurant_attr_votes (
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  key text not null check (key = any (public.attr_keys())),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  value boolean not null,
+  created_at timestamptz not null default now(),
+  primary key (restaurant_id, key, user_id)
+);
+alter table public.restaurant_attr_votes enable row level security;
+drop policy if exists restaurant_attr_votes_own on public.restaurant_attr_votes;
+create policy restaurant_attr_votes_own on public.restaurant_attr_votes for select to authenticated
+  using (user_id = (select auth.uid()));
+
+-- Totals + verdict per key, plus anonymous dealbreakers from groups' own notes (2+ groups agreeing).
+create or replace function public.restaurant_attrs(target uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'attrs', (select coalesce(jsonb_object_agg(k, jsonb_build_object(
+        'yes', y, 'no', n, 'mine', mine, 'owner', owner,
+        'verdict', case when owner is not null then owner
+                        when y >= 2 and y > n then true when n >= 2 and n > y then false end)), '{}')
+      from (select v.key as k,
+                   count(*) filter (where v.value) as y, count(*) filter (where not v.value) as n,
+                   bool_or(v.value) filter (where v.user_id = auth.uid()) as mine,
+                   bool_or(v.value) filter (where exists (select 1 from public.restaurant_managers m
+                                                           where m.restaurant_id = target and m.user_id = v.user_id)) as owner
+              from public.restaurant_attr_votes v where v.restaurant_id = target group by v.key) t),
+    'groups', (select jsonb_build_object(
+        'loud', count(*) filter (where f.noise = 'loud') >= 2,
+        'hard_parking', count(*) filter (where f.parking in ('hard', 'none')) >= 2,
+        'long_wait', count(*) filter (where f.wait = 'long') >= 2,
+        'cash_only', count(*) filter (where f.cash_only) >= 2,
+        'not_accessible', count(*) filter (where f.accessible = false) >= 2)
+      from public.place_facts f join public.places p on p.id = f.place_id where p.restaurant_id = target)
+  ) where auth.uid() is not null
+$$;
+
+create or replace function public.set_restaurant_attr(target uuid, attr text, val boolean)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  owner boolean := public.manages_restaurant(target);
+  before integer;
+  agree integer;
+  pts integer := 0;
+begin
+  if me is null then raise exception 'Please sign in first'; end if;
+  if not (public.my_restaurant(target) or owner) then raise exception 'Not one of your restaurants'; end if;
+  if not (attr = any (public.attr_keys())) then raise exception 'Unknown detail'; end if;
+  if val is null then
+    delete from public.restaurant_attr_votes where restaurant_id = target and key = attr and user_id = me;
+    return public.restaurant_attrs(target);
+  end if;
+  if not owner and public.over_daily_cap('fact') then raise exception 'That’s the most details for today — thanks! Try again tomorrow.'; end if;
+  select count(*) into before from public.restaurant_attr_votes where restaurant_id = target and key = attr and user_id <> me;
+  select count(*) into agree from public.restaurant_attr_votes where restaurant_id = target and key = attr and user_id <> me and value = val;
+  insert into public.restaurant_attr_votes (restaurant_id, key, user_id, value) values (target, attr, me, val)
+  on conflict (restaurant_id, key, user_id) do update set value = excluded.value, created_at = now();
+  -- New info earns: the first answer (detail), or one of the first few agreeing (confirm). Owners: none.
+  if not owner then
+    if before = 0 then pts := public.points_for('detail');
+    elsif agree between 1 and 2 then pts := public.points_for('confirm');
+    end if;
+    perform public.award_points(me, 'attr', pts, target, target::text || ':' || attr);
+  end if;
+  return public.restaurant_attrs(target) || jsonb_build_object('points', pts);
+end $$;
+
+-- Notes and photos everyone can see: how to find the door, where to park, deals, the storefront.
+create table if not exists public.restaurant_tips (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  kind text not null check (kind in ('entrance', 'parking', 'deal', 'storefront')),
+  body text check (char_length(body) <= 300),
+  photo_path text check (char_length(photo_path) <= 200),
+  user_id uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (body is not null or photo_path is not null)
+);
+create index if not exists restaurant_tips_idx on public.restaurant_tips (restaurant_id, kind, created_at desc);
+create table if not exists public.restaurant_tip_votes (
+  tip_id uuid not null references public.restaurant_tips(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  still boolean not null,
+  created_at timestamptz not null default now(),
+  primary key (tip_id, user_id)
+);
+alter table public.restaurant_tips enable row level security;
+alter table public.restaurant_tip_votes enable row level security;
+drop policy if exists restaurant_tips_read on public.restaurant_tips;
+drop policy if exists restaurant_tips_delete on public.restaurant_tips;
+create policy restaurant_tips_read on public.restaurant_tips for select to authenticated using (true);
+create policy restaurant_tips_delete on public.restaurant_tips for delete to authenticated
+  using (user_id = (select auth.uid()) or public.is_crumbs_admin() or public.manages_restaurant(restaurant_id));
+drop policy if exists restaurant_tip_votes_read on public.restaurant_tip_votes;
+drop policy if exists restaurant_tip_votes_write on public.restaurant_tip_votes;
+create policy restaurant_tip_votes_read on public.restaurant_tip_votes for select to authenticated using (true);
+create policy restaurant_tip_votes_write on public.restaurant_tip_votes for all to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+create or replace function public.add_restaurant_tip(target uuid, tip_kind text, tip_body text, photo text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  owner boolean := public.manages_restaurant(target);
+  first boolean;
+  new_id uuid;
+begin
+  if me is null then raise exception 'Please sign in first'; end if;
+  if not (public.my_restaurant(target) or owner) then raise exception 'Not one of your restaurants'; end if;
+  if not owner and public.over_daily_cap('fact') then raise exception 'That’s the most details for today — thanks! Try again tomorrow.'; end if;
+  if (select count(*) from public.restaurant_tips where user_id = me and created_at > now() - interval '1 day') >= 20 then
+    raise exception 'That’s a lot of notes today — try again tomorrow';
+  end if;
+  first := not exists (select 1 from public.restaurant_tips where restaurant_id = target and kind = tip_kind);
+  insert into public.restaurant_tips (restaurant_id, kind, body, photo_path, user_id)
+  values (target, tip_kind, nullif(left(trim(tip_body), 300), ''), photo, me) returning id into new_id;
+  if first and not owner then
+    perform public.award_points(me, 'tip', public.points_for('detail'), target, target::text || ':' || tip_kind);
+  end if;
+  return new_id;
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['restaurant_attrs(uuid)', 'set_restaurant_attr(uuid, text, boolean)',
+                           'add_restaurant_tip(uuid, text, text, text)'] loop
+    execute format('revoke execute on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
+-- Today's details count includes yes/no answers and notes (for the daily caps).
+create or replace function public.my_day_caps()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  shaky boolean := coalesce(public.user_trust(me) < 0.3, false);
+  t integer := case when shaky then 0 else least(public.my_tier(), 4) end;
+  caps jsonb := (select day_caps from public.point_rules where id = 1);
+  admin boolean := public.is_crumbs_admin();
+begin
+  return jsonb_build_object(
+    'tier', t, 'shaky', shaky,
+    'fact', case when admin then null else caps->'fact'->t end,
+    'vote', case when admin then null else caps->'vote'->t end,
+    'price', case when admin then null else caps->'price'->t end,
+    'used', jsonb_build_object(
+      'fact', (select count(*) from public.restaurant_facts where user_id = me and created_at >= current_date)
+            + (select count(*) from public.restaurant_attr_votes where user_id = me and created_at >= current_date)
+            + (select count(*) from public.restaurant_tips where user_id = me and created_at >= current_date),
+      'vote', (select count(*) from public.restaurant_dish_votes where user_id = me and created_at >= current_date),
+      'price', (select count(*) from public.restaurant_dish_prices where user_id = me and created_at >= current_date)));
+end $$;
+
+-- #151 When a restaurant is found to be closed for good (members, owner or a refresh), every group's
+-- copy shows it straight away.
+create or replace function public.spread_business_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.business_status is distinct from old.business_status
+     and new.business_status in ('CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY', 'OPERATIONAL') then
+    update public.places set business_status = new.business_status
+     where restaurant_id = new.id and business_status is distinct from new.business_status;
+  end if;
+  return new;
+end $$;
+drop trigger if exists restaurants_spread_status on public.restaurants;
+create trigger restaurants_spread_status after update of business_status on public.restaurants
+  for each row execute function public.spread_business_status();
+
+-- #202 Loyalty / punch card note, private like the rest of your notes.
+alter table public.place_private_notes add column if not exists loyalty text check (char_length(loyalty) <= 120);
+
+-- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.
 -- ============================================================================================
 -- update public.profiles set is_admin = true where id = (select id from auth.users where email = 'YOUR_EMAIL_HERE');

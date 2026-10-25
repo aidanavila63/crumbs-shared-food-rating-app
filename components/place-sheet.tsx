@@ -62,6 +62,7 @@ import { usualCost, valueScore } from '@/lib/value'
 import { OtherGroups } from './other-groups'
 import { PrivateNote, usePrivateNote } from './private-note'
 import { OrderForTable } from './order-for-table'
+import { GoodToKnow } from './good-to-know'
 import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
 import { photoUrl } from '@/lib/photos'
 function DishRow({
@@ -957,11 +958,16 @@ export function PlaceSheet({
         </button>
       </div>
       <div className="mt-5 flex flex-col gap-5">
-        {(privateNote.nextTime || dishes.some((d) => d.wishlist)) && (
+        {(privateNote.nextTime || privateNote.loyalty || dishes.some((d) => d.wishlist)) && (
           <div className="flex flex-col gap-2">
             {privateNote.nextTime && (
               <p className="next-time-note rise-panel text-sm">
                 📌 <strong>Next time:</strong> {privateNote.nextTime}
+              </p>
+            )}
+            {privateNote.loyalty && (
+              <p className="next-time-note rise-panel text-sm">
+                🎟️ <strong>Loyalty:</strong> {privateNote.loyalty}
               </p>
             )}
             {dishes.some((d) => d.wishlist) && (
@@ -992,6 +998,15 @@ export function PlaceSheet({
               </span>
             ))}
           </div>
+        )}
+        {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
+          <GoodToKnow
+            restaurantId={restaurant.restaurant.id}
+            groupId={place.group_id}
+            userId={userId}
+            supabase={supabase}
+            demo={demo}
+          />
         )}
         {(order.length > 0 || skip.length > 0) && (
           <div className="surface-soft flex flex-col gap-1">

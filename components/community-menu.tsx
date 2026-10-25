@@ -8,6 +8,7 @@ import type { RestaurantStore } from '@/hooks/use-restaurant'
 import { missingFromOurs, priceAge, priceIsOld, type MenuDish } from '@/lib/restaurants'
 import { haptic } from '@/lib/motion'
 import { toast } from 'sonner'
+import { menuAgeMonths } from '@/lib/good-to-know'
 
 const COURSE: Record<string, string> = {
   starter: 'Starters',
@@ -66,6 +67,13 @@ export function CommunityMenu({
         </span>
       </div>
       {store.loading && !store.menu.length && <div className="skeleton h-16" />}
+      {(menuAgeMonths(store.menu) ?? 0) >= 6 && (
+        // #203 nudge for an old menu (the Menu photo button sits just above)
+        <p className="next-time-note text-sm">
+          📸 This menu is {menuAgeMonths(store.menu)}+ months old — snap a{' '}
+          <strong>Menu photo</strong> next time you’re there to keep it right.
+        </p>
+      )}
       {!store.loading && !store.menu.length && (
         <p className="text-sm text-muted-foreground">
           No menu yet. Take a <strong>Menu photo</strong> — the dishes you confirm build {placeName}

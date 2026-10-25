@@ -21,6 +21,7 @@ import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { track } from '@/lib/analytics'
 import { ReadPhotoButton } from './photo-reader'
+import { priceLevelFromSpend } from '@/lib/good-to-know'
 
 const LABEL: Record<FactField, string> = {
   name: 'Name',
@@ -244,6 +245,14 @@ export function RestaurantInfoEditor({
                 ) : (
                   <span className="text-muted-foreground"> · snap the menu to keep this right</span>
                 )}
+                {/* #204 cross-check with what people actually spent */}
+                {priceLevelFromSpend(store.insights?.per_head) &&
+                  priceLevelFromSpend(store.insights?.per_head) !== r.price_level && (
+                    <span className="block text-xs text-muted-foreground">
+                      Crumbs visits say {'$'.repeat(priceLevelFromSpend(store.insights?.per_head)!)}{' '}
+                      (~${store.insights!.per_head} a person)
+                    </span>
+                  )}
               </span>
             </div>
           ) : null}
