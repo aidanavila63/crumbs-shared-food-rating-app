@@ -2053,3 +2053,43 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   border-radius: 6px 6px 2px 2px;
   background: var(--primary);
 }
+
+/* #216 city passport */
+.passport-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.passport-stamp {
+  padding: 10px 6px;
+  border: 2px dashed var(--primary);
+  border-radius: 14px;
+  color: var(--primary);
+  text-align: center;
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+/* #218 year map in Wrapped */
+.wrap-map {
+  width: min(78vw, 340px);
+  height: min(78vw, 340px);
+  margin: 8px auto;
+  border-radius: 24px;
+  background: rgb(255 255 255 / 0.12);
+}
+.wrap-dot {
+  fill: #fff;
+  opacity: 0.9;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wrap-dot-in 0.5s ease-out both;
+}
+@keyframes wrap-dot-in {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+:root[data-motion='off'] .wrap-dot {
+  animation: none;
+}

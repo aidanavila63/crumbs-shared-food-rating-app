@@ -160,3 +160,54 @@ export function goalProgress(
         ).length
   }
 }
+
+// ---------- #156 seasonal challenge ----------
+/** One challenge a season (Dec–Feb, Mar–May, Jun–Aug, Sep–Nov), counted over that season. */
+export function seasonalChallenge(places: Place[], today = new Date()): Challenge {
+  const m = today.getMonth()
+  const y = today.getFullYear()
+  const season = m === 11 || m <= 1 ? 'winter' : m <= 4 ? 'spring' : m <= 7 ? 'summer' : 'fall'
+  const startMonth = { winter: 11, spring: 2, summer: 5, fall: 8 }[season]
+  const startYear = season === 'winter' && m <= 1 ? y - 1 : y
+  const start = new Date(startYear, startMonth, 1)
+  const end = new Date(startYear, startMonth + 3, 0)
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const visits = allVisits(places).filter(
+    (v) => v.visited_on >= iso(start) && v.visited_on <= iso(end),
+  )
+  const text = (p: Place) => [p.name, p.cuisine, ...(p.tags ?? [])].join(' ').toLowerCase()
+  const avg = (p: Place) =>
+    p.place_ratings.length
+      ? p.place_ratings.reduce((s, r) => s + (r.points ?? r.score * 20), 0) /
+        p.place_ratings.length /
+        20
+      : 0
+  const rule = {
+    winter: {
+      title: '❄️ Soup season: 3 visits for ramen, pho or soup',
+      test: (v: (typeof visits)[number]) => /ramen|pho|soup|noodle|hot ?pot/.test(text(v.place)),
+    },
+    spring: {
+      title: '🌸 Brunch crawl: 3 breakfast or brunch visits',
+      test: (v: (typeof visits)[number]) =>
+        (v as { meal_time?: string }).meal_time === 'breakfast' ||
+        /brunch|breakfast|café|cafe/.test(text(v.place)),
+    },
+    summer: {
+      title: '☀️ Patio crawl: 3 visits to places with a patio',
+      test: (v: (typeof visits)[number]) => /patio|terrace|rooftop/.test(text(v.place)),
+    },
+    fall: {
+      title: '🍂 Comfort food: 3 visits to places you rate 4★ or more',
+      test: (v: (typeof visits)[number]) => avg(v.place) >= 4,
+    },
+  }[season]
+  return {
+    id: `season-${season}`,
+    title: rule.title,
+    done: Math.min(3, visits.filter(rule.test).length),
+    target: 3,
+    note: `Seasonal — until ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+  }
+}

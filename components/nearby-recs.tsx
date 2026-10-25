@@ -1,7 +1,7 @@
 'use client'
 // #36 "You loved X → try Y". Your own want-to-try list first (free), then a tap to look for
 // new places nearby with the same cuisine on OpenStreetMap (free, no Google calls).
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Telescope } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place } from '@/hooks/use-crumbs-data'
@@ -10,6 +10,7 @@ import { addFoundPlace } from '@/lib/add-found'
 import { average5 } from '@/lib/ratings'
 import { distanceKm } from '@/lib/stats'
 import { haptic } from '@/lib/motion'
+import { dueNear, rememberNear } from '@/lib/new-openings'
 
 type Found = {
   google_place_id: string
@@ -60,6 +61,45 @@ export function NearbyRecs({
   const [found, setFound] = useState<Found[] | null>(null)
   const [busy, setBusy] = useState(false)
   const from = loved.find((p) => p.id === lookFrom) ?? null
+  // #152 new on the map since the last look, per favourite
+  const [fresh, setFresh] = useState<Record<string, string[]>>({})
+
+  async function nearby(place: Place): Promise<Found[]> {
+    if (demo) return []
+    const url = new URL('/api/osm/nearby', window.location.origin)
+    url.searchParams.set('lat', String(place.latitude))
+    url.searchParams.set('lon', String(place.longitude))
+    url.searchParams.set('cuisine', place.cuisine ?? '')
+    const response = await fetch(url)
+    const json = await response.json()
+    if (!response.ok) throw new Error(json.error)
+    return json.results ?? []
+  }
+
+  // Once a week, quietly look around your top 2 favourites for anything new.
+  useEffect(() => {
+    if (demo) return
+    let cancelled = false
+    const due = loved.slice(0, 2).filter((p) => dueNear(p.id))
+    ;(async () => {
+      for (const p of due) {
+        try {
+          const results = await nearby(p)
+          const ids = rememberNear(
+            p.id,
+            results.map((r) => r.google_place_id),
+          )
+          if (!cancelled && ids.length) setFresh((all) => ({ ...all, [p.id]: ids }))
+        } catch {
+          return
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loved.map((p) => p.id).join(','), demo])
 
   async function discover(place: Place) {
     haptic('tap')
@@ -82,14 +122,13 @@ export function NearbyRecs({
           },
         ]
       else {
-        const url = new URL('/api/osm/nearby', window.location.origin)
-        url.searchParams.set('lat', String(place.latitude))
-        url.searchParams.set('lon', String(place.longitude))
-        url.searchParams.set('cuisine', place.cuisine ?? '')
-        const response = await fetch(url)
-        const json = await response.json()
-        if (!response.ok) throw new Error(json.error)
-        results = json.results ?? []
+        results = await nearby(place)
+        const ids = rememberNear(
+          place.id,
+          results.map((r) => r.google_place_id),
+        )
+        if (ids.length)
+          setFresh((all) => ({ ...all, [place.id]: [...(all[place.id] ?? []), ...ids] }))
       }
       const have = new Set(places.map((p) => p.google_place_id))
       const names = new Set(places.map((p) => p.name.trim().toLowerCase()))
@@ -168,6 +207,7 @@ export function NearbyRecs({
                 onClick={() => discover(p)}
               >
                 <Telescope size={14} className="mr-1" /> {p.cuisine} near {p.name}
+                {fresh[p.id]?.length ? ` · 🆕 ${fresh[p.id].length} new` : ''}
               </button>
             ))}
           </div>
@@ -185,7 +225,12 @@ export function NearbyRecs({
                   className="surface-soft flex items-center justify-between gap-2"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold">{item.name}</span>
+                    <span className="block truncate font-semibold">
+                      {fresh[from.id]?.includes(item.google_place_id) && (
+                        <span className="tag mr-1">🆕 NEW</span>
+                      )}
+                      {item.name}
+                    </span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {away(
                         distanceKm(

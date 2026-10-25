@@ -404,3 +404,10 @@ Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload 
 - Backups now also include posts, menu files, Good-to-know votes, notes and deal votes.
 - Note: on the free hosting plan the job has ~60 s, so it reads ~4 PDFs per run (~12 at month end + any "Read now"). Fine for now; a second scheduled run can be added if the queue grows.
 - Tests 119/119; SQL tested (owner-only upload rows, path must be the restaurant's folder, import server-only, dishes owner-checked); build passes.
+
+## Round 37 - fun (#156 #216 #218 #219 #152) (Oct 25, Claude in Cowork)
+- **#156 seasonal challenge** at the top of the monthly challenges: ❄️ soup season (Dec–Feb), 🌸 brunch crawl (Mar–May), ☀️ patio crawl (Jun–Aug), 🍂 comfort food 4★+ (Sep–Nov); 3 visits over the season.
+- **#216 city passport** (Profile → Achievements): a stamp per city you've eaten in (city from the address, or the trip a place is saved under), with the month of the first visit and number of places.
+- **#218 year map** in Wrapped: every place you ate at that year as dots in the shape of your map (no map tiles needed, free). **#219 since last year** slide: cuisines you tried for the first time, your go-to cuisine changing, rating higher/tougher than last year.
+- **#152 new near your favourites**: once a week the phone quietly looks around your top 2 favourites on the open map and remembers what's there; anything new since last time shows "🆕 N new" on the favourite and a NEW tag in the results (stored on the phone; free).
+- Tests 122/122; build passes; demo checked.

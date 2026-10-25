@@ -19,6 +19,8 @@ type Slide = {
   unit?: string
   line?: string
   sub?: string
+  /** #218 year map */
+  dots?: { x: number; y: number; n: number }[]
 }
 
 export function wrappedSlides(w: Wrapped, groupName: string): Slide[] {
@@ -121,6 +123,40 @@ export function wrappedSlides(w: Wrapped, groupName: string): Slide[] {
       line:
         w.dates && w.takeout
           ? `and ${w.takeout} takeout night${w.takeout === 1 ? '' : 's'}`
+          : undefined,
+    })
+  if (w.dots.length >= 3)
+    s.push({
+      key: 'map',
+      emoji: '🗺️',
+      kicker: 'Your year on the map',
+      dots: w.dots,
+      line: `${w.places} places, every dot a meal out`,
+    })
+  if (
+    w.evolution &&
+    (w.evolution.newCuisines.length ||
+      w.evolution.ratingChange ||
+      w.evolution.lastTop !== w.evolution.thisTop)
+  )
+    s.push({
+      key: 'evolution',
+      emoji: '🌱',
+      kicker: `Since ${w.year - 1}`,
+      bigText: w.evolution.newCuisines.length
+        ? `New: ${w.evolution.newCuisines.join(', ')}`
+        : w.evolution.thisTop && w.evolution.lastTop !== w.evolution.thisTop
+          ? `${w.evolution.lastTop ?? '—'} → ${w.evolution.thisTop}`
+          : 'Same tastes, new spots',
+      line:
+        w.evolution.lastTop && w.evolution.thisTop && w.evolution.lastTop !== w.evolution.thisTop
+          ? `Your go-to went from ${w.evolution.lastTop} to ${w.evolution.thisTop}`
+          : w.evolution.newCuisines.length
+            ? 'Cuisines you tried for the first time'
+            : undefined,
+      sub:
+        w.evolution.ratingChange && Math.abs(w.evolution.ratingChange) >= 0.2
+          ? `You rated ${w.evolution.ratingChange > 0 ? 'higher' : 'tougher'} this year (${w.evolution.ratingChange > 0 ? '+' : ''}${w.evolution.ratingChange}★)`
           : undefined,
     })
   if (w.you)
@@ -319,7 +355,25 @@ export function WrappedStory({
           <div key={`${year}-${slide.key}`} className="wrap-card" aria-live="polite">
             <p className="wrap-emoji">{slide.emoji}</p>
             <p className="wrap-kicker">{slide.kicker}</p>
-            {slide.big !== undefined ? (
+            {slide.dots ? (
+              <svg
+                viewBox="0 0 100 100"
+                className="wrap-map"
+                role="img"
+                aria-label="Your year on the map"
+              >
+                {slide.dots.map((d, i) => (
+                  <circle
+                    key={i}
+                    cx={d.x * 100}
+                    cy={d.y * 100}
+                    r={Math.min(6, 1.6 + d.n * 0.8)}
+                    className="wrap-dot"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  />
+                ))}
+              </svg>
+            ) : slide.big !== undefined ? (
               <BigNumber value={slide.big} unit={slide.unit} />
             ) : (
               <p className="wrap-big wrap-big-text">{slide.bigText}</p>

@@ -5,7 +5,7 @@ import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
 import { haptic } from '@/lib/motion'
 import { Overlay } from './overlay'
-import { StreakCard } from './goals-cards'
+import { PassportCard, StreakCard } from './goals-cards'
 import { BingoCard, StatsPanel } from './stats-panel'
 import { PhotoTimeline } from './photo-timeline'
 import { SettingsPanel } from './settings-panel'
@@ -160,6 +160,7 @@ export function ProfileHub({
         <Overlay label="Achievements" title="Achievements" onClose={closeTop}>
           <div className="stagger flex flex-col gap-4">
             <StreakCard places={allPlaces} />
+            <PassportCard places={allPlaces} />
             <ContributionsCard
               supabase={settings.supabase}
               demo={settings.demo}

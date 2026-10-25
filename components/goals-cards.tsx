@@ -1,11 +1,13 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import type { HomeMeal, Place } from '@/hooks/use-crumbs-data'
+import type { HomeMeal, List, Place } from '@/hooks/use-crumbs-data'
+import { passport } from '@/lib/passport'
 import {
   GOAL_KINDS,
   goalProgress,
   monthlyChallenges,
+  seasonalChallenge,
   visitStreak,
   type GoalKind,
 } from '@/lib/goals'
@@ -38,7 +40,10 @@ export function StreakCard({ places }: { places: Place[] }) {
 
 /** This month's challenges (shown in Decide & Plan). */
 export function ChallengesCard({ places }: { places: Place[] }) {
-  const challenges = useMemo(() => monthlyChallenges(places), [places])
+  const challenges = useMemo(
+    () => [seasonalChallenge(places), ...monthlyChallenges(places)],
+    [places],
+  )
   const month = new Date().toLocaleDateString(undefined, { month: 'long' })
   const done = challenges.filter((challenge) => challenge.done >= challenge.target).length
   return (
@@ -233,6 +238,42 @@ export function GroupGoalsCard({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** #216 City passport: a stamp for every city you've eaten in. */
+export function PassportCard({ places, lists = [] }: { places: Place[]; lists?: List[] }) {
+  const stamps = useMemo(() => passport(places, lists), [places, lists])
+  if (!stamps.length) return null
+  return (
+    <div className="surface flex flex-col gap-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-2xl font-bold">City passport</h2>
+        <span className="text-sm text-muted-foreground">
+          {stamps.length} cit{stamps.length === 1 ? 'y' : 'ies'}
+        </span>
+      </div>
+      <div className="passport-grid">
+        {stamps.map((s, i) => (
+          <div
+            key={s.city}
+            className="passport-stamp"
+            style={{ rotate: `${((i * 37) % 13) - 6}deg` }}
+          >
+            <span className="block font-serif text-lg font-bold leading-tight">{s.city}</span>
+            <span className="block text-[0.65rem] uppercase tracking-wide">
+              {new Date(`${s.first}T12:00:00`).toLocaleDateString(undefined, {
+                month: 'short',
+                year: 'numeric',
+              })}
+            </span>
+            <span className="block text-[0.65rem]">
+              {s.places} place{s.places === 1 ? '' : 's'}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

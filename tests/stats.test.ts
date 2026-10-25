@@ -340,3 +340,40 @@ test('must try (#14)', async () => {
     ['B', 'A', 'D'],
   )
 })
+
+test('wrapped: map dots keep the shape and taste evolution vs last year', async () => {
+  const { buildWrapped, mapDots } = await import('../lib/wrapped.ts')
+  const dots = mapDots([
+    { lat: 43.6, lng: -79.4, n: 1 },
+    { lat: 43.7, lng: -79.3, n: 3 },
+  ])
+  assert.equal(dots.length, 2)
+  for (const d of dots) assert.ok(d.x >= 0.08 && d.x <= 0.92 && d.y >= 0.08 && d.y <= 0.92)
+  assert.ok(dots[1].y < dots[0].y) // further north = higher up
+  const p = (id: string, cuisine: string, lat: number, visits: string[], score: number) =>
+    ({
+      id,
+      name: id,
+      cuisine,
+      status: 'Been',
+      latitude: lat,
+      longitude: -79.4,
+      place_visits: visits.map((d, i) => ({ id: `${id}${i}`, visited_on: d })),
+      place_ratings: [{ user_id: 'me', score }],
+      dishes: [],
+    }) as any
+  const w = buildWrapped({
+    year: 2026,
+    userId: 'me',
+    places: [
+      p('a', 'Thai', 43.6, ['2025-05-01'], 3),
+      p('b', 'Ethiopian', 43.7, ['2026-02-01', '2026-03-01'], 5),
+      p('c', 'Thai', 43.65, ['2026-04-01'], 5),
+      p('d', 'Pizza', 43.62, ['2026-06-01'], 5),
+    ],
+  })!
+  assert.equal(w.dots.length, 3)
+  assert.deepEqual(w.evolution?.newCuisines, ['Ethiopian', 'Pizza'])
+  assert.equal(w.evolution?.lastTop, 'Thai')
+  assert.equal(w.evolution?.ratingChange, 2)
+})
