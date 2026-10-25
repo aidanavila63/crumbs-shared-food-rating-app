@@ -8,6 +8,7 @@ import { haptic } from '@/lib/motion'
 import { timeAgo } from './social'
 import { analyticsOn } from '@/lib/analytics'
 import { POINTS, type PointRules } from '@/lib/tiers'
+import { BACKUP_BUCKET } from '@/lib/backup'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -211,7 +212,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
               label="Photos (free: 1 GB)"
               used={stats.storage_bytes ?? 0}
               limit={1024 ** 3}
-              hint="Move photos to Cloudflare R2 (10 GB free, no download fees) when this passes ~80%."
+              hint="When this passes ~80%, add the R2 settings in Vercel (repo DEVLOG Round 22): new photos then go to Cloudflare R2 (10 GB free, no download fees)."
             />
             <div>
               <p className="text-sm font-semibold">Data Crumbs owns</p>
@@ -272,6 +273,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
 
       <BudgetsCard supabase={supabase} demo={demo} />
       <PointsCard supabase={supabase} demo={demo} />
+      <BackupsCard supabase={supabase} demo={demo} />
       <ClaimsCard supabase={supabase} demo={demo} />
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
@@ -551,6 +553,75 @@ function BudgetsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </div>
         )
       })}
+    </section>
+  )
+}
+
+/** #89 Weekly automatic backups (private bucket, newest 8 kept). */
+function BackupsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [files, setFiles] = useState<{ name: string; size: number }[] | null>(
+    demo ? [{ name: 'crumbs-2026-10-19.json.gz', size: 182_000 }] : null,
+  )
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    if (demo) return
+    const { data } = await supabase.storage.from(BACKUP_BUCKET).list('', { limit: 20 })
+    setFiles(
+      (data ?? [])
+        .filter((f: any) => f.name.endsWith('.json.gz'))
+        .map((f: any) => ({ name: f.name, size: f.metadata?.size ?? 0 }))
+        .sort((a: any, b: any) => b.name.localeCompare(a.name)),
+    )
+  }, [demo, supabase])
+  useEffect(() => {
+    load()
+  }, [load])
+  async function now() {
+    if (demo) return toast('Backups need the real database')
+    setBusy(true)
+    try {
+      const response = await fetch('/api/backup', { method: 'POST' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Backup failed')
+      toast.success(`Saved ${body.saved} (${Math.round(body.bytes / 1024)} KB, ${body.rows} rows)`)
+      load()
+    } catch (error: any) {
+      toast.error(error?.message || 'Backup failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function download(name: string) {
+    const { data, error } = await supabase.storage.from(BACKUP_BUCKET).createSignedUrl(name, 300)
+    if (error) return toast.error(error.message)
+    window.open(data.signedUrl, '_blank')
+  }
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Backups</h3>
+      <p className="text-sm text-muted-foreground">
+        Every Monday all Crumbs tables are saved as one compressed file (newest 8 kept). Needs
+        SUPABASE_SERVICE_ROLE_KEY and CRON_SECRET in Vercel. Photos and sign-in accounts aren’t
+        in it.
+      </p>
+      {files?.length ? (
+        files.map((f) => (
+          <div key={f.name} className="flex items-center justify-between gap-2 text-sm">
+            <span>
+              {f.name.replace('crumbs-', '').replace('.json.gz', '')}
+              <span className="text-muted-foreground"> · {Math.max(1, Math.round(f.size / 1024))} KB</span>
+            </span>
+            <button className="text-xs text-primary underline" onClick={() => download(f.name)}>
+              Download
+            </button>
+          </div>
+        ))
+      ) : (
+        <p className="text-sm text-muted-foreground">No backups yet.</p>
+      )}
+      <button className="secondary !min-h-10 text-sm" disabled={busy} onClick={now}>
+        {busy ? 'Backing up…' : 'Back up now'}
+      </button>
     </section>
   )
 }

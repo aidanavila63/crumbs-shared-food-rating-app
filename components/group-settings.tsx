@@ -6,6 +6,7 @@ import type { Group, GroupSettings, Profile } from '@/hooks/use-crumbs-data'
 import { settingsOf, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { Switch } from './switch'
+import { PhotoButton } from './photo-button'
 
 const COLORS = ['#7b2d5b', '#b23a26', '#1f5f8b', '#2f6b4a', '#8f5a06', '#4b3f8f']
 const SCALES: { id: Scale; label: string }[] = [
@@ -133,6 +134,25 @@ export function GroupSettingsCard({
                 ))}
               </div>
             </div>
+            <span className="text-sm text-muted-foreground">Cover photo (top of the Group tab)</span>
+            <PhotoButton
+              label={`${group.name} cover`}
+              path={group.cover_path}
+              groupId={group.id}
+              supabase={supabase}
+              demo={demo}
+              onChange={async (cover_path) => {
+                const before = group
+                onGroup({ ...group, cover_path })
+                const { error } = await supabase.from('groups').update({ cover_path }).eq('id', group.id)
+                if (error) {
+                  onGroup(before)
+                  toast.error(error.message)
+                  return false
+                }
+                return true
+              }}
+            />
           </div>
 
           <div className="flex flex-col gap-2">

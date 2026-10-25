@@ -8,6 +8,7 @@ import { inviteLink } from '@/lib/invite'
 import type { HomeMeal } from '@/hooks/use-crumbs-data'
 import { ActivityFeed, MemoriesCard } from './group-feed'
 import { OwnerTag } from './restaurant-profile'
+import { photoUrl } from '@/lib/photos'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -92,8 +93,17 @@ export function GroupTab({
       toast(inviteLink(group.join_code))
     }
   }
+  const cover = photoUrl(group.cover_path)
   return (
     <section className="stagger flex flex-col gap-4">
+      {cover && (
+        <div className="group-cover" style={{ backgroundImage: `url(${cover})` }}>
+          <p className="font-serif text-3xl font-bold text-white">
+            {group.emoji ? `${group.emoji} ` : ''}
+            {group.name}
+          </p>
+        </div>
+      )}
       <div className="surface">
         <p className="text-sm text-muted-foreground">Invite code</p>
         <div className="mt-2 flex items-center justify-between">

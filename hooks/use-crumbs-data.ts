@@ -99,6 +99,8 @@ export type Group = {
   settings?: GroupSettings | null
   emoji?: string | null
   color?: string | null
+  /** #46 cover photo path in the photo bucket */
+  cover_path?: string | null
 }
 export type HomeMealRating = { user_id: string; score: number; notes: string | null }
 export type HomeMealCook = {

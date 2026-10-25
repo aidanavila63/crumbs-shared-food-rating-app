@@ -39,6 +39,8 @@ end $$;
 alter table public.groups add column if not exists settings jsonb not null default '{}'::jsonb;
 alter table public.groups add column if not exists emoji text check (emoji is null or char_length(emoji) <= 8);
 alter table public.groups add column if not exists color text check (color is null or color ~ '^#[0-9a-fA-F]{6}$');
+-- #46 group cover photo (a file in the group's photo folder)
+alter table public.groups add column if not exists cover_path text check (cover_path is null or char_length(cover_path) <= 200);
 
 -- Admins can edit the group too (name, settings, look); only the owner can delete it.
 drop policy if exists groups_update on public.groups;
@@ -1920,6 +1922,16 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ============================================================================================
+-- 13f. Automatic backups (#89): a private bucket the weekly backup job writes to (with the server
+-- key, which skips these rules). Only Crumbs admins can list and download the files.
+-- ============================================================================================
+insert into storage.buckets (id, name, public) values ('crumbs-backups', 'crumbs-backups', false)
+on conflict (id) do nothing;
+drop policy if exists crumbs_backups_admin_read on storage.objects;
+create policy crumbs_backups_admin_read on storage.objects for select to authenticated
+  using (bucket_id = 'crumbs-backups' and public.is_crumbs_admin());
 
 -- ============================================================================================
 -- 13b. Your data (#88 delete account, #89 backups)

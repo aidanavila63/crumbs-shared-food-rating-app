@@ -269,3 +269,17 @@ Aidan: keep making features.
 - Admin switch **`menu_ai`** seeded **Admin** (a missing switch also means admins only); new budget **`menu_photo_ai`**: 20/day, 300/month overall, 0 per person by tier — so only admins (exempt from personal limits) until you raise those numbers in the Spending guard. Server checks switch + budget, so it can't be called around.
 - `useFlags` switches can now default to off (`flag(key, fallback)`).
 - Tests 71/71 (image check); build passes; demo clean.
+
+## Round 22 - group cover photo, automatic backups, photos on R2 when needed (Oct 24, Claude in Cowork)
+- **#46 Group cover photo:** Group settings → Group look → Cover photo (`groups.cover_path`, same photo folder as the group's other photos). Shows as a banner with the group's emoji + name at the top of the Group tab.
+- **#89 Automatic backups** (`app/api/backup`, `lib/backup.ts`, `vercel.json` cron Mondays 07:17 UTC): every Crumbs table → one gzipped JSON in the private `crumbs-backups` bucket, newest 8 kept (~a few hundred KB each now). Admin → Backups lists them (Download = 5-minute link) and has **Back up now**. Not included: photos (already files) and sign-in accounts (kept by the database host). Off until set up:
+  1. Supabase → Project Settings → API → copy the **service_role** key → Vercel → Settings → Environment Variables → `SUPABASE_SERVICE_ROLE_KEY` (Production only; never `NEXT_PUBLIC_`).
+  2. Vercel → add `CRON_SECRET` = any long random string (Vercel sends it to the scheduled job).
+  3. Redeploy. Uses 1 of the 2 free scheduled jobs on the Hobby plan, ~4 runs a month.
+  - Restoring: download the file, unzip, and insert table by table in the SQL editor (ask Claude to turn a backup into SQL).
+- **#80 Photos on Cloudflare R2 — ready, off by default** (`app/api/photos`, `lib/photos.ts`, new dependency `aws4fetch`): when the settings below exist, NEW photos go to R2 (10 GB free, no download fees) and are saved as `r2/<group>/<id>.jpg`; existing photos stay in Supabase and keep working. Upload links last 10 minutes and are only given for groups you're in; deletes are checked the same way. Turn on when the Admin storage meter passes ~80%:
+  1. Cloudflare → R2 → create bucket (e.g. `crumbs-photos`) → Settings → Public access: connect a custom domain or enable the r2.dev URL.
+  2. Bucket → Settings → CORS policy: allow `PUT` from your Crumbs site (e.g. `https://crumbs-shared-food-rating-app.vercel.app`) with header `content-type`.
+  3. R2 → Manage API tokens → create token with Object Read & Write for that bucket.
+  4. Vercel env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, and `NEXT_PUBLIC_R2_PUBLIC_URL` (the bucket's public URL). Redeploy.
+- Tests 73/73; SQL loads twice (bucket + admin read policy + cover column); build passes; demo clean.
