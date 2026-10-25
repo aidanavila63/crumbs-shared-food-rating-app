@@ -15,6 +15,7 @@ import { ReadPhotoButton } from './photo-reader'
 import { receiptItems, receiptTotal, type MenuLine } from '@/lib/ocr-parse'
 import { linkRestaurant, shareDishes } from '@/lib/restaurants'
 import { enqueue, isNetworkError, runQuickLog, type QuickLogJob } from '@/lib/offline-queue'
+import { recall, remember } from '@/lib/remember'
 
 const todayIso = () => {
   const d = new Date()
@@ -66,8 +67,8 @@ export function QuickLogSheet({
   // #74 Items read off the receipt / order screenshot, offered after logging.
   const [items, setItems] = useState<(MenuLine & { on: boolean })[]>([])
   const [ordered, setOrdered] = useState<Place | null>(null)
-  const [kind, setKind] = useState<VisitKind>('dine_in')
-  const [people, setPeople] = useState('')
+  const [kind, setKind] = useState<VisitKind>(() => recall('visit', 'kind', 'dine_in'))
+  const [people, setPeople] = useState(() => recall('visit', 'people', ''))
   const [pickedBy, setPickedBy] = useState('')
   const [occasion, setOccasion] = useState<'date' | 'celebration' | null>(null)
 
@@ -115,6 +116,7 @@ export function QuickLogSheet({
       return toast.error('That amount looks off')
     const heads = people ? Number(people) : null
     if (heads !== null && (heads < 1 || heads > 50)) return toast.error('How many people? (1-50)')
+    remember('visit', { kind, people })
     setBusy(true)
     const date = todayIso()
     const saved = score ? (scale === '5' ? { score, points: null } : fromInput(score, scale)) : null

@@ -5,6 +5,7 @@ import type { Place, PlaceVisit, Profile, VisitKind } from '@/hooks/use-crumbs-d
 import { fromInput, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { ScoreDisplay, ScoreInput } from './score-input'
+import { recall, remember } from '@/lib/remember'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const money = (n: number) => `$${n.toFixed(n % 1 ? 2 : 0)}`
@@ -58,8 +59,8 @@ export function VisitsPanel({
   const [spend, setSpend] = useState('')
   const [busy, setBusy] = useState(false)
   const [more, setMore] = useState(false)
-  const [kind, setKind] = useState<VisitKind>('dine_in')
-  const [people, setPeople] = useState('')
+  const [kind, setKind] = useState<VisitKind>(() => recall('visit', 'kind', 'dine_in'))
+  const [people, setPeople] = useState(() => recall('visit', 'people', ''))
   const [score, setScore] = useState(0)
   const [pickedBy, setPickedBy] = useState('')
   const [occasion, setOccasion] = useState<'date' | 'celebration' | null>(null)
@@ -132,8 +133,9 @@ export function VisitsPanel({
       }
       await apply([...(place.place_visits ?? []), row])
       haptic('success')
+      if (more) remember('visit', { kind, people })
       setSpend('')
-      setPeople('')
+      setPeople(recall('visit', 'people', ''))
       setScore(0)
       setOccasion(null)
       setMilestone('')

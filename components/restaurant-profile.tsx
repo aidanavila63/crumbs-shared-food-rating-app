@@ -108,7 +108,10 @@ export function RestaurantInfoEditor({
   onHours,
   supabase,
   claims = false,
+  startEditing,
 }: {
+  /** open straight onto one detail (e.g. hours from the place header) */
+  startEditing?: FactField
   supabase?: any
   /** #100 restaurant claims switched on (admin switch "restaurant_claims") */
   claims?: boolean
@@ -116,7 +119,7 @@ export function RestaurantInfoEditor({
   /** Hours a member entered: also update this group's copy so the "Open now" line uses them. */
   onHours: (hours: Hours) => void
 }) {
-  const [editing, setEditing] = useState<FactField | null>(null)
+  const [editing, setEditing] = useState<FactField | null>(startEditing ?? null)
   const r = store.restaurant
   if (!store.enabled || !r) return null
 

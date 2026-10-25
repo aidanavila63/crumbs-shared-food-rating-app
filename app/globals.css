@@ -1015,7 +1015,10 @@ button.avatar-btn:active {
 }
 .smart-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  /* two rows that grow sideways (tag lists add more), about 3 cards showing */
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(112px, calc((100% - 16px) / 3.15));
   gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;

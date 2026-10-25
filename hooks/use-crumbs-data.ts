@@ -200,13 +200,14 @@ const demoPlaces: Place[] = [
     latitude,
     longitude,
     google_place_id: id,
+    restaurant_id: `demo-r-${id}`,
     price_level: price,
     cuisine,
     website: null,
     google_maps_url: 'https://maps.google.com',
     status: 'Been',
     pinned: false,
-    tags: [],
+    tags: [['Cozy', 'Quick'], ['Patio'], ['Cozy']][index],
     created_at: new Date(Date.now() - (index + 1) * 864e5).toISOString(),
     place_visits: [
       {

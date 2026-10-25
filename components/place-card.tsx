@@ -2,6 +2,7 @@
 import { useShowScore } from './score-input'
 import { MapPin, Pin } from 'lucide-react'
 import { average5 } from '@/lib/ratings'
+import { basedOn } from '@/lib/based-on'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
 import { isClosedForever, normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
@@ -74,9 +75,14 @@ export function PlaceCard({
             </p>
           )}
         </div>
-        <strong className="font-serif text-3xl leading-8 text-primary">
-          {show(average)}
-        </strong>
+        <span className="flex shrink-0 flex-col items-end">
+          <strong className="font-serif text-3xl leading-8 text-primary">{show(average)}</strong>
+          {average > 0 && basedOn(place) && (
+            <span className="text-[0.7rem] text-muted-foreground">
+              {basedOn(place)!.split(' · ')[0]}
+            </span>
+          )}
+        </span>
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className={`chip ${place.status === 'Been' ? 'chip-active' : ''}`}>

@@ -7,6 +7,7 @@ import type { List, Place } from '@/hooks/use-crumbs-data'
 import { ShareList } from './share-list'
 import { TripPanel } from './trip-panel'
 import { smartLists } from '@/lib/smart-lists'
+import { useGems } from '@/hooks/use-gems'
 import { haptic } from '@/lib/motion'
 import { placeAverage } from './place-card'
 export function ListsTab({
@@ -34,7 +35,8 @@ export function ListsTab({
   onSelect?: (place: Place) => void
 }) {
   const show = useShowScore()
-  const smart = useMemo(() => smartLists(places), [places])
+  const gems = useGems(places, supabase, demo)
+  const smart = useMemo(() => smartLists(places, 2, { gems }), [places, gems])
   const [smartId, setSmartId] = useState<string | null>(null)
   const openSmart = smart.find((list) => list.id === smartId) ?? null
   const [listQuery, setListQuery] = useState('')

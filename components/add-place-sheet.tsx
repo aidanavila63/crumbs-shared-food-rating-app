@@ -7,6 +7,7 @@ import { linkRestaurant } from '@/lib/restaurants'
 import { Sheet } from './sheet'
 import { PlaceSearch, type FoundPlace } from './place-search'
 import { MapsLinkImport } from './maps-link-import'
+import { recall, remember } from '@/lib/remember'
 export function AddPlaceSheet({
   userId,
   groupId,
@@ -27,13 +28,14 @@ export function AddPlaceSheet({
 }) {
   const [name, setName] = useState(shared?.name ?? '')
   const [address, setAddress] = useState('')
-  const [status, setStatus] = useState<Status>('Want to try')
+  const [status, setStatus] = useState<Status>(() => recall('add', 'status', 'Want to try'))
   const [score, setScore] = useState(0)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [found, setFound] = useState<FoundPlace | null>(null)
   async function save() {
     if (!name.trim()) return toast.error('Add a restaurant name first')
+    remember('add', { status })
     setSaving(true)
     try {
       if (demo) {

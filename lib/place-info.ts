@@ -47,7 +47,10 @@ export function openStatus(hours: Hours | null | undefined, now = new Date()) {
   if (nextOpen === null) return { open: false, text: 'Closed now' }
   const at = cur + nextOpen
   const sameDay = Math.floor(at / 1440) === Math.floor(cur / 1440)
-  return { open: false, text: `Closed · opens ${sameDay ? '' : `${DAYS[Math.floor((at % WEEK) / 1440)]} `}${clock(at)}` }
+  return {
+    open: false,
+    text: `Closed · opens ${sameDay ? '' : `${DAYS[Math.floor((at % WEEK) / 1440)]} `}at ${clock(at)}`,
+  }
 }
 
 export const isClosedForever = (place: Pick<Place, 'business_status'>) =>

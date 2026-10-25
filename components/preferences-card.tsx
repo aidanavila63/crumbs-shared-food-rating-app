@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { Profile } from '@/hooks/use-crumbs-data'
 import { ALLERGENS, AVOID_OPTIONS } from '@/lib/place-info'
 import { Switch } from './switch'
+import { rememberOn, setRememberOn } from '@/lib/remember'
 
 type Home = { lat: number; lng: number } | null
 
@@ -34,6 +35,7 @@ export function PreferencesCard({
 }) {
   const avoid = profile?.avoid ?? []
   const [locating, setLocating] = useState(false)
+  const [remembering, setRemembering] = useState(() => rememberOn())
 
   async function save(changes: Partial<Profile>) {
     if (!userId) return
@@ -111,6 +113,23 @@ export function PreferencesCard({
           label="Blind ratings"
           checked={!!profile?.blind_ratings}
           onChange={(on) => save({ blind_ratings: on })}
+        />
+      </div>
+      <div className="settings-row">
+        <span>
+          <span className="font-semibold">Remember my last choices</span>
+          <span className="block text-sm text-muted-foreground">
+            Forms start with what you picked last time (dine-in or takeout, how many people, Want to
+            try or Been). Kept on this phone.
+          </span>
+        </span>
+        <Switch
+          label="Remember my last choices"
+          checked={remembering}
+          onChange={(on) => {
+            setRememberOn(on)
+            setRemembering(on)
+          }}
         />
       </div>
       {profile?.share_ratings !== undefined && (

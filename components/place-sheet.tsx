@@ -37,6 +37,7 @@ import { VisitsPanel } from './visits-panel'
 import { dishAverage, dishPoints, mustTry } from '@/lib/stats'
 import { ALLERGENS, dishWarnings, normaliseFacts, placeWarnings } from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
+import { basedOn } from '@/lib/based-on'
 import { FactsEditor } from './facts-editor'
 import { notifyMates } from '@/lib/push'
 import { Sheet } from './sheet'
@@ -365,7 +366,7 @@ export function PlaceSheet({
     v4,
     onLinked: (id) => onUpdate({ ...latest.current, restaurant_id: id }),
   })
-  const [editInfo, setEditInfo] = useState(false)
+  const [editInfo, setEditInfo] = useState<boolean | 'hours'>(false)
   // Hours a member entered also update this group's copy, so "Open now" uses them straight away.
   async function saveHours(hours: Hours) {
     const changes = { opening_hours: hours, hours_checked_at: new Date().toISOString() }
@@ -814,7 +815,15 @@ export function PlaceSheet({
           <p className="mt-1 text-sm text-muted-foreground">
             {place.formatted_address || 'Address not added'}
           </p>
-          <PlaceHours place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
+          <PlaceHours
+            place={place}
+            supabase={supabase}
+            demo={demo}
+            onUpdate={onUpdate}
+            onAddHours={
+              restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
+            }
+          />
           {restaurant.insights?.per_head ? (
             <p className="text-sm text-muted-foreground">
               About ${restaurant.insights.per_head} a person · from Crumbs visits
@@ -868,6 +877,9 @@ export function PlaceSheet({
                 <span className="text-xl text-muted-foreground">/10</span>
               )}
             </p>
+            {basedOn(place) && (
+              <p className="text-xs text-muted-foreground">from {basedOn(place)}</p>
+            )}
             {balanced !== null && (
               <button
                 className="text-xs text-muted-foreground underline decoration-dotted"
@@ -1223,6 +1235,7 @@ export function PlaceSheet({
             onHours={saveHours}
             supabase={demo ? undefined : supabase}
             claims={claims}
+            startEditing={editInfo === 'hours' ? 'hours' : undefined}
           />
         </Overlay>
       )}

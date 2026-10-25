@@ -322,6 +322,16 @@ export type Contributions = {
   menu_waiting?: number
   /** restaurants this person is the confirmed owner/manager of */
   manages?: string[]
+  /** #171 today's caps at your tier (null = unlimited) and what you've used */
+  caps?: MyCaps
+}
+export type MyCaps = {
+  tier: number
+  shaky: boolean
+  fact: number | null
+  vote: number | null
+  price: number | null
+  used: { fact: number; vote: number; price: number }
 }
 
 export type Question = {

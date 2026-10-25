@@ -11,6 +11,7 @@ import {
   tasteMatch,
   type DishCourse,
 } from '@/lib/stats'
+import { DISH_KINDS, bestOfKind, rankedKinds } from '@/lib/dish-kinds'
 
 const COURSE_LABEL: Record<DishCourse, string> = {
   starter: 'Starters',
@@ -38,14 +39,17 @@ export function StatsPanel({
   const partner = members.find((member) => member.id !== userId)
   const [course, setCourse] = useState<DishCourse | null>(null)
   const courses = useMemo(() => rankedCourses(places), [places])
+  // #178 Best of a kind ("Best ramen") across all your places.
+  const [kind, setKind] = useState<string | null>(null)
+  const kinds = useMemo(() => rankedKinds(places), [places])
   const stats = useMemo(
     () => ({
-      dishes: bestDishes(places, 10, course ?? undefined),
+      dishes: kind ? bestOfKind(places, kind) : bestDishes(places, 10, course ?? undefined),
       match: userId && partner ? tasteMatch(places, userId, partner.id) : null,
       memories: onThisDay(places),
       cuisines: cuisineBreakdown(places),
     }),
-    [places, userId, partner, course],
+    [places, userId, partner, course, kind],
   )
   const matchShown = useCountUp(stats.match?.percent ?? 0)
 
@@ -69,20 +73,45 @@ export function StatsPanel({
         </div>
       )}
 
-      {(stats.dishes.length > 0 || course) && (
+      {(stats.dishes.length > 0 || course || kind) && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">Best dishes</span>
+          <span className="tag w-fit">
+            {kind
+              ? `Best ${DISH_KINDS.find((k) => k.id === kind)?.label.toLowerCase()}`
+              : 'Best dishes'}
+          </span>
           {courses.length > 0 && (
             <div className="chip-row" role="radiogroup" aria-label="Kind of dish">
               {[null, ...courses].map((c) => (
                 <button
                   key={c ?? 'all'}
                   role="radio"
-                  aria-checked={course === c}
-                  className={`chip chip-sm ${course === c ? 'chip-active' : ''}`}
-                  onClick={() => setCourse(c)}
+                  aria-checked={!kind && course === c}
+                  className={`chip chip-sm ${!kind && course === c ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    setCourse(c)
+                    setKind(null)
+                  }}
                 >
                   {c ? COURSE_LABEL[c] : 'All'}
+                </button>
+              ))}
+            </div>
+          )}
+          {kinds.length > 0 && (
+            <div className="chip-row" role="radiogroup" aria-label="Best of a kind">
+              {kinds.map((k) => (
+                <button
+                  key={k.id}
+                  role="radio"
+                  aria-checked={kind === k.id}
+                  className={`chip chip-sm ${kind === k.id ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    setKind(kind === k.id ? null : k.id)
+                    setCourse(null)
+                  }}
+                >
+                  {k.emoji} {k.label}
                 </button>
               ))}
             </div>

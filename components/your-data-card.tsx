@@ -20,9 +20,33 @@ export function YourDataCard({
   memberCount: number
   onDeleted: () => void
 }) {
-  const [busy, setBusy] = useState<'export' | 'delete' | null>(null)
+  const [busy, setBusy] = useState<'export' | 'me' | 'delete' | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [typed, setTyped] = useState('')
+
+  function saveFile(data: unknown, name: string) {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    )
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name}-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+
+  /** #234 Everything you added, across all your groups. */
+  async function exportMe() {
+    if (demo) return toast('Downloads need the real database, not demo mode')
+    setBusy('me')
+    const { data, error } = await supabase.rpc('export_me')
+    setBusy(null)
+    if (error) return toast.error(error.message)
+    saveFile(data, 'crumbs-my-data')
+    toast.success('Your data downloaded')
+  }
 
   async function exportGroup() {
     if (demo) return toast('Backups need the real database, not demo mode')
@@ -30,16 +54,7 @@ export function YourDataCard({
     const { data, error } = await supabase.rpc('export_group', { target_group: group.id })
     setBusy(null)
     if (error) return toast.error(error.message)
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
-    )
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `crumbs-${group.name.replace(/[^\w -]/g, '').trim() || 'group'}-${new Date().toISOString().slice(0, 10)}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    saveFile(data, `crumbs-${group.name.replace(/[^\w -]/g, '').trim() || 'group'}`)
     try {
       localStorage.setItem(`crumbs-backup-${group.id}`, new Date().toISOString())
     } catch {}
@@ -78,6 +93,23 @@ export function YourDataCard({
           disabled={busy === 'export'}
           onClick={exportGroup}
           aria-label="Download a backup"
+        >
+          <Download size={16} />
+        </button>
+      </div>
+      <div className="settings-row">
+        <span>
+          <span className="font-semibold">Download my data</span>
+          <span className="block text-sm text-muted-foreground">
+            Everything you’ve added in all your groups — ratings, visits, dishes, private notes,
+            home cooking, details you gave restaurants and your points — as one file.
+          </span>
+        </span>
+        <button
+          className="secondary shrink-0 !min-h-10 !px-3 text-sm"
+          disabled={busy === 'me'}
+          onClick={exportMe}
+          aria-label="Download my data"
         >
           <Download size={16} />
         </button>

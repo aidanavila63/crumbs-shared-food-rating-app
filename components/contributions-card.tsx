@@ -4,8 +4,17 @@
 // up. Higher tiers get somewhat bigger daily allowances (AI ideas, Explore, menu imports) — and
 // later, perks with paid plans. The numbers come from the server (Admin → Points).
 import { useEffect, useState } from 'react'
-import { myContributions } from '@/lib/restaurants'
-import { POINTS, nextTier, pointsFor, tierFor, tiersWith, type PointRules } from '@/lib/tiers'
+import { myContributions, type MyCaps } from '@/lib/restaurants'
+import {
+  DAY_CAPS,
+  POINTS,
+  detailCapText,
+  nextTier,
+  pointsFor,
+  tierFor,
+  tiersWith,
+  type PointRules,
+} from '@/lib/tiers'
 
 type C = {
   facts: number
@@ -21,6 +30,7 @@ type C = {
   rules?: PointRules
   menu_active?: number
   menu_waiting?: number
+  caps?: MyCaps
 }
 
 const BADGES = [
@@ -122,8 +132,20 @@ export function ContributionsCard({
       <p className="text-sm">
         <strong>Your perks:</strong> {tier.perk} — {c.allowances?.ai ?? tier.limits.ai} AI ideas,{' '}
         {c.allowances?.explore ?? tier.limits.explore} Explore searches and{' '}
-        {c.allowances?.menu_import ?? tier.limits.menuImport} menu imports a day.
+        {c.allowances?.menu_import ?? tier.limits.menuImport} menu imports a day, and{' '}
+        {c.caps
+          ? c.caps.fact === null
+            ? 'unlimited details'
+            : `${c.caps.fact} details a day`
+          : detailCapText(tier.level, rules.day_caps ?? DAY_CAPS)}
+        .
       </p>
+      {c.caps?.shaky && (
+        <p className="text-sm text-muted-foreground">
+          Most of your recent details haven’t been backed up by others yet, so you’re on the starter
+          limits and your details wait for two people to agree. Accurate details lift this.
+        </p>
+      )}
       {!!c.expiring && (
         <p className="text-sm font-semibold text-primary">
           {c.expiring} point{c.expiring === 1 ? '' : 's'} stop counting this month — keep your tier
@@ -160,7 +182,15 @@ export function ContributionsCard({
             Logging visits, receipts, website imports and ticking dishes help but earn nothing.
           </li>
           <li>
-            No daily limit{c.today ? ` (${c.today} today)` : ''}. Points count for {months} months.
+            No limit on points{c.today ? ` (${c.today} today)` : ''}. Points count for {months}{' '}
+            months.
+          </li>
+          <li>
+            Daily limits on new details grow with your tier and are gone at the top —{' '}
+            {c.caps
+              ? `today you've added ${c.caps.used.fact}${c.caps.fact === null ? '' : ` of ${c.caps.fact}`}`
+              : 'more trust, more room'}
+            . If others don’t back up most of what you add, you go back to the starter limits.
           </li>
         </ul>
       </details>
@@ -187,7 +217,8 @@ export function ContributionsCard({
               key={t.level}
               className={`text-sm ${t.level === tier.level ? 'font-bold' : 'text-muted-foreground'}`}
             >
-              {t.emoji} {t.name} · {t.min}+ points in {months} months · {t.perk}
+              {t.emoji} {t.name} · {t.min}+ points in {months} months · {t.perk} ·{' '}
+              {detailCapText(t.level, rules.day_caps ?? DAY_CAPS)}
             </p>
           ))}
         </div>

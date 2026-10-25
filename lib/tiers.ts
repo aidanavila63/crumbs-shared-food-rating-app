@@ -24,6 +24,19 @@ export type PointRules = {
   menu_try: number // every menu_set new dishes that enter your points queue
   menu_ok: number // every menu_set of your dishes confirmed (item + price) by 2 others or the owner
   menu_queue: number // dishes that can sit in your points queue at once; more wait in line
+  /** #171 per-day caps by tier 0..4 (null = unlimited) */
+  day_caps?: DayCaps
+}
+export type DayCaps = Record<'fact' | 'vote' | 'price', (number | null)[]>
+export const DAY_CAPS: DayCaps = {
+  fact: [40, 80, 150, 300, null],
+  vote: [150, 300, 500, 1000, null],
+  price: [40, 80, 150, 300, null],
+}
+/** "80 details a day" / "unlimited details" at a tier. */
+export function detailCapText(level: number, caps: DayCaps = DAY_CAPS) {
+  const n = caps.fact[Math.min(4, Math.max(0, level))]
+  return n == null ? 'unlimited details' : `${n} details a day`
 }
 export const POINTS: PointRules = {
   window_days: 90,
@@ -35,6 +48,7 @@ export const POINTS: PointRules = {
   menu_try: 1,
   menu_ok: 2,
   menu_queue: 50,
+  day_caps: DAY_CAPS,
 }
 
 export const TIERS: Tier[] = [

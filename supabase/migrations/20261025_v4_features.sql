@@ -1166,7 +1166,8 @@ begin
                             'menu_waiting', (select count(*) from public.menu_contributions m where m.user_id = me and m.stage = 'waiting'),
                             'allowances', (select coalesce(jsonb_object_agg(b.kind, b.per_tier[least(tier, 4) + 1]), '{}')
                                              from public.usage_budgets b),
-                            'manages', (select coalesce(jsonb_agg(restaurant_id), '[]') from public.restaurant_managers where user_id = me));
+                            'manages', (select coalesce(jsonb_agg(restaurant_id), '[]') from public.restaurant_managers where user_id = me),
+                            'caps', public.my_day_caps());
 end $$;
 
 do $$
@@ -1242,7 +1243,8 @@ begin
     detail = least(20, greatest(0, (rules->>'detail')::int)), confirm = least(20, greatest(0, (rules->>'confirm')::int)),
     backed = least(20, greatest(0, (rules->>'backed')::int)), menu_try = least(20, greatest(0, (rules->>'menu_try')::int)),
     menu_ok = least(20, greatest(0, (rules->>'menu_ok')::int)), menu_queue = least(500, greatest(0, (rules->>'menu_queue')::int)),
-    menu_set = least(50, greatest(1, coalesce((rules->>'menu_set')::int, menu_set)))
+    menu_set = least(50, greatest(1, coalesce((rules->>'menu_set')::int, menu_set))),
+    day_caps = case when jsonb_typeof(rules->'day_caps') = 'object' then day_caps || (rules->'day_caps') else day_caps end
   where id = 1;
 end $$;
 create table if not exists public.contribution_points (
@@ -1988,15 +1990,38 @@ drop policy if exists admin_alerts_admin on public.admin_alerts;
 create policy admin_alerts_admin on public.admin_alerts for all to authenticated
   using (public.is_crumbs_admin()) with check (public.is_crumbs_admin());
 
--- #171 Daily caps on contributions (stops runaway scripts or spam) and a trust score.
+-- #171 Daily caps on contributions (stops runaway scripts or spam), raised by tier: the top tier
+-- is unlimited. Anyone whose details others mostly don't back up (trust under 30%) drops to the
+-- first tier's caps whatever their points. Numbers live in point_rules.day_caps (null = no cap).
+alter table public.point_rules add column if not exists day_caps jsonb not null default
+  '{"fact": [40, 80, 150, 300, null], "vote": [150, 300, 500, 1000, null], "price": [40, 80, 150, 300, null]}';
+create or replace function public.my_day_caps()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  shaky boolean := coalesce(public.user_trust(me) < 0.3, false);
+  t integer := case when shaky then 0 else least(public.my_tier(), 4) end;
+  caps jsonb := (select day_caps from public.point_rules where id = 1);
+  admin boolean := public.is_crumbs_admin();
+begin
+  return jsonb_build_object(
+    'tier', t, 'shaky', shaky,
+    'fact', case when admin then null else caps->'fact'->t end,
+    'vote', case when admin then null else caps->'vote'->t end,
+    'price', case when admin then null else caps->'price'->t end,
+    'used', jsonb_build_object(
+      'fact', (select count(*) from public.restaurant_facts where user_id = me and created_at >= current_date),
+      'vote', (select count(*) from public.restaurant_dish_votes where user_id = me and created_at >= current_date),
+      'price', (select count(*) from public.restaurant_dish_prices where user_id = me and created_at >= current_date)));
+end $$;
 create or replace function public.over_daily_cap(what text)
-returns boolean language sql stable security definer set search_path = public as $$
-  select case what
-    when 'fact' then (select count(*) from public.restaurant_facts where user_id = auth.uid() and created_at >= current_date) >= 60
-    when 'vote' then (select count(*) from public.restaurant_dish_votes where user_id = auth.uid() and created_at >= current_date) >= 200
-    when 'price' then (select count(*) from public.restaurant_dish_prices where user_id = auth.uid() and created_at >= current_date) >= 60
-    else false end
-$$;
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare
+  c jsonb := public.my_day_caps();
+begin
+  if what not in ('fact', 'vote', 'price') or c->what is null or jsonb_typeof(c->what) = 'null' then return false; end if;
+  return (c->'used'->>what)::int >= (c->>what)::int;
+end $$;
 -- Share (0–1) of someone's details that others later backed up; null until they have 5.
 create or replace function public.user_trust(uid uuid)
 returns numeric language sql stable security definer set search_path = public as $$
@@ -2086,7 +2111,7 @@ end $$;
 do $$
 declare f text;
 begin
-  foreach f in array array['over_daily_cap(text)', 'possible_duplicates()', 'recent_contributors()', 'merge_restaurants(uuid, uuid)'] loop
+  foreach f in array array['over_daily_cap(text)', 'my_day_caps()', 'possible_duplicates()', 'recent_contributors()', 'merge_restaurants(uuid, uuid)'] loop
     execute format('revoke execute on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
@@ -2187,6 +2212,54 @@ begin
 end $$;
 revoke execute on function public.export_group(uuid) from public, anon;
 grant execute on function public.export_group(uuid) to authenticated;
+
+-- ============================================================================================
+-- 13h. Hidden gems (#185) and "Download my data" (#234)
+-- ============================================================================================
+-- #185 How many groups saved each of these restaurants, plus how many groups Crumbs has in total
+-- (hidden gems only switch on once there are 5+ groups, so "only you know it" means something).
+create or replace function public.gem_counts(ids uuid[])
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'groups', (select count(*) from public.groups),
+    'saved', (select coalesce(jsonb_object_agg(r.id, r.places_count), '{}')
+                from public.restaurants r where r.id = any(ids[1:500])))
+$$;
+revoke execute on function public.gem_counts(uuid[]) from public, anon;
+grant execute on function public.gem_counts(uuid[]) to authenticated;
+
+-- #234 Everything you've added, across all your groups, in one file (Settings → Your data).
+create or replace function public.export_me()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  out jsonb := jsonb_build_object('app', 'crumbs', 'version', 1, 'exported_at', now());
+  t text;
+  col text;
+  rows jsonb;
+begin
+  if me is null then raise exception 'Please sign in first'; end if;
+  out := out || jsonb_build_object('profile', (select to_jsonb(p) from public.profiles p where p.id = me),
+    'groups', (select coalesce(jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name, 'role', m.role)), '[]')
+                 from public.group_members m join public.groups g on g.id = m.group_id where m.user_id = me));
+  for t, col in select * from (values
+      ('place_ratings', 'user_id'), ('place_visits', 'created_by'), ('places', 'created_by'),
+      ('place_private_notes', 'user_id'), ('dishes', 'created_by'), ('dish_ratings', 'user_id'),
+      ('home_meals', 'created_by'), ('home_meal_ratings', 'user_id'), ('home_meal_cooks', 'created_by'),
+      ('lists', 'created_by'), ('comments', 'user_id'), ('reactions', 'user_id'), ('plans', 'created_by'),
+      ('plan_rsvps', 'user_id'), ('restaurant_facts', 'user_id'), ('restaurant_dishes', 'added_by'),
+      ('restaurant_dish_votes', 'user_id'), ('restaurant_dish_prices', 'user_id'),
+      ('contribution_points', 'user_id'), ('feedback', 'user_id')) v(t, col)
+  loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from public.%I x where %I = $1', t, col)
+      into rows using me;
+    out := out || jsonb_build_object(t, rows);
+  end loop;
+  return out;
+end $$;
+revoke execute on function public.export_me() from public, anon;
+grant execute on function public.export_me() to authenticated;
 
 -- ============================================================================================
 -- 14. Make yourself the admin: run this ONE line separately, with your own sign-in email.

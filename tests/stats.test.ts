@@ -166,7 +166,7 @@ test('open now: inside, outside, and across midnight', () => {
   assert.equal(openStatus(mon9to5, new Date('2026-10-26T12:00:00Z'))?.text, 'Open · closes 5 PM')
   assert.equal(
     openStatus(mon9to5, new Date('2026-10-24T12:00:00Z'))?.text,
-    'Closed · opens Mon 9 AM',
+    'Closed · opens Mon at 9 AM',
   ) // Saturday
   const late = {
     utc: 0,

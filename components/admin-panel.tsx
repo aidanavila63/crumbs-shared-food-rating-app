@@ -7,7 +7,7 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { haptic } from '@/lib/motion'
 import { timeAgo } from './social'
 import { analyticsOn } from '@/lib/analytics'
-import { POINTS, type PointRules } from '@/lib/tiers'
+import { DAY_CAPS, POINTS, type DayCaps, type PointRules } from '@/lib/tiers'
 import { BACKUP_BUCKET } from '@/lib/backup'
 import { monthPace } from '@/lib/limits'
 
@@ -639,7 +639,7 @@ function BackupsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   )
 }
 
-const POINT_FIELDS: { key: Exclude<keyof PointRules, 'tiers'>; label: string }[] = [
+const POINT_FIELDS: { key: Exclude<keyof PointRules, 'tiers' | 'day_caps'>; label: string }[] = [
   { key: 'window_days', label: 'Points last (days)' },
   { key: 'detail', label: 'New detail' },
   { key: 'confirm', label: 'Confirm (first few)' },
@@ -705,7 +705,36 @@ function PointsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
             }}
           />
         </label>
+        {(
+          [
+            ['fact', 'Details a day by tier'],
+            ['vote', 'Dish checks a day by tier'],
+            ['price', 'Price fixes a day by tier'],
+          ] as const
+        ).map(([key, label]) => {
+          const caps: DayCaps = { ...DAY_CAPS, ...(rules.day_caps ?? {}) }
+          return (
+            <label key={key} className="col-span-2 flex flex-col gap-1">
+              {label} (Taster → Legend, blank = unlimited)
+              <input
+                className="field !min-h-9 !py-1 text-sm"
+                defaultValue={caps[key].map((n) => (n == null ? '' : n)).join(',')}
+                onBlur={(e) => {
+                  const parts = e.target.value
+                    .split(',')
+                    .map((v) => (v.trim() === '' ? null : int(v)))
+                  if (parts.length === 5 && parts.join(',') !== caps[key].join(','))
+                    save({ ...rules, day_caps: { ...caps, [key]: parts } })
+                }}
+              />
+            </label>
+          )
+        })}
       </div>
+      <p className="text-xs text-muted-foreground">
+        People whose details others mostly don’t back up (under 30%) get Taster’s limits whatever
+        their tier. Admins have none.
+      </p>
     </section>
   )
 }

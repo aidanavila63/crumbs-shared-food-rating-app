@@ -317,3 +317,15 @@ Aidan's decisions on ideas #112–235 recorded in the backlog. This round: the b
 - **#171 Anti-spam**: daily caps 60 details / 200 checks / 60 prices per person (owners exempt for their own place); `user_trust` = share of someone's details later backed by others; below 30% (after 5) their details wait for two people to agree.
 - **#163 Home-screen shortcuts** (long-press the icon): Log a visit, Add a place. **#164 Share to Crumbs**: share a map link or a place name from another app → Add a place opens with it filled in (map links are read straight away).
 - Tests 88/88; SQL tested (dupes admin-only, merge, caps, trust, limit report); build passes; share flow checked in demo.
+
+## Round 27 - trust-based limits, hidden gems, best of a kind, your data (Oct 25, Claude in Cowork)
+Aidan: tiers should raise limits too, top tier unlimited if you're legit; 117, 126, 175, 178, 185 (on at 5+ groups), 221 (with a setting), 234 = yes.
+- **#171 limits by tier** (`point_rules.day_caps`, `my_day_caps()`, `over_daily_cap`): details a day 40 / 80 / 150 / 300 / unlimited (Taster → Legend); dish checks 150 / 300 / 500 / 1000 / unlimited; price fixes 40 / 80 / 150 / 300 / unlimited. Under 30% backed (after 5 details) → Taster limits whatever the tier. Admins none. Editable in Admin → Points. Shown in Building Crumbs (perks line, How points work, All tiers).
+- **#117** "from 2 ratings · 1 visit" under the group average; "2 ratings" under the score on place cards.
+- **#126** "Closed · opens at 5 PM" / "Closed · opens Tue at 11 AM"; no hours → "🕒 Hours not added yet · Add them" opens Suggest an edit on Hours.
+- **#221** forms remember your last dine-in/takeout, people count and Want to try/Been (this phone); Settings → Your preferences → Remember my last choices.
+- **#175** any vibe tag on 2+ places becomes a 🏷️ smart list. Smart lists now scroll sideways in two rows.
+- **#185 Hidden gems** (`gem_counts`, `hooks/use-gems.ts`): 4.3★+ places saved by ≤2 groups on Crumbs; 💎 smart list + Decide & Plan card; switches on by itself at 5+ groups.
+- **#178 Best of a kind** (`lib/dish-kinds.ts`): chips under Best dishes — 🍜 Ramen, 🍔 Burgers, 🌮 Tacos… (21 kinds from dish names/tags), shown once a kind has 2+ rated dishes.
+- **#234 Download my data** (`export_me()`): Settings → Your data → one JSON of everything you added across all groups.
+- Tests 93/93; SQL tested (caps by tier, shaky → starter caps, admin edit, gem counts, export, anon blocked); build passes; demo checked.

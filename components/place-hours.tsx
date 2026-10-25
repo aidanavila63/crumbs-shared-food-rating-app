@@ -69,11 +69,14 @@ export function PlaceHours({
   supabase,
   demo,
   onUpdate,
+  onAddHours,
 }: {
   place: Place
   supabase: any
   demo: boolean
   onUpdate: (place: Place) => void
+  /** #126 no hours yet: offer to add them (opens the edit form on Hours) */
+  onAddHours?: () => void
 }) {
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
@@ -96,7 +99,13 @@ export function PlaceHours({
   if (place.business_status === 'CLOSED_TEMPORARILY')
     return <p className="text-sm font-semibold text-destructive">Temporarily closed</p>
   const status = openStatus(place.opening_hours)
-  if (!status) return null
+  if (!status)
+    return onAddHours ? (
+      <button className="text-sm text-muted-foreground" onClick={onAddHours}>
+        🕒 Hours not added yet ·{' '}
+        <span className="font-semibold text-primary underline">Add them</span>
+      </button>
+    ) : null
   return (
     <p
       className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}

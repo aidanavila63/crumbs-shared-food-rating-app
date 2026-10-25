@@ -19,7 +19,8 @@ import { DecideTogether } from './decide-together'
 import { PlansCard, PlansPage, type PlanDraft } from './plans'
 import { CrawlPlanner } from './crawl-planner'
 import { NearbyRecs } from './nearby-recs'
-import { beenAWhile, sinceText } from '@/lib/smart-lists'
+import { beenAWhile, hiddenGems, sinceText } from '@/lib/smart-lists'
+import { useGems } from '@/hooks/use-gems'
 import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
 
 type Idea = { title: string; why: string }
@@ -133,6 +134,8 @@ export function DecideTab({
   }, [places])
   // #33 favourites you haven't been back to in 3+ months
   const whileAgo = useMemo(() => beenAWhile(places), [places])
+  const gemCounts = useGems(places, supabase, demo)
+  const gems = useMemo(() => hiddenGems(places, gemCounts), [places, gemCounts])
   const insights = useMemo(() => {
     const rated = places.filter((place) => place.place_ratings.length)
     const favourites = rated
@@ -318,6 +321,32 @@ export function DecideTab({
               <span className="font-serif text-xl text-primary">{show(placeAverage(place))}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {gems.length > 0 && (
+        <div className="surface flex flex-col gap-3">
+          <span className="tag w-fit">💎 Hidden gem{gems.length > 1 ? 's' : ''}</span>
+          {gems.slice(0, 2).map((place) => {
+            const saved = gemCounts?.saved[place.restaurant_id!] ?? 1
+            return (
+              <button
+                key={place.id}
+                className="surface-soft flex items-center justify-between gap-2 text-left"
+                onClick={() => onSelect?.(place)}
+              >
+                <span className="min-w-0">
+                  <span className="block font-semibold">{place.name}</span>
+                  <span className="block text-sm text-muted-foreground">
+                    {saved <= 1
+                      ? 'Only your group has found it on Crumbs'
+                      : 'Only one other group has found it on Crumbs'}
+                  </span>
+                </span>
+                <span className="font-serif text-xl text-primary">{show(placeAverage(place))}</span>
+              </button>
+            )
+          })}
         </div>
       )}
 

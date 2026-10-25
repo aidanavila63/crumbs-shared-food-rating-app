@@ -43,9 +43,53 @@ export function sinceText(day: string, now = new Date()) {
 
 export type SmartList = { id: string; emoji: string; name: string; hint: string; places: Place[] }
 
-export function smartLists(places: Place[], people = 2): SmartList[] {
+/** #185 What the hidden-gem check needs: Crumbs' group count and how many groups saved each place. */
+export type GemCounts = { groups: number; saved: Record<string, number> }
+export const GEMS_FROM_GROUPS = 5
+
+/** #185 Places your group loves (4.3★+) that hardly anyone else on Crumbs has saved (≤2 groups,
+ *  yours included). Off until Crumbs has 5+ groups. Best first. */
+export function hiddenGems(places: Place[], counts: GemCounts | null) {
+  if (!counts || counts.groups < GEMS_FROM_GROUPS) return []
+  return places
+    .filter((p) => {
+      const saved = p.restaurant_id ? counts.saved[p.restaurant_id] : undefined
+      return saved !== undefined && saved <= 2 && p.place_ratings.length > 0 && average(p) >= 4.3
+    })
+    .sort((a, b) => average(b) - average(a))
+}
+
+/** #175 Your group's vibe tags become lists by themselves once 2+ places share one. */
+export function tagLists(places: Place[]): SmartList[] {
+  const byTag = new Map<string, { name: string; places: Place[] }>()
+  for (const p of places)
+    for (const tag of p.tags ?? []) {
+      const key = tag.trim().toLowerCase()
+      if (!key) continue
+      const hit = byTag.get(key) ?? { name: tag.trim(), places: [] }
+      hit.places.push(p)
+      byTag.set(key, hit)
+    }
+  return [...byTag.entries()]
+    .filter(([, t]) => t.places.length >= 2)
+    .sort((a, b) => b[1].places.length - a[1].places.length)
+    .map(([key, t]) => ({
+      id: `tag:${key}`,
+      emoji: '🏷️',
+      name: t.name,
+      hint: `Everything tagged “${t.name}”, best first`,
+      places: [...t.places].sort((a, b) => average(b) - average(a)),
+    }))
+}
+
+export function smartLists(
+  places: Place[],
+  people = 2,
+  { gems = null }: { gems?: GemCounts | null } = {},
+): SmartList[] {
   const usual = usualCost(places, people)
   const value = (p: Place) => valueScore(p, usual, people)?.score ?? 0
+  const gemList = hiddenGems(places, gems)
   return [
     {
       id: 'top',
@@ -70,6 +114,17 @@ export function smartLists(places: Place[], people = 2): SmartList[] {
       hint: 'Great for what it cost you a person (8/10 or more)',
       places: places.filter((p) => value(p) >= 8).sort((a, b) => value(b) - value(a)),
     },
+    ...(gems && gems.groups >= GEMS_FROM_GROUPS
+      ? [
+          {
+            id: 'gems',
+            emoji: '💎',
+            name: 'Hidden gems',
+            hint: 'Places you love that hardly anyone else on Crumbs has found',
+            places: gemList,
+          },
+        ]
+      : []),
     {
       id: 'while',
       emoji: '🕰️',
@@ -91,5 +146,6 @@ export function smartLists(places: Place[], people = 2): SmartList[] {
       hint: 'Group average 2★ or less',
       places: places.filter((p) => p.place_ratings.length && average(p) <= 2),
     },
+    ...tagLists(places),
   ]
 }
