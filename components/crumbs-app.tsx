@@ -721,6 +721,7 @@ function CrumbsShell() {
               loading={data.loading}
               onSelect={setSelected}
               onSurprise={() => setSurprising(true)}
+              onWrapped={() => setHub(['menu', 'wrapped'])}
               home={home}
               meals={data.homeMeals}
               userId={userId}
@@ -792,6 +793,7 @@ function CrumbsShell() {
           members={data.members}
           userId={userId}
           names={names}
+          meals={data.homeMeals}
           onSelect={(place) => {
             setHub([])
             setSelected(place)

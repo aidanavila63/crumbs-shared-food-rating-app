@@ -23,7 +23,7 @@ export function Overlay({
   label: string
   title?: string
   onClose: () => void
-  variant?: 'menu' | 'panel'
+  variant?: 'menu' | 'panel' | 'story'
   action?: React.ReactNode
   children: React.ReactNode
 }) {

@@ -20,6 +20,7 @@ import { PlansCard, PlansPage, type PlanDraft } from './plans'
 import { CrawlPlanner } from './crawl-planner'
 import { NearbyRecs } from './nearby-recs'
 import { beenAWhile, sinceText } from '@/lib/smart-lists'
+import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
 
 type Idea = { title: string; why: string }
 
@@ -33,6 +34,7 @@ export function DecideTab({
   loading = false,
   onSelect,
   onSurprise,
+  onWrapped,
   home = null,
   meals = [],
   userId,
@@ -74,6 +76,8 @@ export function DecideTab({
   loading?: boolean
   onSelect: (place: Place) => void
   onSurprise: () => void
+  /** #61 open Crumbs Wrapped (teaser card in Dec–Feb) */
+  onWrapped?: () => void
   home?: { lat: number; lng: number } | null
 }) {
   const show = useShowScore()
@@ -120,6 +124,13 @@ export function DecideTab({
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [thinking, setThinking] = useState(false)
 
+  // #61 Wrapped teaser: December to February, when there's a year to show
+  const wrapYear = useMemo(() => {
+    const month = new Date().getMonth()
+    if (![11, 0, 1].includes(month)) return null
+    const year = defaultWrappedYear(places)
+    return wrappedYears(places).includes(year) ? year : null
+  }, [places])
   // #33 favourites you haven't been back to in 3+ months
   const whileAgo = useMemo(() => beenAWhile(places), [places])
   const insights = useMemo(() => {
@@ -275,6 +286,18 @@ export function DecideTab({
             Add and rate a few places and Crumbs will learn what you both like.
           </p>
         </div>
+      )}
+
+      {wrapYear && onWrapped && (
+        <button className="surface wrap-teaser text-left" onClick={onWrapped}>
+          <span className="text-3xl" aria-hidden="true">
+            🎁
+          </span>
+          <span>
+            <span className="block font-serif text-2xl font-bold">Your {wrapYear} Wrapped</span>
+            <span className="block text-sm opacity-90">Your year in food, ready to share</span>
+          </span>
+        </button>
       )}
 
       {whileAgo.length > 0 && (

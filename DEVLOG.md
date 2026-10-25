@@ -300,3 +300,11 @@ Aidan: add 10, 12 and 33.
 - **#12 Draft ratings** (`place_ratings.draft`): before your first rating on a place, tick "Save my rating as a draft". Drafts are hidden from everyone else by the database (read rule), make no feed line or notification, and aren't copied to your other groups. A banner "📝 Draft — only you can see your rating · Post it" posts it (then the feed line, notification and sharing happen). Your own view of the group average includes your draft.
 - **#33 Been a while** (`beenAWhile` in `lib/smart-lists.ts`): places you liked (3.5★+) and last visited 3+ months ago. New smart list 🕰️ Been a while (longest first) and a card on Decide & Plan with the top 3 ("Last time 7 months ago — you loved it").
 - Tests 82/82; SQL tested (draft hidden from others, no feed line until posted, private notes own-only, non-members can't add notes); build passes; demo clean.
+
+## Round 25 - Crumbs Wrapped (#61) (Oct 24, Claude in Cowork)
+Aidan: no hot take one-liner (#9 = No); do Wrapped now.
+- **Profile → Wrapped** (new round button, `components/wrapped.tsx`, `lib/wrapped.ts`): your group's year in food as full-screen story cards — tap right for next, left for back (arrow keys too), progress bars on top, round ✕ to close, a new colour each card, numbers count up (off with Animations off).
+- Cards (only the ones with data): the year · meals out + places + how many were new · busiest month · longest weekly streak · cuisines + top cuisine · your regular · favourite of the year · dish of the year · spend + $/person + splurge month · home cooking + top meal · date nights / takeout · you rated N places, your average + taste match.
+- **Summary card** with Share (phone share sheet with a 1080×1920 picture) and Save image. Year chips when you have more than one year; in January/February it opens on last year.
+- **Decide & Plan teaser** "🎁 Your 2026 Wrapped" from December to February.
+- Built on the phone from your own data (blind ratings respected) — free, nothing stored or sent. Tests 83/83; build passes; demo tour clean.

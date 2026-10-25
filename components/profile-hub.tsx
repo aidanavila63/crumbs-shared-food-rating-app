@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
-import { BarChart3, Globe2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
-import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
+import { BarChart3, Gift, Globe2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
+import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
 import { haptic } from '@/lib/motion'
 import { Overlay } from './overlay'
@@ -12,10 +12,18 @@ import { SettingsPanel } from './settings-panel'
 import { AdminPanel } from './admin-panel'
 import { ContributionsCard } from './contributions-card'
 import { OwnerPanel } from './owner-panel'
+import { WrappedStory } from './wrapped'
 import { OwnerTag } from './restaurant-profile'
 
 export type HubPage =
-  'menu' | 'achievements' | 'passport' | 'stats' | 'settings' | 'admin' | 'restaurants'
+  | 'menu'
+  | 'achievements'
+  | 'passport'
+  | 'stats'
+  | 'settings'
+  | 'admin'
+  | 'restaurants'
+  | 'wrapped'
 
 const initial = (name?: string | null) => (name?.trim()?.[0] ?? '?').toUpperCase()
 
@@ -54,7 +62,10 @@ export function ProfileHub({
   names,
   onSelect,
   settings,
+  meals = [],
 }: {
+  /** #61 home cooking counts in Wrapped */
+  meals?: HomeMeal[]
   pages: HubPage[]
   onPages: (pages: HubPage[]) => void
   profile: Profile | null
@@ -84,6 +95,7 @@ export function ProfileHub({
     },
     { page: 'passport', label: 'Passport', icon: <Globe2 /> },
     { page: 'stats', label: 'Stats & memories', icon: <BarChart3 /> },
+    { page: 'wrapped', label: 'Wrapped', icon: <Gift /> },
     // #100 Verified restaurant owners get their own area.
     ...(profile?.restaurant_owner
       ? [{ page: 'restaurants' as const, label: 'Your restaurants', icon: <Store /> }]
@@ -211,6 +223,12 @@ export function ProfileHub({
       {pages.at(-1) === 'admin' && profile?.is_admin && (
         <Overlay label="Admin" title="Admin" onClose={closeTop}>
           <AdminPanel supabase={settings.supabase} demo={settings.demo} />
+        </Overlay>
+      )}
+
+      {pages.at(-1) === 'wrapped' && (
+        <Overlay label="Crumbs Wrapped" variant="story" onClose={closeTop}>
+          <WrappedStory places={places} meals={meals} group={group} members={members} userId={userId} />
         </Overlay>
       )}
 
