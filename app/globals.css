@@ -2326,3 +2326,14 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   height: calc(100dvh - 251px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   min-height: 360px;
 }
+/* Invite + settings: two small round buttons beside the group name. */
+.group-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+.group-action-btn {
+  width: 38px;
+  height: 38px;
+}

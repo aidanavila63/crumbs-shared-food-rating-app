@@ -10,6 +10,7 @@ import { analyticsOn } from '@/lib/analytics'
 import { DAY_CAPS, POINTS, type DayCaps, type PointRules } from '@/lib/tiers'
 import { BACKUP_BUCKET } from '@/lib/backup'
 import { monthPace } from '@/lib/limits'
+import { Switch } from './switch'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -273,6 +274,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
 
       <BudgetsCard supabase={supabase} demo={demo} />
       <PointsCard supabase={supabase} demo={demo} />
+      <BuildersCard supabase={supabase} demo={demo} />
       <BackupsCard supabase={supabase} demo={demo} />
       <QualityCard supabase={supabase} demo={demo} />
       <MenuQueueCard supabase={supabase} demo={demo} />
@@ -686,6 +688,7 @@ function PointsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
             ['fact', 'Details a day by tier'],
             ['vote', 'Dish checks a day by tier'],
             ['price', 'Price fixes a day by tier'],
+            ['groups', 'Groups someone can own at once by tier'],
           ] as const
         ).map(([key, label]) => {
           const caps: DayCaps = { ...DAY_CAPS, ...(rules.day_caps ?? {}) }
@@ -709,8 +712,112 @@ function PointsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
       </div>
       <p className="text-xs text-muted-foreground">
         People whose details others mostly don’t back up (under 30%) get Taster’s limits whatever
-        their tier. Admins have none.
+        their tier. Admins and Builders have none.
       </p>
+    </section>
+  )
+}
+
+type Person = {
+  id: string
+  display_name: string
+  email: string | null
+  is_builder: boolean
+  is_admin: boolean
+  points: number
+  groups: number
+}
+const DEMO_PEOPLE: Person[] = [
+  {
+    id: 'demo-maya',
+    display_name: 'Maya',
+    email: 'maya@example.com',
+    is_builder: true,
+    is_admin: false,
+    points: 140,
+    groups: 1,
+  },
+  {
+    id: 'demo-sam',
+    display_name: 'Sam',
+    email: 'sam@example.com',
+    is_builder: false,
+    is_admin: false,
+    points: 12,
+    groups: 2,
+  },
+]
+
+/**
+ * Builders: people you trust to build Crumbs' restaurant data. Their answers count straight away
+ * (everyone else's need a second person to agree), no daily limits, any number of groups.
+ */
+function BuildersCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [q, setQ] = useState('')
+  const [people, setPeople] = useState<Person[] | null>(demo ? DEMO_PEOPLE : null)
+  async function search(text = q) {
+    if (demo)
+      return setPeople(
+        DEMO_PEOPLE.filter((p) => p.display_name.toLowerCase().includes(text.toLowerCase())),
+      )
+    const { data, error } = await supabase.rpc('admin_people', { q: text.trim() })
+    if (error) return toast.error(error.message)
+    setPeople(data ?? [])
+  }
+  useEffect(() => {
+    if (!demo) search('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo])
+  async function toggle(p: Person) {
+    const next = !p.is_builder
+    if (!demo) {
+      const { error } = await supabase.rpc('set_builder', { person: p.id, builder: next })
+      if (error) return toast.error(error.message)
+    }
+    setPeople((all) => all?.map((x) => (x.id === p.id ? { ...x, is_builder: next } : x)) ?? null)
+    toast.success(
+      next ? `${p.display_name} is now a Builder` : `${p.display_name} is no longer a Builder`,
+    )
+  }
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Builders</h3>
+      <p className="text-sm text-muted-foreground">
+        People you trust to build the data. Their details, Good to know answers and prices count
+        straight away (everyone else’s need a second person to agree). No daily limits, any number
+        of groups. Admins already count as Builders.
+      </p>
+      <div className="flex gap-2">
+        <input
+          className="field"
+          aria-label="Find a person"
+          placeholder="Name or email"
+          value={q}
+          onChange={(event) => setQ(event.target.value)}
+          onKeyDown={(event) => event.key === 'Enter' && search()}
+        />
+        <button className="secondary shrink-0" onClick={() => search()}>
+          Find
+        </button>
+      </div>
+      {people?.map((p) => (
+        <div key={p.id} className="settings-row">
+          <span className="min-w-0">
+            <span className="block font-semibold">
+              {p.display_name} {p.is_admin && <span className="tag ml-1">admin</span>}
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {p.email ?? '—'} · {p.points} pts · {p.groups} group{p.groups === 1 ? '' : 's'}
+            </span>
+          </span>
+          <Switch
+            label={`${p.display_name} is a Builder`}
+            checked={p.is_builder || p.is_admin}
+            disabled={p.is_admin}
+            onChange={() => toggle(p)}
+          />
+        </div>
+      ))}
     </section>
   )
 }

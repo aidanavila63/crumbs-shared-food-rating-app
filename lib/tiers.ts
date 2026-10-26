@@ -27,11 +27,13 @@ export type PointRules = {
   /** #171 per-day caps by tier 0..4 (null = unlimited) */
   day_caps?: DayCaps
 }
-export type DayCaps = Record<'fact' | 'vote' | 'price', (number | null)[]>
+export type DayCaps = Record<'fact' | 'vote' | 'price' | 'groups', (number | null)[]>
 export const DAY_CAPS: DayCaps = {
   fact: [40, 80, 150, 300, null],
   vote: [150, 300, 500, 1000, null],
   price: [40, 80, 150, 300, null],
+  /** groups you can own at once (not a daily number) */
+  groups: [1, 1, 2, 3, null],
 }
 /** "80 details a day" / "unlimited details" at a tier. */
 export function detailCapText(level: number, caps: DayCaps = DAY_CAPS) {

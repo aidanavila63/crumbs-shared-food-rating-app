@@ -448,3 +448,10 @@ New SQL file `supabase/migrations/20261026_after_v4.sql` (run after v4; first of
 - **Pickers**: lists and crawls show "Not on your list yet" under your own places; a crawl suggests places near its first stop (yours within 2 km + new ones).
 - **Other**: map fits the screen; What's new shows 6 + "See all activity" (30 most recent); search shows Places first, then dishes etc., and broad words find cuisines ("asian" → ramen, thai…); Guidebook row tidied; welcome tour has Back; offline no longer signs you out; admin "new switch" box removed.
 - Logged for later (not built): hide options until you've been / tried / made something.
+
+## Round 43 - Builders, group buttons, craving (Oct 26, Claude in Cowork)
+New SQL `supabase/migrations/20261026_builders.sql` (after `20261026_after_v4.sql`).
+- **Builders**: Admin → Builders lists people (name, email, points, groups) with a Builder switch. Admins and Builders: their details, Good to know answers and menu prices count straight away, no daily caps, any number of groups. Everyone else is back to needing a second person to agree (Round 42's "straight away for all" was a misread). Only an admin can set Builder (trigger + `set_builder`). Profile shows "🛠️ Builder".
+- **Groups you can own at once** by tier (default Taster 1, Regular 1, Local guide 2, Insider 3, Legend no limit) — Admin → Points, last row. `create_group` refuses past it with a friendly message.
+- **Group page**: invite (👤+) and settings (⚙️, owner/admins) are small round buttons beside the group name; the invite code, link and QR open on their own page. The Group tab is now just the group.
+- **Craving**: still there (it's hidden in demo/without notification keys, which is why screenshots missed it) — now its own button next to "Decide in 60s", opening a sheet with quick picks (ramen, tacos…) or your own words.

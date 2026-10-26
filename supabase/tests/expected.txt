@@ -19,3 +19,4 @@ batch25_test 2
 batch26_test 2
 batch27_test 3
 batch31_test 6
+batch32_test 3

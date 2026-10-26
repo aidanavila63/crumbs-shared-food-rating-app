@@ -17,6 +17,8 @@ for f in "${FILES[@]}"; do
   out=$(psql -q -d "$DB" -f "$f" 2>&1 | grep "ERROR" || true)
   if [ -n "$out" ]; then echo "Loading $f failed:"; echo "$out"; exit 1; fi
 done
+# The older tests make lots of groups per person: lift the owned-groups limit (batch32 sets it back).
+psql -q -d "$DB" -c "update public.point_rules set day_caps = day_caps || '{\"groups\": [null, null, null, null, null]}'" >/dev/null
 fail=0
 while read -r name expected; do
   [ -z "$name" ] && continue

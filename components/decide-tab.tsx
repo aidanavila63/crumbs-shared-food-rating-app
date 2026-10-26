@@ -230,21 +230,21 @@ export function DecideTab({
         <h2 className="font-serif text-3xl font-bold">Decide &amp; Plan</h2>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button className="primary flex-1" onClick={onSurprise}>
-          <Dices size={20} /> Surprise us
-        </button>
-        <CravingButton groupId={groupId} />
-      </div>
-      <button
-        className="secondary"
-        onClick={() => {
-          haptic('select')
-          setQuick(true)
-        }}
-      >
-        ⏱️ Can’t decide? Decide in 60 seconds
+      <button className="primary" onClick={onSurprise}>
+        <Dices size={20} /> Surprise us
       </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          className="secondary !px-3 text-sm"
+          onClick={() => {
+            haptic('select')
+            setQuick(true)
+          }}
+        >
+          ⏱️ Decide in 60s
+        </button>
+        <CravingButton groupId={groupId} className="!px-3 text-sm" />
+      </div>
       {quick && (
         <QuickDecide
           places={places}

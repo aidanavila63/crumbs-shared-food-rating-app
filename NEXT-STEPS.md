@@ -4,8 +4,9 @@ Do these in order. Everything stays on free plans.
 
 1. **Database first** – Supabase → SQL Editor: paste and run `supabase/migrations/20261025_v4_features.sql`
    (safe to run again). Then run the admin line at the very bottom of that file on its own, with your sign-in email.
-   Then run `supabase/migrations/20261026_after_v4.sql` (public groups, recipe details + saves, head to head,
-   answers that show straight away). From now on every change comes as a new dated file like it.
+   Then run `supabase/migrations/20261026_after_v4.sql` (public groups, recipe details + saves, head to head
+   …), then `supabase/migrations/20261026_builders.sql` (Builders, groups-you-can-own by tier).
+   From now on every change comes as a new dated file like these.
 2. **Code** – `git config core.autocrlf false`, then `git am ~/Downloads/crumbs-batch30.patch`, then `git push`.
 3. **Vercel → Settings → Environment Variables** (All Environments unless noted), then redeploy:
    - `SUPABASE_SERVICE_ROLE_KEY` – Supabase → Project Settings → API keys → service_role / secret key.

@@ -1,8 +1,8 @@
 'use client'
 // "Good to know" on a place: what Crumbs members have confirmed about the restaurant (paying,
 // bookings, patio, family, access, diet options…), notes on the entrance and parking, deals and a
-// storefront photo. Anyone who's been can answer yes/no; it shows straight away (more answers firm it up;
-// the owner's answer wins).
+// storefront photo. Anyone who's been can answer yes/no; it shows once 2 agree — or straight away from
+// a Builder or admin. The owner's answer wins.
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, X } from 'lucide-react'
@@ -115,7 +115,9 @@ export function GoodToKnow({
         const prev = s?.attrs[key] ?? { yes: 0, no: 0, mine: null, owner: null, verdict: null }
         const yes = prev.yes - (prev.mine === true ? 1 : 0) + (next === true ? 1 : 0)
         const no = prev.no - (prev.mine === false ? 1 : 0) + (next === false ? 1 : 0)
-        const verdict = yes > no ? true : no > yes ? false : null
+        // demo: you're an admin here, so your answer counts straight away
+        const verdict =
+          next !== null ? next : yes >= 2 && yes > no ? true : no >= 2 && no > yes ? false : null
         return { ...s!, attrs: { ...s!.attrs, [key]: { ...prev, yes, no, mine: next, verdict } } }
       })
       return
@@ -127,7 +129,13 @@ export function GoodToKnow({
     })
     if (error) return toast.error(error.message)
     setSummary(data)
-    if (data?.points) toast.success(`Thanks! +${data.points} points`)
+    const shown = data?.attrs?.[key]?.verdict
+    if (data?.points)
+      toast.success(
+        next !== null && shown !== next
+          ? `Thanks! +${data.points} point${data.points === 1 ? '' : 's'} — it shows once someone else agrees`
+          : `Thanks! +${data.points} point${data.points === 1 ? '' : 's'}`,
+      )
   }
 
   async function addTip() {

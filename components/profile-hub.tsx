@@ -202,6 +202,11 @@ export function ProfileHub({
               />
               <p className="font-serif text-3xl font-bold">{profile?.display_name ?? 'You'}</p>
               {profile?.restaurant_owner && <OwnerTag />}
+              {(profile?.is_builder || profile?.is_admin) && (
+                <span className="tag" title="Trusted to build Crumbs’ data: your answers count straight away">
+                  🛠️ Builder
+                </span>
+              )}
               {onGroups ? (
                 <button
                   type="button"

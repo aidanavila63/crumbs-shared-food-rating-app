@@ -49,6 +49,7 @@ import { DraftsReview } from './drafts-review'
 import { Walkthrough } from './guidebook'
 import { tourDone } from '@/lib/guidebook'
 import { GroupSwitcher } from './group-switcher'
+import { GroupActions } from './group-actions'
 import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
@@ -618,9 +619,10 @@ function CrumbsShell() {
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
         {/* The group name is the group switcher: switch, start a new group, join, find one. */}
+        <div className="mb-5 flex items-end gap-2">
         <button
           type="button"
-          className="group-title mb-5"
+          className="group-title min-w-0 flex-1"
           aria-label={`${data.group.name} — switch, create or join a group`}
           onClick={() => {
             haptic('tap')
@@ -642,6 +644,22 @@ function CrumbsShell() {
             <ChevronDown size={22} className="shrink-0 text-muted-foreground" aria-hidden="true" />
           </span>
         </button>
+        <GroupActions
+          group={data.group}
+          members={data.members}
+          userId={userId}
+          supabase={data.supabase}
+          demo={data.demo}
+          v4={data.v4}
+          onGroup={(group) => {
+            data.setGroup(group)
+            data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+          }}
+          onReload={() => {
+            data.load().catch(() => {})
+          }}
+        />
+        </div>
         {switching && (
           <GroupSwitcher
             group={data.group}

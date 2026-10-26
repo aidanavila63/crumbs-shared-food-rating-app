@@ -161,6 +161,8 @@ export type Profile = {
   blind_ratings?: boolean | null
   // v4
   is_admin?: boolean | null
+  /** trusted by an admin to build Crumbs' data: answers count straight away */
+  is_builder?: boolean | null
   notify?: Record<string, boolean> | null
   /** Runs a restaurant page as its verified owner (which one is never shown). */
   restaurant_owner?: boolean | null
