@@ -4,10 +4,15 @@ import type { Dish, Place, Profile } from '../hooks/use-crumbs-data'
 import { dishAverage } from './stats.ts'
 
 // ---------- #112 reasons ----------
+// Why the score is what it is (food, service, value, speed). Vibes and amenities (Cozy, Patio,
+// Loud…) are the place's tags instead, so the two rows never repeat each other.
 export const REASONS = {
-  good: ['Great food', 'Great service', 'Good value', 'Cozy', 'Big portions', 'Fast'],
-  bad: ['Too salty', 'Slow', 'Pricey', 'Small portions', 'Loud', 'Bland'],
+  good: ['Great food', 'Great service', 'Good value', 'Big portions', 'Fast', 'Fresh'],
+  bad: ['Too salty', 'Bland', 'Slow', 'Pricey', 'Small portions', 'Bad service'],
 }
+const REASON_SET = new Set([...REASONS.good, ...REASONS.bad, 'Quick'].map((r) => r.toLowerCase()))
+/** True for tags that are really reasons (kept out of the vibes row). */
+export const isReasonTag = (tag: string) => REASON_SET.has(tag.trim().toLowerCase())
 export const MAX_REASONS = 4
 
 /** "Known for" line: reasons picked by 2+ people (or twice), most picked first, max 3. */

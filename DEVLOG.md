@@ -430,3 +430,8 @@ Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload 
 - Map: the filter button moved off the end of the top chip row to a round button bottom-left (shows how many extra filters are on); its panel opens just above it.
 - Explore (telescope) is now a toggle: tap to look, tap ✕ to stop looking or hide the spots. Leaving the map stops it, so no late error pops up on another screen. The look-around now tries three free copies of the open map data (about 8 s each) before giving up with a plain "busy, try again in a minute".
 - Tab bar: a strip under it fills the gap phone browsers leave when their own toolbar slides away, so it no longer looks like it's floating.
+
+## Round 41 - place page fixes from phone test 2 (Oct 26, Claude in Cowork)
+- "Why?" reasons and the vibe tags no longer share chips: reasons explain the score (Great food, Great service, Good value, Big portions, Fast, Fresh / Too salty, Bland, Slow, Pricey, Small portions, Bad service); vibe tags are vibes and amenities (Date night, Cozy, Fancy, Casual, Sit-down, Takeout, Patio, Late night, Family-friendly, Good for groups, Quiet, Loud). Old reason-like presets are hidden from the vibes row (places already tagged keep them so they can be untagged).
+- Dish scores: the dish list keeps its order while the place is open (re-sorts next time), so rating never slides another dish under your finger; after saving, the slider rests 1.5 s with "Saved ✓"; "Clear" takes your score off a dish (asks first).
+- Every bottom sheet (the place page and others) now has the round ✕ fixed at the bottom centre, reachable wherever you've scrolled.

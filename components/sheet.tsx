@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef } from 'react'
+import { X } from 'lucide-react'
 
 /** Accessible bottom sheet: dialog semantics, Escape to close, scroll lock, focus restore. */
 export function Sheet({
@@ -36,6 +37,15 @@ export function Sheet({
         <div className="sheet-handle" aria-hidden="true" />
         {children}
       </section>
+      {/* Always there, wherever you've scrolled to (outside the sheet so it never scrolls away). */}
+      <button
+        type="button"
+        className="overlay-close sheet-close"
+        aria-label={`Close ${label}`}
+        onClick={onClose}
+      >
+        <X size={26} strokeWidth={2.5} />
+      </button>
     </div>
   )
 }

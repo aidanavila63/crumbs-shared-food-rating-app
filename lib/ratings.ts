@@ -5,7 +5,21 @@ import type { GroupSettings, Group, Place, Rating } from '../hooks/use-crumbs-da
 
 export type Scale = '5' | 'half' | '10'
 
-export const DEFAULT_TAGS = ['Cozy', 'Date night', 'Patio', 'Loud', 'Big portions', 'Quick', 'Good value', 'Fancy']
+// Vibes and amenities only; why a score is good or bad lives in the rating's reasons (#112).
+export const DEFAULT_TAGS = [
+  'Date night',
+  'Cozy',
+  'Fancy',
+  'Casual',
+  'Sit-down',
+  'Takeout',
+  'Patio',
+  'Late night',
+  'Family-friendly',
+  'Good for groups',
+  'Quiet',
+  'Loud',
+]
 
 /** Group settings with defaults filled in. */
 export function settingsOf(group?: Pick<Group, 'settings'> | null): Required<GroupSettings> {

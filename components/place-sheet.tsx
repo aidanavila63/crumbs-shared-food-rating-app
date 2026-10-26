@@ -67,7 +67,7 @@ import { writeOrDraft } from '@/lib/offline-drafts'
 import { RestaurantPosts } from './restaurant-posts'
 import { MenuPdfLink } from './menu-pdf'
 import { PlanB } from './plan-b'
-import { REASONS, MAX_REASONS, fitsMe, knownFor, tooHotFor } from '@/lib/dish-helpers'
+import { REASONS, MAX_REASONS, fitsMe, isReasonTag, knownFor, tooHotFor } from '@/lib/dish-helpers'
 import { photoUrl } from '@/lib/photos'
 function DishRow({
   dish,
@@ -78,6 +78,7 @@ function DishRow({
   demo,
   members,
   onRate,
+  onClear,
   onNote,
   onPhoto,
   onMeta,
@@ -96,6 +97,8 @@ function DishRow({
   supabase: any
   demo: boolean
   onRate: (points: number) => void
+  /** Take your score off this dish. */
+  onClear?: () => void
   onNote: (note: string) => void
   members: Profile[]
   onPhoto: (path: string | null) => Promise<boolean>
@@ -143,7 +146,12 @@ function DishRow({
           )}
         </div>
       </div>
-      <PointsSlider label={dish.name} value={mine ? dishPoints(mine) : null} onCommit={onRate} />
+      <PointsSlider
+        label={dish.name}
+        value={mine ? dishPoints(mine) : null}
+        onCommit={onRate}
+        onClear={mine ? onClear : undefined}
+      />
       <div className="flex flex-wrap items-center gap-2">
         {(['again', 'never'] as const).map((kind) => (
           <button
@@ -404,6 +412,22 @@ export function PlaceSheet({
   const scale = v4 ? s.scale : '5'
   const status = place.status
   const [dishes, setDishes] = useState(place.dishes ?? [])
+  // Dish order is taken once (best first) so scores you give don't reshuffle the list under you.
+  const bestFirst = (list: Dish[]) =>
+    [...list]
+      .sort(
+        (a, b) =>
+          b.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0) -
+          a.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0),
+      )
+      .map((dish) => dish.id)
+  const [dishOrder, setDishOrder] = useState<string[] | null>(() =>
+    place.dishes?.length ? bestFirst(place.dishes) : null,
+  )
+  useEffect(() => {
+    if (!dishOrder && dishes.length) setDishOrder(bestFirst(dishes))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dishes.length])
   const [menuDraft, setMenuDraft] = useState<MenuLine[] | null>(null)
   // #27/#19 Shared restaurant profile: links this place and loads the community menu.
   const latest = useRef(place)
@@ -774,6 +798,26 @@ export function PlaceSheet({
     if (dish)
       notifyMates({ type: 'dish_rating', placeId: place.id, dishName: dish.name, value: points })
   }
+  /** Takes your score off a dish (the dish and everyone else's scores stay). */
+  async function clearDishRating(dishId: string) {
+    const dish = dishes.find((item) => item.id === dishId)
+    setDishes((current) =>
+      current.map((item) =>
+        item.id === dishId
+          ? { ...item, dish_ratings: item.dish_ratings.filter((r) => r.user_id !== userId) }
+          : item,
+      ),
+    )
+    if (demo) return toast('Score removed')
+    const { error, drafted } = await writeOrDraft(supabase, {
+      label: `${dish?.name ?? 'Dish'} at ${place.name}: score removed`,
+      table: 'dish_ratings',
+      op: 'delete',
+      match: { dish_id: dishId, user_id: userId },
+    })
+    if (error) return toast.error(error.message)
+    toast(drafted ? 'No signal — saved on this phone as a draft' : 'Score removed')
+  }
   async function setDishPhoto(dishId: string, path: string | null) {
     const before = dishes
     setDishes((current) =>
@@ -926,11 +970,21 @@ export function PlaceSheet({
   const balanced = balancedRaw && Math.abs(balancedRaw - average) >= 0.05 ? balancedRaw : null
   const cats = categoryAverages(place.place_ratings)
   // #18 Dishes grouped by course once any dish has one; best-rated first inside each group.
-  const sortedDishes = [...dishes].sort(
+  // Best first, but the order is fixed while the page is open, so rating a dish never moves it
+  // (or slides another dish under your finger). It re-sorts next time you open the place.
+  const byScore = [...dishes].sort(
     (a, b) =>
       b.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0) -
       a.dish_ratings.reduce((sum, r) => sum + dishPoints(r), 0),
   )
+  const sortedDishes = dishOrder
+    ? [
+        ...dishOrder
+          .map((id) => dishes.find((dish) => dish.id === id))
+          .filter((dish): dish is Dish => !!dish),
+        ...byScore.filter((dish) => !dishOrder.includes(dish.id)),
+      ]
+    : byScore
   const dishGroups: [Dish['course'] | null, Dish[]][] = dishes.some((dish) => dish.course)
     ? [
         ...COURSES.map(
@@ -1224,7 +1278,7 @@ export function PlaceSheet({
           </div>
         )}
         <div className="chip-row" role="group" aria-label="Vibe tags">
-          {[...new Set([...s.tags, ...(place.tags ?? [])])].map((tag) => {
+          {[...new Set([...s.tags.filter((t) => !isReasonTag(t)), ...(place.tags ?? [])])].map((tag) => {
             const on = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
             return (
               <button
@@ -1446,6 +1500,7 @@ export function PlaceSheet({
                 supabase={supabase}
                 demo={demo}
                 onRate={(next) => rateDish(dish.id, next)}
+                onClear={() => clearDishRating(dish.id)}
                 members={members}
                 onPhoto={(path) => setDishPhoto(dish.id, path)}
                 onMeta={(changes) => setDishMeta(dish.id, changes)}
