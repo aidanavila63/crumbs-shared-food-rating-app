@@ -131,9 +131,24 @@ export function MapTab({
     centerProbe.current = probe
   }, [])
   const spot = spots?.find((s) => s.google_place_id === spotId) ?? null
+  // The telescope is a toggle: tap to look around, tap again to stop looking or to clear the spots.
+  const exploreAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => exploreAbort.current?.abort(), []) // leaving the map stops a look-around
+  function stopExploring() {
+    haptic('tap')
+    exploreAbort.current?.abort()
+    exploreAbort.current = null
+    setExploring(false)
+    setSpots(null)
+    setSpotId(null)
+  }
   async function explore() {
+    if (exploring || spots) return stopExploring()
     haptic('tap')
     const center = centerProbe.current?.() ?? location
+    const abort = new AbortController()
+    exploreAbort.current = abort
+    const giveUp = setTimeout(() => abort.abort(new Error('timeout')), 30000)
     setExploring(true)
     setExploreCenter(center)
     setPreviewId(null)
@@ -158,18 +173,29 @@ export function MapTab({
         const url = new URL('/api/osm/nearby', window.location.origin)
         url.searchParams.set('lat', String(center.lat))
         url.searchParams.set('lon', String(center.lng))
-        const response = await fetch(url)
+        const response = await fetch(url, { signal: abort.signal })
         const json = await response.json()
         if (!response.ok) throw new Error(json.error)
         found = json.results ?? []
       }
+      if (abort.signal.aborted) return
       const fresh = notYetSaved(found, places)
       setSpots(fresh)
       if (!fresh.length) toast('Nothing new to eat around here')
     } catch (error: any) {
-      toast.error(error?.message || 'Could not explore right now')
+      // Stopped by you (or by leaving the map): no message. Took too long: say so plainly.
+      if (abort.signal.aborted && abort.signal.reason?.message !== 'timeout') return
+      toast.error(
+        abort.signal.aborted
+          ? 'Map data is taking too long right now. Try again in a minute.'
+          : error?.message || 'Could not explore right now',
+      )
     } finally {
-      setExploring(false)
+      clearTimeout(giveUp)
+      if (exploreAbort.current === abort) {
+        exploreAbort.current = null
+        setExploring(false)
+      }
     }
   }
   const [minRating, setMinRating] = useState(0)
@@ -253,24 +279,12 @@ export function MapTab({
               {item}
             </button>
           ))}
-          <button
-            aria-pressed={showFilters}
-            aria-label="More filters and pin colours"
-            className={`chip ${showFilters || extraCount ? 'chip-active' : ''}`}
-            onClick={() => {
-              haptic('tap')
-              setShowFilters(!showFilters)
-            }}
-          >
-            <SlidersHorizontal size={16} />
-            {extraCount ? <span className="ml-1">{extraCount}</span> : null}
-          </button>
         </div>
         {heat && !showFilters && (
-          <p className="heat-legend absolute bottom-3 left-3 z-10">🔥 Bigger, darker = more visits</p>
+          <p className="heat-legend absolute bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap">🔥 Bigger, darker = more visits</p>
         )}
         {showFilters && (
-          <div className="surface map-filters absolute left-3 right-3 top-16 z-20 flex flex-col gap-3">
+          <div className="surface map-filters absolute bottom-24 left-3 right-3 z-20 flex flex-col gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Show</p>
               <div className="chip-row mt-1">
@@ -602,14 +616,39 @@ export function MapTab({
               : 'Use basic map'}
           </button>
         )}
+        {!preview && !spot && (
+          <button
+            type="button"
+            aria-pressed={showFilters}
+            aria-label="More filters and pin colours"
+            className={`icon-btn map-filter-btn absolute bottom-12 left-4 z-10 ${showFilters || extraCount ? 'map-filter-on' : ''}`}
+            onClick={() => {
+              haptic('tap')
+              setShowFilters(!showFilters)
+            }}
+          >
+            <SlidersHorizontal size={20} />
+            {extraCount ? <span className="map-filter-count">{extraCount}</span> : null}
+          </button>
+        )}
         <button
           type="button"
-          aria-label="Explore places to eat around here"
-          className="icon-btn explore-btn absolute bottom-20 right-4 z-10"
-          disabled={exploring}
+          aria-label={
+            exploring
+              ? 'Stop looking around'
+              : spots
+                ? 'Hide the spots found'
+                : 'Explore places to eat around here'
+          }
+          aria-pressed={exploring || !!spots}
+          className={`icon-btn explore-btn absolute bottom-20 right-4 z-10 ${showFilters ? 'hidden' : ''}`}
           onClick={explore}
         >
-          <Telescope size={20} className={exploring ? 'animate-pulse' : ''} />
+          {exploring || spots ? (
+            <X size={20} className={exploring ? 'animate-pulse' : ''} />
+          ) : (
+            <Telescope size={20} />
+          )}
         </button>
         <button
           type="button"

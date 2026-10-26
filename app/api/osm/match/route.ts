@@ -1,10 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
-import { OSM_UA } from '@/lib/osm'
+import { overpass } from '@/lib/osm'
 import { bestMatch, matchQuery } from '@/lib/osm-match'
 
 // Fills a shared restaurant profile with OpenStreetMap facts (address, phone, website, cuisine,
 // hours) — data Crumbs may keep forever, unlike Google's. Runs once per restaurant every ~3 months.
+// Up to three free servers are tried (about 8 s each).
+export const maxDuration = 30
+
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
@@ -26,14 +29,8 @@ export async function POST(request: Request) {
   const offset = Number.isFinite(r.opening_hours?.utc) ? r.opening_hours.utc : Number(utc) || 0
   let match = null
   try {
-    const response = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
-      body: new URLSearchParams({ data: matchQuery(r.latitude, r.longitude) }),
-      signal: AbortSignal.timeout(12000),
-    })
-    if (!response.ok) throw new Error(`Map data unavailable (${response.status})`)
-    match = bestMatch(await response.json(), r.name, offset)
+    const json = await overpass(matchQuery(r.latitude, r.longitude))
+    match = bestMatch(json, r.name, offset)
   } catch (error: any) {
     return Response.json({ error: error?.message || 'Map data unavailable' }, { status: 502 })
   }

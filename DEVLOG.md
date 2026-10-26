@@ -425,3 +425,8 @@ Aidan: restaurants upload a menu PDF (members can see it); PDFs queue by upload 
 - **#228 staging**: `docs/STAGING.md` – a second free Supabase project for Vercel previews.
 - **#231 migrations**: `supabase/README.md` – the v4 file is the last big one; after it runs on live, every change is a new dated file.
 - `NEXT-STEPS.md` rewritten for the big push.
+
+## Round 40 - fixes from the first phone test of the preview (Oct 25, Claude in Cowork)
+- Map: the filter button moved off the end of the top chip row to a round button bottom-left (shows how many extra filters are on); its panel opens just above it.
+- Explore (telescope) is now a toggle: tap to look, tap ✕ to stop looking or hide the spots. Leaving the map stops it, so no late error pops up on another screen. The look-around now tries three free copies of the open map data (about 8 s each) before giving up with a plain "busy, try again in a minute".
+- Tab bar: a strip under it fills the gap phone browsers leave when their own toolbar slides away, so it no longer looks like it's floating.

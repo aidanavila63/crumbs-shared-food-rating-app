@@ -1,12 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { overDailyLimit } from '@/lib/tier-limits'
 import { tooManyRequests } from '@/lib/rate-limit'
-import { OSM_UA } from '@/lib/osm'
+import { overpass } from '@/lib/osm'
 import { overpassQuery, overpassToPlaces } from '@/lib/nearby'
 
 // #36 Discover places near a spot you loved, from OpenStreetMap (free; no Google calls).
 // Results are cached per area + cuisine for a day so repeat looks don't hit Overpass again.
 const cache = new Map<string, { at: number; results: unknown[] }>()
+
+// Up to three free servers are tried (about 8 s each).
+export const maxDuration = 30
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -32,14 +35,8 @@ export async function GET(request: Request) {
       { status: 429 },
     )
   try {
-    const response = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
-      body: new URLSearchParams({ data: overpassQuery(lat, lon, cuisine, radius) }),
-      signal: AbortSignal.timeout(12000),
-    })
-    if (!response.ok) throw new Error(`Map data unavailable (${response.status})`)
-    const results = overpassToPlaces(await response.json())
+    const json = await overpass(overpassQuery(lat, lon, cuisine, radius))
+    const results = overpassToPlaces(json)
     if (cache.size > 500) cache.clear()
     cache.set(key, { at: Date.now(), results })
     return Response.json({ results })

@@ -85,3 +85,31 @@ export function cuisineFromTag(tag?: string | null) {
   const first = tag?.split(';')[0]?.trim()
   return first ? titleCase(first) : null
 }
+
+// Free public copies of the same open map database. If the main one is busy or slow (it often is
+// at peak times), the next one is tried, so a look-around rarely fails.
+const OVERPASS_SERVERS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]
+
+/** Runs an Overpass query, trying each free server in turn (about 8 s each). */
+export async function overpass(query: string): Promise<any> {
+  let last = ''
+  for (const server of OVERPASS_SERVERS) {
+    try {
+      const response = await fetch(server, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
+        body: new URLSearchParams({ data: query }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (response.ok) return await response.json()
+      last = `status ${response.status}`
+    } catch (error: any) {
+      last = error?.name === 'TimeoutError' ? 'timeout' : error?.message || 'error'
+    }
+  }
+  throw new Error(`Map data is busy right now (${last}). Try again in a minute.`)
+}
