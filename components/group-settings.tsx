@@ -7,6 +7,15 @@ import { settingsOf, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { Switch } from './switch'
 import { PhotoButton } from './photo-button'
+import { JOIN_MODES } from './group-switcher'
+
+// One emoji per group, picked from a list (free typing let two squeeze in and get cut off).
+export const GROUP_EMOJIS = [
+  '🍜', '🍣', '🍕', '🌮', '🍔', '🥟', '🍝', '🥗', '🍱', '🥙', '🍛', '🍲', '🥘', '🍤', '🍗', '🥩',
+  '🌯', '🥪', '🍳', '🥞', '🧇', '🥐', '🥯', '🍩', '🍰', '🧁', '🍦', '🍪', '🍫', '🍿', '🍓', '🍑',
+  '🥑', '🌶️', '🧄', '🧀', '🍞', '🥨', '☕', '🧋', '🍵', '🍷', '🍺', '🍹', '🥂', '🍽️', '🥢', '🔥',
+  '❤️', '💕', '⭐', '✨', '🎉', '🏠', '🗺️', '✈️', '🌍', '🏙️', '🌴', '🐻', '🐱', '🐶', '🦊', '😋',
+]
 
 const COLORS = ['#7b2d5b', '#b23a26', '#1f5f8b', '#2f6b4a', '#8f5a06', '#4b3f8f']
 const SCALES: { id: Scale; label: string }[] = [
@@ -42,7 +51,7 @@ export function GroupSettingsCard({
   const s = settingsOf(group)
   const isOwner = !!userId && group.created_by === userId
   const [name, setName] = useState(group.name)
-  const [emoji, setEmoji] = useState(group.emoji ?? '')
+  const [picking, setPicking] = useState(false)
   const [newTag, setNewTag] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -98,6 +107,69 @@ export function GroupSettingsCard({
         </button>
       </div>
 
+      {v4 && isOwner && (
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">Who can find and join</span>
+          <div className="segmented" role="radiogroup" aria-label="Who can see the group">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{ transform: `translateX(${group.visibility === 'public' ? 100 : 0}%)` }}
+            />
+            {(['private', 'public'] as const).map((v) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={(group.visibility ?? 'private') === v}
+                className={(group.visibility ?? 'private') === v ? 'segmented-active' : ''}
+                onClick={() =>
+                  save(
+                    v === 'public'
+                      ? { visibility: v, join_mode: group.join_mode === 'open' ? 'open' : 'request' }
+                      : { visibility: v, join_mode: 'invite' },
+                    v === 'public' ? 'Now listed in Find a group' : 'Hidden from Find a group',
+                  )
+                }
+              >
+                {v === 'private' ? 'Private' : 'Public'}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {group.visibility === 'public'
+              ? 'Its name, emoji and description show in Find a group. Places, ratings and notes stay inside the group.'
+              : 'Only people with your code or invite link can join.'}
+          </p>
+          {group.visibility === 'public' && (
+            <>
+              <div className="flex flex-col gap-2">
+                {JOIN_MODES.filter((m) => m.id !== 'invite').map((m) => (
+                  <button
+                    key={m.id}
+                    className={`surface-soft text-left ${group.join_mode === m.id ? 'ring-2 ring-primary' : ''}`}
+                    onClick={() => save({ join_mode: m.id }, `${m.label}`)}
+                  >
+                    <span className="block font-semibold">{m.label}</span>
+                    <span className="block text-xs text-muted-foreground">{m.note}</span>
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className="field"
+                aria-label="Group description"
+                placeholder="A line about the group (shows in Find a group)"
+                maxLength={160}
+                defaultValue={group.description ?? ''}
+                onBlur={(event) =>
+                  event.target.value.trim() !== (group.description ?? '') &&
+                  save({ description: event.target.value.trim() || null }, 'Description saved')
+                }
+              />
+            </>
+          )}
+        </div>
+      )}
+
       {!v4 ? (
         <p className="surface-soft text-sm">
           More group settings (rating scale, category scores, whose turn, admins…) unlock with the
@@ -108,15 +180,15 @@ export function GroupSettingsCard({
           <div className="flex flex-col gap-2">
             <span className="font-semibold">Group look</span>
             <div className="flex items-center gap-3">
-              <input
+              <button
+                type="button"
                 className="field field-emoji"
-                aria-label="Group emoji"
-                maxLength={4}
-                placeholder="🍜"
-                value={emoji}
-                onChange={(event) => setEmoji(event.target.value)}
-                onBlur={() => emoji !== (group.emoji ?? '') && save({ emoji: emoji.trim() || null })}
-              />
+                aria-label={`Group emoji: ${group.emoji ?? 'none'} (change)`}
+                aria-expanded={picking}
+                onClick={() => setPicking(!picking)}
+              >
+                {group.emoji || '＋'}
+              </button>
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Group colour">
                 {COLORS.map((color) => (
                   <button
@@ -134,8 +206,39 @@ export function GroupSettingsCard({
                 ))}
               </div>
             </div>
+            {picking && (
+              <div className="emoji-grid" role="radiogroup" aria-label="Pick the group emoji">
+                {GROUP_EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    role="radio"
+                    aria-checked={group.emoji === e}
+                    className={group.emoji === e ? 'emoji-on' : ''}
+                    onClick={() => {
+                      haptic('select')
+                      save({ emoji: e })
+                      setPicking(false)
+                    }}
+                  >
+                    {e}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="emoji-none"
+                  onClick={() => {
+                    save({ emoji: null })
+                    setPicking(false)
+                  }}
+                >
+                  None
+                </button>
+              </div>
+            )}
             <span className="text-sm text-muted-foreground">Cover photo (top of the Group tab)</span>
             <PhotoButton
+              aspect={2.2}
               label={`${group.name} cover`}
               path={group.cover_path}
               groupId={group.id}

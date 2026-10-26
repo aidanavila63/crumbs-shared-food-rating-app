@@ -26,7 +26,7 @@ const place = (id: string, extra: Record<string, unknown> = {}) =>
   }) as any
 const r = (n: number) => [{ user_id: 'u', score: n }]
 
-test('plan B: same cuisine nearby first, skips far, closed and the place itself', () => {
+test('plan B: similar places nearby first, then the rest; skips far, closed and the place itself', () => {
   const ramen = place('ramen', { cuisine: 'Ramen', price_level: 2 })
   const list = [
     ramen,
@@ -37,10 +37,10 @@ test('plan B: same cuisine nearby first, skips far, closed and the place itself'
     place('pricey', { cuisine: 'Ramen', price_level: 4 }),
     place('meh', { cuisine: 'Pizza', place_ratings: r(2) }),
   ]
-  assert.deepEqual(
-    planB(ramen, list).map((x) => x.place.id),
-    ['ramen2', 'loved'],
-  )
+  const ids = planB(ramen, list).map((x) => x.place.id)
+  assert.deepEqual(ids.slice(0, 2), ['ramen2', 'loved'])
+  assert.ok(!ids.includes('far') && !ids.includes('closed') && !ids.includes('ramen'))
+  assert.deepEqual(ids.slice(2).sort(), ['meh', 'pricey'])
 })
 
 test('three options: favourite, something new, wildcard', () => {

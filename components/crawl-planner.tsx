@@ -8,6 +8,8 @@ import { toast } from 'sonner'
 import type { List, Place } from '@/hooks/use-crumbs-data'
 import { crawlDirectionsUrl, crawlRoute, tidyRoute } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
+import { distanceKm } from '@/lib/stats'
+import { NearbyOffList, centreOf } from './nearby-off-list'
 
 const ordered = (list: List) =>
   [...(list.list_places ?? [])].sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
@@ -22,7 +24,10 @@ export function CrawlPlanner({
   onLists,
   onOpenPlace,
   onShowOnMap,
+  onPlaceAdded,
 }: {
+  /** a place saved from "Not on your list yet" (then added as a stop) */
+  onPlaceAdded?: (place: Place) => void
   lists: List[]
   places: Place[]
   groupId: string
@@ -151,6 +156,30 @@ export function CrawlPlanner({
         onDelete={() => removeCrawl(open)}
         onOpenPlace={onOpenPlace}
         onShowOnMap={() => onShowOnMap(open.id)}
+        nearby={
+          onPlaceAdded ? (
+            // After the first stop, suggestions centre on it (that's where the crawl is).
+            <NearbyOffList
+              center={
+                stops[0]?.latitude != null && stops[0]?.longitude != null
+                  ? { lat: stops[0].latitude, lng: stops[0].longitude }
+                  : centreOf(places)
+              }
+              near={stops[0]?.name}
+              auto={stops.length > 0}
+              places={places}
+              supabase={supabase}
+              demo={demo}
+              groupId={groupId}
+              userId={userId}
+              addLabel="Add stop"
+              onAdded={(place) => {
+                onPlaceAdded(place)
+                addStop(open, place)
+              }}
+            />
+          ) : null
+        }
       />
     )
   }
@@ -216,7 +245,9 @@ function CrawlDetail({
   onDelete,
   onOpenPlace,
   onShowOnMap,
+  nearby,
 }: {
+  nearby?: React.ReactNode
   crawl: List
   stops: Place[]
   places: Place[]
@@ -234,7 +265,21 @@ function CrawlDetail({
   const url = crawlDirectionsUrl(stops)
   const options = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (!needle) return []
+    // Nothing typed: places on your list close to the first stop (walkable from it).
+    if (!needle) {
+      const first = stops[0]
+      if (first?.latitude == null || first?.longitude == null) return []
+      const from = { lat: first.latitude, lng: first.longitude }
+      return places
+        .filter(
+          (p) => !stops.some((s) => s.id === p.id) && p.latitude != null && p.longitude != null,
+        )
+        .map((p) => ({ p, km: distanceKm(from, { lat: p.latitude!, lng: p.longitude! }) }))
+        .filter((x) => x.km <= 2)
+        .sort((a, b) => a.km - b.km)
+        .slice(0, 4)
+        .map((x) => x.p)
+    }
     return places
       .filter((p) => !stops.some((s) => s.id === p.id))
       .filter((p) => `${p.name} ${p.cuisine ?? ''}`.toLowerCase().includes(needle))
@@ -313,6 +358,9 @@ function CrawlDetail({
           value={query}
           onChange={(event) => onQuery(event.target.value)}
         />
+        {!query.trim() && options.length > 0 && (
+          <p className="text-sm font-semibold">On your list, close to {stops[0]?.name}</p>
+        )}
         {options.map((place) => (
           <button
             key={place.id}
@@ -325,6 +373,7 @@ function CrawlDetail({
           </button>
         ))}
       </div>
+      {nearby}
       <div className="flex flex-wrap gap-2">
         {stops.length > 2 && (
           <button

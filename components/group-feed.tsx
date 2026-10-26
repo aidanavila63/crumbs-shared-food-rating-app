@@ -5,6 +5,7 @@ import { useSocial, type Activity } from '@/hooks/use-social'
 import { milestones, onThisDay } from '@/lib/memories'
 import { KINDS, OCCASIONS } from './visits-panel'
 import { ReactionBar, timeAgo } from './social'
+import { Overlay } from './overlay'
 
 const ICON: Record<string, string> = {
   place_added: '📍',
@@ -34,9 +35,11 @@ export function ActivityFeed({
   onSelect: (place: Place) => void
 }) {
   const social = useSocial()
-  const [limit, setLimit] = useState(12)
+  // The card shows the latest 6; "See all" opens the 30 most recent on their own page.
+  const [all, setAll] = useState(false)
   if (!social?.enabled) return null
-  const items = social.activity.slice(0, limit)
+  const items = social.activity.slice(0, 6)
+  const recent = social.activity.slice(0, 30)
 
   function describe(item: Activity) {
     const who = item.actor === userId ? 'You' : (names[item.actor ?? ''] ?? 'Someone')
@@ -72,6 +75,34 @@ export function ActivityFeed({
     }
   }
 
+  const row = (item: Activity) => {
+    const place = places.find((p) => p.id === item.place_id)
+    return (
+      <div key={item.id} className="feed-item flex gap-3">
+        <span className="feed-icon" aria-hidden="true">
+          {ICON[item.kind] ?? '•'}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {place ? (
+            <button
+              className="text-left text-sm font-semibold"
+              onClick={() => {
+                setAll(false)
+                onSelect(place)
+              }}
+            >
+              {describe(item)}
+            </button>
+          ) : (
+            <p className="text-sm font-semibold">{describe(item)}</p>
+          )}
+          <span className="text-xs text-muted-foreground">{timeAgo(item.created_at)}</span>
+          <ReactionBar target={`activity:${item.id}`} names={names} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="surface flex flex-col gap-3">
       <h3 className="font-serif text-2xl font-bold">What’s new</h3>
@@ -80,36 +111,23 @@ export function ActivityFeed({
           Nothing yet. Adds, ratings, visits and home cooking show up here.
         </p>
       )}
-      {items.map((item) => {
-        const place = places.find((p) => p.id === item.place_id)
-        return (
-          <div key={item.id} className="feed-item flex gap-3">
-            <span className="feed-icon" aria-hidden="true">
-              {ICON[item.kind] ?? '•'}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              {place ? (
-                <button className="text-left text-sm font-semibold" onClick={() => onSelect(place)}>
-                  {describe(item)}
-                </button>
-              ) : (
-                <p className="text-sm font-semibold">{describe(item)}</p>
-              )}
-              <span className="text-xs text-muted-foreground">{timeAgo(item.created_at)}</span>
-              <ReactionBar target={`activity:${item.id}`} names={names} />
-            </div>
-          </div>
-        )
-      })}
-      {social.activity.length > limit && (
-        <button className="secondary" onClick={() => setLimit(limit + 20)}>
-          Show more
+      {items.map(row)}
+      {social.activity.length > items.length && (
+        <button className="secondary" onClick={() => setAll(true)}>
+          See all activity
         </button>
+      )}
+      {all && (
+        <Overlay label="Activity" title="Activity" onClose={() => setAll(false)}>
+          <div className="surface flex flex-col gap-3">
+            {recent.map(row)}
+            <p className="text-xs text-muted-foreground">The 30 most recent things in the group.</p>
+          </div>
+        </Overlay>
       )}
     </div>
   )
 }
-
 /** #69 On this day + #70 milestones. Hidden when there's nothing to show. */
 export function MemoriesCard({
   places,

@@ -1,4 +1,5 @@
 'use client'
+import { NearbyOffList, centreOf } from './nearby-off-list'
 import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -22,7 +23,10 @@ export function ListsTab({
   onSelect,
   trips = true,
   groups = [],
+  onPlaceAdded,
 }: {
+  /** a place saved from "Not on your list yet" */
+  onPlaceAdded?: (place: Place) => void
   /** #136 your other groups (copy a list there) */
   groups?: Group[]
   /** #29 group setting: trips on lists */
@@ -274,6 +278,27 @@ export function ListsTab({
                 </button>
               ))}
           </div>
+          {onPlaceAdded && groupId && (
+            <div className="mt-4">
+              <NearbyOffList
+                center={
+                  centreOf(
+                    places.filter((p) => active.list_places?.some((i) => i.place_id === p.id)),
+                  ) ?? centreOf(places)
+                }
+                places={places}
+                supabase={supabase}
+                demo={demo}
+                groupId={groupId}
+                userId={userId}
+                addLabel="Add to list"
+                onAdded={(place) => {
+                  onPlaceAdded(place)
+                  toggle(active, place)
+                }}
+              />
+            </div>
+          )}
           <ShareList listId={active.id} userId={userId} supabase={supabase} demo={demo} />
           <div className="mt-5 flex gap-6 text-sm">
             <button className="text-primary" onClick={() => rename(active)}>

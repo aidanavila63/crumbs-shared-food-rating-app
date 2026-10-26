@@ -1,7 +1,8 @@
 'use client'
 // "Good to know" on a place: what Crumbs members have confirmed about the restaurant (paying,
 // bookings, patio, family, access, diet options…), notes on the entrance and parking, deals and a
-// storefront photo. Anyone who's been can answer yes/no; 2 agreeing (or the owner) makes it show.
+// storefront photo. Anyone who's been can answer yes/no; it shows straight away (more answers firm it up;
+// the owner's answer wins).
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, X } from 'lucide-react'
@@ -32,7 +33,7 @@ const DEMO_SUMMARY: AttrSummary = {
   attrs: {
     cards: { yes: 3, no: 0, mine: null, owner: null, verdict: true },
     patio: { yes: 2, no: 0, mine: true, owner: null, verdict: true },
-    late_night: { yes: 1, no: 0, mine: null, owner: null, verdict: null },
+    late_night: { yes: 1, no: 0, mine: null, owner: null, verdict: true },
     takes_bookings: { yes: 0, no: 2, mine: null, owner: null, verdict: false },
   },
   groups: {
@@ -114,7 +115,7 @@ export function GoodToKnow({
         const prev = s?.attrs[key] ?? { yes: 0, no: 0, mine: null, owner: null, verdict: null }
         const yes = prev.yes - (prev.mine === true ? 1 : 0) + (next === true ? 1 : 0)
         const no = prev.no - (prev.mine === false ? 1 : 0) + (next === false ? 1 : 0)
-        const verdict = yes >= 2 && yes > no ? true : no >= 2 && no > yes ? false : null
+        const verdict = yes > no ? true : no > yes ? false : null
         return { ...s!, attrs: { ...s!.attrs, [key]: { ...prev, yes, no, mine: next, verdict } } }
       })
       return

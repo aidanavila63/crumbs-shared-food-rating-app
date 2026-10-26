@@ -224,6 +224,7 @@ function NewSession({
   const [source, setSource] = useState('want')
   const [occasion, setOccasion] = useState<string | null>(null)
   const [title, setTitle] = useState('')
+  const [style, setStyle] = useState<'swipe' | 'duel'>('swipe')
   const [busy, setBusy] = useState(false)
   const chosen = sources.find((s) => s.id === source) ?? sources[0]
   const pool = chosen
@@ -234,20 +235,15 @@ function NewSession({
   async function start() {
     if (pool.length < 2) return toast('Need at least 2 places — try another list or occasion')
     setBusy(true)
-    const name =
-      title.trim() ||
-      [
-        occasions.find((o) => o.id === occasion)?.label.replace(/^\S+\s/, ''),
-        chosen.label.replace(/^\S+\s/, ''),
-      ]
-        .filter(Boolean)
-        .join(' · ')
+    // No name given → "Let’s Eat Together!"
+    const name = title.trim() || 'Let’s Eat Together!'
     const session = await store.startSession(
       name,
       shuffle(pool)
-        .slice(0, 15)
+        .slice(0, style === 'duel' ? 12 : 15)
         .map((p) => p.id),
       chosen.listId ?? null,
+      style,
     )
     setBusy(false)
     if (!session) return
@@ -266,11 +262,31 @@ function NewSession({
       <input
         className="field"
         aria-label="Name (optional)"
-        placeholder="Name it (optional) — e.g. Friday dinner"
+        placeholder="Let’s Eat Together!"
         maxLength={80}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
       />
+      <span className="text-sm font-semibold">How</span>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="How to decide">
+        {(
+          [
+            ['swipe', '💘 Swipe to match', 'Yes or no on each place'],
+            ['duel', '⚔️ Head to head', 'Would you rather: pick one of two'],
+          ] as const
+        ).map(([id, label, note]) => (
+          <button
+            key={id}
+            role="radio"
+            aria-checked={style === id}
+            className={`surface-soft text-left ${style === id ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setStyle(id)}
+          >
+            <span className="block text-sm font-bold">{label}</span>
+            <span className="block text-xs text-muted-foreground">{note}</span>
+          </button>
+        ))}
+      </div>
       <span className="text-sm font-semibold">From</span>
       <div className="chip-row" role="radiogroup" aria-label="Which places">
         {sources.map((s) => (
@@ -302,7 +318,7 @@ function NewSession({
       <button className="primary" disabled={busy || pool.length < 2} onClick={start}>
         {pool.length < 2
           ? `Only ${pool.length} place${pool.length === 1 ? '' : 's'} fit`
-          : `Start with ${Math.min(15, pool.length)} places`}
+          : `Start with ${Math.min(style === 'duel' ? 12 : 15, pool.length)} places`}
       </button>
     </div>
   )
@@ -406,7 +422,13 @@ function SessionView({
               className={mode === m ? 'segmented-active' : ''}
               onClick={() => onMode(m)}
             >
-              {m === 'swipe' ? 'Swipe' : m === 'list' ? 'List' : 'Results'}
+              {m === 'swipe'
+                ? session.style === 'duel'
+                  ? 'Pick'
+                  : 'Swipe'
+                : m === 'list'
+                  ? 'List'
+                  : 'Results'}
             </button>
           ))}
         </div>
@@ -445,7 +467,19 @@ function SessionView({
           />
         )}
       </div>
-      {mode === 'swipe' && userId && (
+      {mode === 'swipe' && userId && session.style === 'duel' && (
+        <DuelDeck
+          session={session}
+          store={store}
+          userId={userId}
+          byId={(id) => {
+            const place = byId(id)
+            return place && fits(place) ? place : undefined
+          }}
+          onDone={() => onMode('results')}
+        />
+      )}
+      {mode === 'swipe' && userId && session.style !== 'duel' && (
         <SwipeDeck
           session={session}
           store={store}
@@ -755,6 +789,102 @@ function SwipeDeck({
           <Heart size={30} strokeWidth={2.6} />
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Head to head ("would you rather"): two places, tap the one you'd rather. The winner stays and
+ * meets the next one. The losers count as a no, and your last one standing is your yes — so the
+ * results work the same as swiping (most picked first; everyone's pick the same = a match).
+ */
+function DuelDeck({
+  session,
+  store,
+  userId,
+  byId,
+  onDone,
+}: {
+  session: SwipeSession
+  store: DecideStore
+  userId: string
+  byId: (id: string) => Place | undefined
+  onDone: () => void
+}) {
+  const queue = nextToVote(session, store.votes, userId).filter((id) => byId(id))
+  const [champ, setChamp] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const holder = champ && queue.includes(champ) ? champ : (queue[0] ?? null)
+  const challenger = queue.find((id) => id !== holder) ?? null
+  const total = session.place_ids.length
+  const left = queue.length
+
+  // Only one left: that's your pick.
+  useEffect(() => {
+    if (holder && !challenger && !busy) {
+      setBusy(true)
+      Promise.resolve(store.vote(session.id, holder, true)).finally(() => setBusy(false))
+      haptic('celebrate')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holder, challenger])
+
+  async function pick(winner: string, loser: string) {
+    if (busy) return
+    setBusy(true)
+    haptic('select')
+    setChamp(winner)
+    await store.vote(session.id, loser, false)
+    setBusy(false)
+  }
+
+  if (!holder)
+    return (
+      <div className="surface flex flex-col items-center gap-3 text-center">
+        <p className="text-5xl" aria-hidden="true">
+          🏆
+        </p>
+        <p className="font-serif text-2xl font-bold">You picked!</p>
+        <p className="text-sm text-muted-foreground">See what everyone else chose.</p>
+        <button className="primary" onClick={onDone}>
+          See results
+        </button>
+      </div>
+    )
+  const a = byId(holder)!
+  const b = challenger ? byId(challenger) : undefined
+  if (!b)
+    return (
+      <div className="surface flex flex-col items-center gap-2 text-center">
+        <p className="text-sm text-muted-foreground">Your pick</p>
+        <p className="font-serif text-3xl font-bold">{a.name}</p>
+      </div>
+    )
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-center text-sm text-muted-foreground">
+        Would you rather… · {total - left + 1} of {total - 1}
+      </p>
+      {[a, b].map((place, i) => (
+        <div key={place.id} className="contents">
+          {i === 1 && (
+            <p
+              className="text-center font-serif text-xl font-bold text-muted-foreground"
+              aria-hidden="true"
+            >
+              or
+            </p>
+          )}
+          <button
+            className="swipe-card-static surface text-left"
+            disabled={busy}
+            aria-label={`I'd rather ${place.name}`}
+            onClick={() => pick(place.id, i === 0 ? b.id : a.id)}
+          >
+            <PlaceFace place={place} />
+          </button>
+        </div>
+      ))}
     </div>
   )
 }

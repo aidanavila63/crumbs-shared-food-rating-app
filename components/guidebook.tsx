@@ -28,8 +28,16 @@ export function Walkthrough({ onDone }: { onDone: () => void }) {
         </h2>
         <p className="max-w-sm text-muted-foreground">{step.text}</p>
         <div className="mt-2 flex w-full max-w-sm gap-2">
-          <button className="secondary flex-1" onClick={finish}>
-            Skip
+          {/* The round ✕ already skips, so this side goes back a card. */}
+          <button
+            className="secondary flex-1"
+            disabled={i === 0}
+            onClick={() => {
+              haptic('tap')
+              setI(i - 1)
+            }}
+          >
+            Back
           </button>
           <button
             className="primary flex-1"
@@ -43,7 +51,7 @@ export function Walkthrough({ onDone }: { onDone: () => void }) {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          You can replay this from Settings → Guidebook.
+          ✕ skips the tour. You can replay it from Settings → Guidebook.
         </p>
       </div>
     </Overlay>

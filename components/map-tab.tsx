@@ -443,7 +443,7 @@ export function MapTab({
               disableDefaultUI
               defaultCenter={location}
               defaultZoom={2}
-              className="h-[calc(100dvh-230px)] min-h-[520px] w-full"
+              className="map-fit w-full"
             >
               <FitBounds places={filtered} />
               <Recenter target={locateTarget} />

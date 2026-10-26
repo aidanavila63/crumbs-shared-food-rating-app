@@ -163,5 +163,5 @@ export function OsmMap({
   }, [locateTarget])
 
   // `isolate` keeps Leaflet's own z-indexes (400-1000) inside the map so chips, cards and the tab bar stay on top.
-  return <div ref={box} className="isolate h-[calc(100dvh-230px)] min-h-[520px] w-full" />
+  return <div ref={box} className="isolate map-fit w-full" />
 }

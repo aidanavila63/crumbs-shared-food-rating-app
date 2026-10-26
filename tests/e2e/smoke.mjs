@@ -57,7 +57,7 @@ await step('settings and guidebook', async () => {
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForTimeout(2000)
   await page.locator('header button').last().click()
-  await page.getByText('Settings').first().click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).first().click()
   await page.getByText('Guidebook').first().click()
   await page.getByText('Tips & tricks').first().waitFor({ timeout: 5000 })
 })

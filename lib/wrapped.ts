@@ -118,23 +118,46 @@ export function defaultWrappedYear(places: Place[], today = new Date()) {
   return years.includes(now) ? now : (years[0] ?? now)
 }
 
+/**
+ * Wrapped is an event, not an always-on page: the full year opens Dec 1 – Jan 31, and a
+ * half-year one (Jan–Jun) opens through July. Outside those it says when it's back.
+ */
+export function wrappedSeason(today = new Date()) {
+  const m = today.getMonth()
+  const y = today.getFullYear()
+  if (m === 11) return { open: true as const, half: false, year: y }
+  if (m === 0) return { open: true as const, half: false, year: y - 1 }
+  if (m === 6) return { open: true as const, half: true, year: y }
+  const next = m < 6 ? new Date(y, 6, 1) : new Date(y, 11, 1)
+  return {
+    open: false as const,
+    half: m < 6,
+    year: y,
+    opens: next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+  }
+}
+
 export function buildWrapped({
   places,
   year,
   userId,
   members = [],
   meals = [],
+  half = false,
 }: {
   places: Place[]
   year: number
   userId?: string
   members?: Profile[]
   meals?: HomeMeal[]
+  /** only January to June */
+  half?: boolean
 }): Wrapped | null {
   const y = String(year)
-  const visits = allVisits(places).filter((v) => v.visited_on.startsWith(y))
+  const inRange = (date: string) => date.startsWith(y) && (!half || date.slice(5, 7) <= '06')
+  const visits = allVisits(places).filter((v) => inRange(v.visited_on))
   const cooks = meals.flatMap((m) =>
-    m.home_meal_cooks.filter((c) => c.cooked_on.startsWith(y)).map((c) => ({ ...c, meal: m })),
+    m.home_meal_cooks.filter((c) => inRange(c.cooked_on)).map((c) => ({ ...c, meal: m })),
   )
   if (!visits.length && !cooks.length) return null
 

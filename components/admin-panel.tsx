@@ -107,7 +107,6 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
   const [flags, setFlags] = useState<Flag[]>([])
   const [errors, setErrors] = useState<ClientError[]>([])
   const [waitlist, setWaitlist] = useState<Waiting[]>([])
-  const [newFlag, setNewFlag] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -282,7 +281,8 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         <h3 className="settings-heading">Feature switches</h3>
         <p className="text-sm text-muted-foreground">
           <strong>Admin</strong> = only you can see it (e.g. AI features while credits last).
-          <strong> Everyone</strong> = all groups. A switch that isn’t listed stays as it is today.
+          <strong> Everyone</strong> = all groups. Switches are built into the app; new ones appear
+          here when a feature needs one.
         </p>
         {flags.map((flag) => (
           <div key={flag.key} className="flex flex-col gap-1">
@@ -312,31 +312,6 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
             </div>
           </div>
         ))}
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const key = newFlag
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9_-]/g, '_')
-              .slice(0, 40)
-            if (!key) return
-            setFlag(key, 'admin')
-            setNewFlag('')
-          }}
-        >
-          <input
-            className="field font-mono"
-            aria-label="New switch name"
-            placeholder="new_switch_name"
-            value={newFlag}
-            onChange={(event) => setNewFlag(event.target.value)}
-          />
-          <button className="secondary shrink-0" disabled={!newFlag.trim()}>
-            Add
-          </button>
-        </form>
       </section>
 
       <section className="surface settings-card">

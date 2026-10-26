@@ -1,5 +1,6 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { BarChart3, Gift, Globe2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
 import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
@@ -14,6 +15,10 @@ import { ContributionsCard } from './contributions-card'
 import { OwnerPanel } from './owner-panel'
 import { WrappedStory } from './wrapped'
 import { OwnerTag } from './restaurant-profile'
+import { PhotoCropper } from './photo-cropper'
+import { PHOTO_BUCKET, photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
+import { wrappedSeason } from '@/lib/wrapped'
+import { ChevronDown } from 'lucide-react'
 
 export type HubPage =
   | 'menu'
@@ -63,7 +68,10 @@ export function ProfileHub({
   onSelect,
   settings,
   meals = [],
+  onGroups,
 }: {
+  /** open the group switcher (switch, create, join, find) */
+  onGroups?: () => void
   /** #61 home cooking counts in Wrapped */
   meals?: HomeMeal[]
   pages: HubPage[]
@@ -85,6 +93,39 @@ export function ProfileHub({
   const closeTop = () => onPages(pages.slice(0, -1))
   const earned = useMemo(() => badges(allPlaces, userId), [allPlaces, userId])
   const earnedCount = earned.filter((badge) => badge.earned).length
+  // #61 Wrapped is an event (Dec–Jan for the year, July for the first half); admins can peek.
+  const season = wrappedSeason()
+  const wrappedOpen = season.open || !!profile?.is_admin
+  // Your own profile photo: pick → fit it in the circle → saved.
+  const avatarInput = useRef<HTMLInputElement>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  async function saveAvatar(blob: Blob) {
+    setAvatarFile(null)
+    if (settings.demo) return toast('Photos need the real database, not demo mode')
+    setAvatarBusy(true)
+    try {
+      const path = await uploadPhoto(settings.supabase, group.id, blob)
+      const avatar_url = photoUrl(path)
+      const { error } = await settings.supabase
+        .from('profiles')
+        .update({ avatar_url })
+        .eq('id', userId)
+      if (error) {
+        await removePhoto(settings.supabase, path)
+        return toast.error(error.message)
+      }
+      // Tidy the old one away if it was a Crumbs upload (not a sign-in picture).
+      const old = profile?.avatar_url?.split(`/public/${PHOTO_BUCKET}/`)[1]
+      if (old) await removePhoto(settings.supabase, old).catch(() => {})
+      settings.onProfile({ avatar_url })
+      toast.success('Profile photo saved')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that photo')
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
 
   const buttons: { page: HubPage; label: string; icon: React.ReactNode; note?: string }[] = [
     {
@@ -95,12 +136,16 @@ export function ProfileHub({
     },
     { page: 'passport', label: 'Passport', icon: <Globe2 /> },
     { page: 'stats', label: 'Stats & memories', icon: <BarChart3 /> },
-    { page: 'wrapped', label: 'Wrapped', icon: <Gift /> },
+    {
+      page: 'wrapped',
+      label: 'Wrapped',
+      icon: <Gift />,
+      note: season.open ? (season.half ? 'First half' : 'Open now') : `Opens ${season.opens}`,
+    },
     // #100 Verified restaurant owners get their own area.
     ...(profile?.restaurant_owner
       ? [{ page: 'restaurants' as const, label: 'Your restaurants', icon: <Store /> }]
       : []),
-    { page: 'settings', label: 'Settings', icon: <Settings /> },
     // #21 Only Crumbs admins (profiles.is_admin) see this.
     ...(profile?.is_admin
       ? [{ page: 'admin' as const, label: 'Admin', icon: <ShieldCheck /> }]
@@ -126,17 +171,50 @@ export function ProfileHub({
         >
           <div className="hub">
             <div className="hub-me">
-              <span className="avatar-btn avatar-lg" aria-hidden="true">
+              <button
+                type="button"
+                className="avatar-btn avatar-lg avatar-edit"
+                aria-label={profile?.avatar_url ? 'Change your profile photo' : 'Add a profile photo'}
+                disabled={avatarBusy}
+                onClick={() => avatarInput.current?.click()}
+              >
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={profile.avatar_url} alt="" referrerPolicy="no-referrer" />
                 ) : (
                   <span>{initial(profile?.display_name)}</span>
                 )}
-              </span>
+                <span className="avatar-edit-badge" aria-hidden="true">
+                  {avatarBusy ? '…' : '📷'}
+                </span>
+              </button>
+              <input
+                ref={avatarInput}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                aria-label="Profile photo"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) setAvatarFile(file)
+                  event.target.value = ''
+                }}
+              />
               <p className="font-serif text-3xl font-bold">{profile?.display_name ?? 'You'}</p>
               {profile?.restaurant_owner && <OwnerTag />}
-              <p className="text-sm text-muted-foreground">{group.name}</p>
+              {onGroups ? (
+                <button
+                  type="button"
+                  className="group-switch-chip"
+                  aria-label={`${group.name} — switch, create or join a group`}
+                  onClick={onGroups}
+                >
+                  {group.emoji ? `${group.emoji} ` : ''}
+                  {group.name} <ChevronDown size={14} />
+                </button>
+              ) : (
+                <p className="text-sm text-muted-foreground">{group.name}</p>
+              )}
             </div>
             <div className="hub-grid">
               {buttons.map((button, index) => (
@@ -227,10 +305,43 @@ export function ProfileHub({
         </Overlay>
       )}
 
-      {pages.at(-1) === 'wrapped' && (
+      {pages.at(-1) === 'wrapped' && wrappedOpen && (
         <Overlay label="Crumbs Wrapped" variant="story" onClose={closeTop}>
-          <WrappedStory places={places} meals={meals} group={group} members={members} userId={userId} />
+          <WrappedStory
+            places={places}
+            meals={meals}
+            group={group}
+            members={members}
+            userId={userId}
+            season={season.open ? { year: season.year, half: season.half } : undefined}
+          />
         </Overlay>
+      )}
+      {pages.at(-1) === 'wrapped' && !wrappedOpen && (
+        <Overlay label="Crumbs Wrapped" title="Crumbs Wrapped" onClose={closeTop}>
+          <div className="surface flex flex-col items-center gap-2 text-center">
+            <p className="text-5xl" aria-hidden="true">
+              🎁
+            </p>
+            <p className="font-serif text-2xl font-bold">Back on {season.opens}</p>
+            <p className="text-sm text-muted-foreground">
+              Wrapped is an event: your year in food opens every December (until the end of
+              January), and a first-half look opens every July. Keep logging visits and home
+              cooking — it builds itself.
+            </p>
+          </div>
+        </Overlay>
+      )}
+      {avatarFile && (
+        <PhotoCropper
+          file={avatarFile}
+          aspect={1}
+          round
+          outWidth={512}
+          title="Your profile photo"
+          onCancel={() => setAvatarFile(null)}
+          onDone={saveAvatar}
+        />
       )}
 
       {pages.at(-1) === 'restaurants' && profile?.restaurant_owner && (

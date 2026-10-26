@@ -15,6 +15,7 @@ import type { DecideStore, Plan, SwipeSession } from '@/hooks/use-decide'
 import { settingsOf } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { Overlay } from './overlay'
+import { NearbyOffList, centreOf } from './nearby-off-list'
 import { DecideTogether } from './decide-together'
 import { PlansCard, PlansPage, type PlanDraft } from './plans'
 import { CrawlPlanner } from './crawl-planner'
@@ -88,7 +89,18 @@ export function DecideTab({
   home?: { lat: number; lng: number } | null
 }) {
   const show = useShowScore()
-  const [page, setPage] = useState<'together' | 'plans' | 'crawl' | null>(null)
+  const [page, setPage] = useState<'together' | 'plans' | 'crawl' | 'discover' | null>(null)
+  // Discover: places to eat near you that aren't on your list (your location, else home).
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null)
+  function openDiscover() {
+    haptic('select')
+    setPage('discover')
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => setHere({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setHere(home ?? centreOf(allPlaces)),
+      { timeout: 8000 },
+    )
+  }
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [draft, setDraft] = useState<PlanDraft | null>(null)
   const openPlace = (place: Place) => {
@@ -295,17 +307,11 @@ export function DecideTab({
             </span>
             <span className="block font-bold">Food crawl</span>
           </button>
-          <button
-            className="category-card"
-            onClick={() => {
-              haptic('select')
-              setPage('plans')
-            }}
-          >
+          <button className="category-card" onClick={openDiscover}>
             <span className="category-emoji" aria-hidden="true">
-              📅
+              🔭
             </span>
-            <span className="block font-bold">Plans</span>
+            <span className="block font-bold">Discover nearby</span>
           </button>
         </div>
       )}
@@ -558,6 +564,35 @@ export function DecideTab({
           />
         </Overlay>
       )}
+      {page === 'discover' && (
+        <Overlay label="Discover nearby" title="Discover nearby" onClose={() => setPage(null)}>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Places to eat around you that aren’t on your list yet. Add one and it goes on Want to
+              try.
+            </p>
+            {here ? (
+              <NearbyOffList
+                center={here}
+                auto
+                max={12}
+                places={allPlaces}
+                supabase={supabase}
+                demo={demo}
+                groupId={groupId}
+                userId={userId}
+                addLabel="Want to try"
+                onAdded={(place) => {
+                  onPlaceAdded(place)
+                  toast.success(`${place.name} added to Want to try`)
+                }}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Finding where you are…</p>
+            )}
+          </div>
+        </Overlay>
+      )}
       {page === 'plans' && decide && (
         <Overlay
           label="Plans"
@@ -595,6 +630,7 @@ export function DecideTab({
               setPage(null)
               onShowOnMap(id)
             }}
+            onPlaceAdded={onPlaceAdded}
           />
         </Overlay>
       )}

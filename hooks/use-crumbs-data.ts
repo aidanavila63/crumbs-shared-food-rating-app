@@ -113,7 +113,13 @@ export type Group = {
   color?: string | null
   /** #46 cover photo path in the photo bucket */
   cover_path?: string | null
+  /** public = its name shows in Find a group (contents stay inside the group) */
+  visibility?: 'private' | 'public' | null
+  /** how people get in: code/link only, ask the owner, or anyone */
+  join_mode?: 'invite' | 'request' | 'open' | null
+  description?: string | null
 }
+export type Ingredient = { qty: string; unit: string; item: string }
 export type HomeMealRating = { user_id: string; score: number; notes: string | null }
 export type HomeMealCook = {
   id: string
@@ -139,6 +145,11 @@ export type HomeMeal = {
   /** #123 shared with everyone on Crumbs (rated + tips) */
   recipe_public?: boolean | null
   recipe?: string | null
+  /** Breakfast, Main, Soup, Dessert… */
+  kind?: string | null
+  cuisine?: string | null
+  /** amount + measure + what, one row each */
+  ingredients?: Ingredient[] | null
   home_meal_ratings: HomeMealRating[]
   home_meal_cooks: HomeMealCook[]
 }
@@ -460,18 +471,29 @@ export function useCrumbsData() {
 
   useEffect(() => {
     if (demo) return
+    // #166 With no signal, checking the sign-in with the server fails — that must not sign you
+    // out. Fall back to the sign-in saved on this phone (the cached group copy then opens).
+    const fromPhone = async () => (await supabase.auth.getSession()).data.session?.user ?? null
     supabase.auth
       .getUser()
-      .then(({ data }) => {
-        setUser((prev: any) => (prev?.id === data.user?.id ? prev : data.user))
+      .then(async ({ data, error }: any) => {
+        let next = data.user
+        if (!next && (isOffline() || isNetworkError(error))) next = await fromPhone()
+        setUser((prev: any) => (prev?.id === next?.id ? prev : next))
         setLoading(false)
       })
-      .catch(() => setLoading(false))
-    // Token refreshes fire this too; only react when the person actually changes.
-    const auth = supabase.auth.onAuthStateChange((_event, session) =>
-      setUser((prev: any) =>
-        prev?.id === (session?.user?.id ?? undefined) ? prev : (session?.user ?? null),
-      ),
+      .catch(async () => {
+        const next = await fromPhone().catch(() => null)
+        setUser((prev: any) => (prev?.id === next?.id ? prev : next))
+        setLoading(false)
+      })
+    // Token refreshes fire this too; only react when the person actually changes. Only a real
+    // sign-out clears you (a failed refresh while offline doesn't).
+    const auth = supabase.auth.onAuthStateChange((event: string, session: any) =>
+      setUser((prev: any) => {
+        if (!session && event !== 'SIGNED_OUT') return prev
+        return prev?.id === (session?.user?.id ?? undefined) ? prev : (session?.user ?? null)
+      }),
     )
     return () => auth.data.subscription.unsubscribe()
   }, [supabase])

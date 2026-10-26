@@ -11,7 +11,7 @@ const at = (p: Place): LatLng | null =>
 const closedForGood = (p: Place) => p.business_status === 'CLOSED_PERMANENTLY'
 
 /** #189 Similar places close to this one: same cuisine (or loved), open now if we know, nearest first. */
-export function planB(place: Place, places: Place[], now = new Date(), maxKm = 3) {
+export function planB(place: Place, places: Place[], now = new Date(), maxKm = 5, max = 5) {
   const here = at(place)
   return places
     .filter((p) => p.id !== place.id && !closedForGood(p))
@@ -21,34 +21,35 @@ export function planB(place: Place, places: Place[], now = new Date(), maxKm = 3
       const sameCuisine = !!place.cuisine && p.cuisine === place.cuisine
       const loved = average5(p.place_ratings) >= 4
       const open = openStatus(p.opening_hours, now)?.open
-      return { place: p, km, sameCuisine, loved, open }
+      const priceOk =
+        !place.price_level || !p.price_level || Math.abs(p.price_level - place.price_level) <= 1
+      // Most like it: same cuisine or one you love, at a similar price.
+      const similar = (sameCuisine || loved) && priceOk
+      return { place: p, km, sameCuisine, loved, open, similar }
     })
-    .filter(
-      (x) =>
-        (x.km === null || x.km <= maxKm) &&
-        (x.sameCuisine || x.loved) &&
-        x.open !== false &&
-        (!place.price_level ||
-          !x.place.price_level ||
-          Math.abs(x.place.price_level - place.price_level) <= 1),
-    )
+    .filter((x) => x.km === null || x.km <= maxKm)
     .sort(
       (a, b) =>
+        Number(b.similar) - Number(a.similar) ||
+        Number(b.open !== false) - Number(a.open !== false) ||
         Number(b.sameCuisine) - Number(a.sameCuisine) ||
         (a.km ?? 99) - (b.km ?? 99) ||
         average5(b.place.place_ratings) - average5(a.place.place_ratings),
     )
-    .slice(0, 3)
+    .slice(0, max)
 }
 
 /** #186 Three good options for tonight: a favourite, something new, and a wildcard. */
 export function threeOptions(places: Place[], random = Math.random, now = new Date()) {
-  const ok = places.filter(
-    (p) => !closedForGood(p) && openStatus(p.opening_hours, now)?.open !== false,
-  )
+  const alive = places.filter((p) => !closedForGood(p))
+  const openNow = alive.filter((p) => openStatus(p.opening_hours, now)?.open !== false)
+  // Open places first; late at night, when most are shut, closed ones fill in (marked "Closed now").
+  const ok = alive
   const pick = (list: Place[], taken: Place[]) => {
     const pool = list.filter((p) => !taken.includes(p))
-    return pool.length ? pool[Math.floor(random() * pool.length)] : null
+    const open = pool.filter((p) => openNow.includes(p))
+    const from = open.length ? open : pool
+    return from.length ? from[Math.floor(random() * from.length)] : null
   }
   const out: Place[] = []
   const favourite = pick(

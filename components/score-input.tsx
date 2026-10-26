@@ -24,8 +24,8 @@ function PartStar({ fill, size = 18 }: { fill: 0 | 0.5 | 1; size?: number }) {
 }
 
 /**
- * #2 Rating input in the group's scale: whole stars, half stars (tap the left or right half of a
- * star) or 1-10 points. `value` is what the scale shows (e.g. 3.5 or 7).
+ * #2 Rating input in the group's scale: whole stars, half stars (tap a star once for half, again
+ * for full) or 1-10 points. `value` is what the scale shows (e.g. 3.5 or 7).
  */
 export function ScoreInput({
   value,
@@ -44,27 +44,25 @@ export function ScoreInput({
     return (
       <span className="inline-flex items-center text-[#D9931C]" role="group" aria-label={label}>
         {[1, 2, 3, 4, 5].map((n) => (
-          <span key={n} className="relative inline-grid min-h-11 min-w-8 place-items-center">
+          <span key={n} className="relative inline-grid min-h-11 min-w-10 place-items-center">
             <span
               key={popped === n ? `p${value}` : 's'}
               className={popped === n ? 'star-pop inline-block' : 'inline-block'}
             >
               <PartStar fill={value >= n ? 1 : value >= n - 0.5 ? 0.5 : 0} size={20} />
             </span>
-            {[n - 0.5, n].map((v, half) => (
-              <button
-                key={v}
-                type="button"
-                aria-label={`${label}: ${v} stars`}
-                className="absolute inset-y-0 w-1/2"
-                style={{ left: half ? '50%' : 0 }}
-                onClick={() => {
-                  haptic(v === 5 ? 'celebrate' : 'select')
-                  setPopped(n)
-                  onChange(v)
-                }}
-              />
-            ))}
+            {/* Tap once for a half star, again for the full star (and again to go back to half). */}
+            <button
+              type="button"
+              aria-label={`${label}: ${value === n - 0.5 ? n : n - 0.5} stars`}
+              className="absolute inset-0"
+              onClick={() => {
+                const v = value === n - 0.5 ? n : n - 0.5
+                haptic(v === 5 ? 'celebrate' : 'select')
+                setPopped(n)
+                onChange(v)
+              }}
+            />
           </span>
         ))}
       </span>

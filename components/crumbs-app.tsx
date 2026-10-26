@@ -3,6 +3,7 @@ import { identify, resetAnalytics, track } from '@/lib/analytics'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCheck,
+  ChevronDown,
   Dices,
   Map as MapIcon,
   Plus,
@@ -47,7 +48,9 @@ import { CatchUpCard } from './catch-up-card'
 import { DraftsReview } from './drafts-review'
 import { Walkthrough } from './guidebook'
 import { tourDone } from '@/lib/guidebook'
-import { searchAll } from '@/lib/search-all'
+import { GroupSwitcher } from './group-switcher'
+import { oneEmoji } from '@/lib/group-look'
+import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
 
 const tabs = [
@@ -129,6 +132,7 @@ function CrumbsShell() {
     if (saved === 'Lists') setPlacesView('lists')
   }, [])
   const [hub, setHub] = useState<HubPage[]>([])
+  const [switching, setSwitching] = useState(false)
   function setTab(next: Tab) {
     if (next === tab) return
     haptic('tap')
@@ -316,6 +320,7 @@ function CrumbsShell() {
         place.name,
         place.formatted_address,
         place.cuisine,
+        cuisineWords(place.cuisine),
         ...(place.tags ?? []),
         ...place.place_ratings.map((rating) => rating.notes),
         ...(place.dishes ?? []).flatMap((dish) => [
@@ -612,41 +617,60 @@ function CrumbsShell() {
           </div>
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
-        <div className="mb-5 flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">Your shared food map</p>
-            <h1 className="flex min-w-0 items-center gap-2 font-serif text-3xl font-bold">
-              {data.group.emoji && (
-                <span
-                  className="group-badge"
-                  style={{ background: data.group.color ?? undefined }}
-                  aria-hidden="true"
-                >
-                  {data.group.emoji}
-                </span>
-              )}
-              <span className="truncate">{data.group.name}</span>
-            </h1>
-          </div>
-          {data.groups.length > 1 && (
-            <select
-              aria-label="Switch group"
-              className="field shrink-0 !w-auto !max-w-[45%] !py-2"
-              value={data.group.id}
-              onChange={(event) =>
-                data.setGroup(
-                  data.groups.find((group) => group.id === event.target.value) || data.group,
-                )
-              }
-            >
-              {data.groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        {/* The group name is the group switcher: switch, start a new group, join, find one. */}
+        <button
+          type="button"
+          className="group-title mb-5"
+          aria-label={`${data.group.name} — switch, create or join a group`}
+          onClick={() => {
+            haptic('tap')
+            setSwitching(true)
+          }}
+        >
+          <span className="text-sm text-muted-foreground">Your shared food map</span>
+          <span className="flex min-w-0 items-center gap-2 font-serif text-3xl font-bold">
+            {oneEmoji(data.group.emoji) && (
+              <span
+                className="group-badge"
+                style={{ background: data.group.color ?? undefined }}
+                aria-hidden="true"
+              >
+                {oneEmoji(data.group.emoji)}
+              </span>
+            )}
+            <span className="truncate">{data.group.name}</span>
+            <ChevronDown size={22} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+          </span>
+        </button>
+        {switching && (
+          <GroupSwitcher
+            group={data.group}
+            groups={data.groups}
+            supabase={data.supabase}
+            demo={data.demo}
+            onClose={() => setSwitching(false)}
+            onSwitch={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroup(g)
+            }}
+            onCreated={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroups((current) => [...current, g])
+              data.setGroup(g)
+              setTab('Group')
+            }}
+            onJoined={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroups((current) =>
+                current.some((item) => item.id === g.id) ? current : [...current, g],
+              )
+              data.setGroup(g)
+            }}
+          />
+        )}
         {touring && <Walkthrough onDone={() => setTouring(false)} />}
         {data.offlineCopy && (
           <p className="next-time-note mb-4 text-sm">
@@ -736,6 +760,7 @@ function CrumbsShell() {
                     onSelect={setSelected}
                     trips={settingsOf(data.group).trips}
                     groups={data.groups}
+                    onPlaceAdded={(p) => data.setPlaces((current) => [p, ...current])}
                   />
                 </div>
               ) : (
@@ -769,10 +794,23 @@ function CrumbsShell() {
                       <Plus />
                     </button>
                   </div>
-                  {found && (
-                    // #225 everything else that matches, grouped (places are the list below)
+                  {query.trim().length >= 2 && (found || filtered.length > 0) && (
+                    // #225 everything that matches, grouped: places first, then food, lists…
                     <div className="surface-soft rise-panel flex flex-col gap-2 text-sm">
-                      {found.dishes.length > 0 && (
+                      {filtered.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Places
+                          </p>
+                          {filtered.slice(0, 5).map((place) => (
+                            <button key={place.id} className="text-left" onClick={() => setSelected(place)}>
+                              📍 <strong>{place.name}</strong>
+                              {place.cuisine && <span className="text-muted-foreground"> · {place.cuisine}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found && found.dishes.length > 0 && (
                         <div className="flex flex-col gap-1">
                           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                             Dishes
@@ -785,7 +823,7 @@ function CrumbsShell() {
                           ))}
                         </div>
                       )}
-                      {found.lists.length > 0 && (
+                      {found && found.lists.length > 0 && (
                         <div className="flex flex-col gap-1">
                           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                             Lists
@@ -797,7 +835,7 @@ function CrumbsShell() {
                           ))}
                         </div>
                       )}
-                      {found.plans.length > 0 && (
+                      {found && found.plans.length > 0 && (
                         <div className="flex flex-col gap-1">
                           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                             Plans
@@ -809,7 +847,7 @@ function CrumbsShell() {
                           ))}
                         </div>
                       )}
-                      {found.meals.length > 0 && (
+                      {found && found.meals.length > 0 && (
                         <div className="flex flex-col gap-1">
                           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                             Home cooking
@@ -1010,7 +1048,14 @@ function CrumbsShell() {
               userId={data.user?.id}
               supabase={data.supabase}
               demo={data.demo}
-              onGroup={data.setGroup}
+              onGroup={(group) => {
+                data.setGroup(group)
+                data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+              }}
+              v4={data.v4}
+              onReload={() => {
+                data.load().catch(() => {})
+              }}
               view={view}
               meals={data.homeMeals}
               names={names}
@@ -1057,6 +1102,10 @@ function CrumbsShell() {
           onSelect={(place) => {
             setHub([])
             setSelected(place)
+          }}
+          onGroups={() => {
+            setHub([])
+            setSwitching(true)
           }}
           settings={{
             userId,
@@ -1169,6 +1218,7 @@ function CrumbsShell() {
           claims={data.v4 && flag('restaurant_claims')}
           onMealAdded={(meal) => data.setHomeMeals([meal, ...data.homeMeals])}
           onOpenPlace={(p) => setSelected(p)}
+          onPlaceAdded={(p) => data.setPlaces((current) => [p, ...current])}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(

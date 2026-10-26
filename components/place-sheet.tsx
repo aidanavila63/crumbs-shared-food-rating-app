@@ -295,6 +295,7 @@ function DishRow({
       )}
       <PhotoButton
         compact
+        aspect={1}
         label={dish.name}
         path={dish.photo_path}
         groupId={groupId}
@@ -365,9 +366,12 @@ export function PlaceSheet({
   claims = false,
   onMealAdded,
   onOpenPlace,
+  onPlaceAdded,
 }: {
   /** #189 open another place (Plan B) */
   onOpenPlace?: (place: Place) => void
+  /** a place saved from Plan B's "not on your list yet" */
+  onPlaceAdded?: (place: Place) => void
   /** #123 "Make it at home" made a home meal from a dish */
   onMealAdded?: (meal: HomeMeal) => void
   /** #19 AI menu photo reading (admin switch "menu_ai", admins only until switched on) */
@@ -1571,6 +1575,10 @@ export function PlaceSheet({
             setPlanBOpen(false)
             onOpenPlace(p)
           }}
+          supabase={supabase}
+          demo={demo}
+          userId={userId}
+          onAdded={onPlaceAdded}
         />
       )}
       {tableOpen && (

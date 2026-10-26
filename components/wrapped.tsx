@@ -245,18 +245,23 @@ export function WrappedStory({
   group,
   members,
   userId,
+  season,
 }: {
   places: Place[]
   meals: HomeMeal[]
   group: Group
   members: Profile[]
   userId?: string
+  /** which Wrapped is open right now (full year, or January–June) */
+  season?: { year: number; half: boolean }
 }) {
-  const years = useMemo(() => wrappedYears(places), [places])
-  const [year, setYear] = useState(() => defaultWrappedYear(places))
+  const allYears = useMemo(() => wrappedYears(places), [places])
+  const years = season?.half ? [season.year] : allYears
+  const [year, setYear] = useState(() => season?.year ?? defaultWrappedYear(places))
+  const half = !!season?.half && year === season.year
   const wrapped = useMemo(
-    () => buildWrapped({ places, year, userId, members, meals }),
-    [places, year, userId, members, meals],
+    () => buildWrapped({ places, year, userId, members, meals, half }),
+    [places, year, userId, members, meals, half],
   )
   const slides = useMemo(
     () => (wrapped ? wrappedSlides(wrapped, group.name) : []),

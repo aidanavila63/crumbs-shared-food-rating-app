@@ -1380,7 +1380,9 @@ body,
   gap: 8px;
   min-height: 300px;
   padding: 24px;
-  touch-action: pan-y;
+  /* the card takes the whole gesture, so a sideways swipe never turns into a page scroll */
+  touch-action: none;
+  overscroll-behavior: contain;
   user-select: none;
   cursor: grab;
   background: linear-gradient(
@@ -1763,6 +1765,7 @@ html[data-text='xl'] {
   display: flex;
   align-items: flex-end;
   min-height: 150px;
+  aspect-ratio: 2.2; /* same shape as the crop outline */
   padding: 16px 18px;
   border-radius: 24px;
   background-size: cover;
@@ -2141,4 +2144,185 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
 .tour-dot-on {
   width: 22px;
   background: var(--primary);
+}
+
+/* Photo cropper: the outline shows what will be visible; outside it is dimmed. */
+.cropper-stage {
+  position: relative;
+  height: min(62dvh, 520px);
+  overflow: hidden;
+  border-radius: 20px;
+  background: #0d1210;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.cropper-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+}
+.cropper-frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px dashed rgb(255 255 255 / 70%);
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 50%);
+  pointer-events: none;
+}
+.cropper-round {
+  border-radius: 999px;
+}
+
+/* Profile photo: tap the big circle to change it. */
+.avatar-edit {
+  position: relative;
+  overflow: visible;
+}
+.avatar-edit img {
+  border-radius: 999px;
+}
+.avatar-edit-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+/* The group under your name doubles as the group switcher. */
+.group-switch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+/* Settings → Guidebook: one tidy row (icon, words, chevron). */
+.guide-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+}
+.guide-row-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--muted);
+  font-size: 1.5rem;
+}
+/* Group emoji picker */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--muted);
+}
+.emoji-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  font-size: 1.4rem;
+}
+.emoji-grid .emoji-on {
+  background: var(--card);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.emoji-grid .emoji-none {
+  grid-column: span 2;
+  aspect-ratio: auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+/* The group name at the top doubles as the group switcher. */
+.group-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.group-title:active {
+  opacity: 0.7;
+}
+/* Recipes: ingredient rows (amount · measure · what · +) and the reader view. */
+.ingredient-row {
+  display: grid;
+  grid-template-columns: 60px 76px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.ingredient-row .field {
+  min-width: 0;
+  padding-left: 10px;
+  padding-right: 6px;
+}
+.recipe-ingredients {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 1.2rem;
+  list-style: disc;
+}
+.recipe-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 1.4rem;
+  list-style: decimal;
+}
+.recipe-steps li::marker {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* Head to head: two place cards stacked, tap the one you'd rather. */
+.swipe-card-static {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 150px;
+  padding: 20px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary) 10%, var(--card)),
+    var(--card) 55%
+  );
+  transition: transform 0.15s ease;
+}
+.swipe-card-static:active {
+  transform: scale(0.98);
+}
+/* The map fills the screen between the group name and the tab bar, no scrolling needed
+   (251px = header + group name + tab bar + a little gap; plus the phone's notch and home bar). */
+.map-fit {
+  height: calc(100dvh - 251px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: 360px;
 }

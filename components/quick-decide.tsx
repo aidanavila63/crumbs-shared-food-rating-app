@@ -8,6 +8,7 @@ import { haptic } from '@/lib/motion'
 import { Overlay } from './overlay'
 import { useShowScore } from './score-input'
 import { average5 } from '@/lib/ratings'
+import { openStatus } from '@/lib/place-info'
 
 const SECONDS = 60
 
@@ -71,7 +72,11 @@ export function QuickDecide({
                     </span>
                     <span className="block font-serif text-2xl font-bold">{place.name}</span>
                     <span className="block text-sm text-muted-foreground">
-                      {[place.cuisine, place.price_level ? '$'.repeat(place.price_level) : null]
+                      {[
+                        place.cuisine,
+                        place.price_level ? '$'.repeat(place.price_level) : null,
+                        openStatus(place.opening_hours)?.open === false ? '🌙 Closed now' : null,
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                     </span>

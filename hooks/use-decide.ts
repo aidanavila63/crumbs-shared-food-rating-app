@@ -14,6 +14,8 @@ export type SwipeSession = {
   place_ids: string[]
   status: 'open' | 'closed'
   created_at: string
+  /** swipe = yes/no on each place; duel = head to head, pick one of two until one is left */
+  style?: 'swipe' | 'duel' | null
 }
 export type SwipeVote = {
   session_id: string
@@ -174,17 +176,23 @@ export function useDecide({
     }
   }, [demo, enabled, groupId, load, supabase])
 
-  async function startSession(title: string, placeIds: string[], listId: string | null = null) {
+  async function startSession(
+    title: string,
+    placeIds: string[],
+    listId: string | null = null,
+    style: 'swipe' | 'duel' = 'swipe',
+  ) {
     if (!groupId || !userId) return null
     const row: SwipeSession = {
       id: crypto.randomUUID(),
       group_id: groupId,
       created_by: userId,
-      title: title.trim().slice(0, 80) || null,
+      title: title.trim().slice(0, 80) || 'Let’s Eat Together!',
       list_id: listId,
       place_ids: placeIds.slice(0, 30),
       status: 'open',
       created_at: new Date().toISOString(),
+      style,
     }
     if (!demo) {
       const { data, error } = await supabase
@@ -195,6 +203,8 @@ export function useDecide({
           title: row.title,
           list_id: listId,
           place_ids: row.place_ids,
+          // older databases don't know head to head yet: leave it out for a plain swipe
+          ...(style === 'duel' ? { style } : {}),
         })
         .select('*')
         .single()

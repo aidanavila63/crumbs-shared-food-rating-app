@@ -6,6 +6,9 @@ import { toast } from 'sonner'
 import { photoUrl } from '@/lib/photos'
 import { haptic } from '@/lib/motion'
 import { RatingStars } from './rating-stars'
+import { Bookmark } from 'lucide-react'
+import type { Ingredient } from '@/hooks/use-crumbs-data'
+import { ingredientText, stepsOf } from '@/lib/meals'
 
 type Tip = { tip: string | null; score: number; by: string; mine: boolean }
 type Recipe = {
@@ -22,6 +25,10 @@ type Recipe = {
   score: number | null
   reviews: number
   tips: Tip[]
+  kind?: string | null
+  cuisine?: string | null
+  ingredients?: Ingredient[] | null
+  saved?: boolean
 }
 
 const recipe = (r: Partial<Recipe> & Pick<Recipe, 'id' | 'name' | 'by'>): Recipe => ({
@@ -65,7 +72,9 @@ const DEMO_SUGGESTED: Recipe[] = [
   }),
 ]
 
-export type RecipeMode = 'search' | 'trending' | 'suggested'
+export type RecipeMode = 'search' | 'trending' | 'suggested' | 'saved'
+// Saved in demo mode (no database): kept for this visit only.
+const demoSaved = new Set<string>()
 
 /** Shared recipes for one mode (debounced while typing). */
 function useRecipes(supabase: any, demo: boolean, mode: RecipeMode, query: string, lim: number) {
@@ -75,13 +84,17 @@ function useRecipes(supabase: any, demo: boolean, mode: RecipeMode, query: strin
     let cancelled = false
     if (demo) {
       const pool =
-        mode === 'suggested'
-          ? DEMO_SUGGESTED
-          : mode === 'trending'
-            ? DEMO_TRENDING
-            : [...DEMO_TRENDING, ...DEMO_SUGGESTED].filter((r) =>
-                r.name.toLowerCase().includes(q.toLowerCase()),
-              )
+        mode === 'saved'
+          ? [...DEMO_TRENDING, ...DEMO_SUGGESTED]
+              .filter((r) => demoSaved.has(r.id))
+              .map((r) => ({ ...r, saved: true }))
+          : mode === 'suggested'
+            ? DEMO_SUGGESTED
+            : mode === 'trending'
+              ? DEMO_TRENDING
+              : [...DEMO_TRENDING, ...DEMO_SUGGESTED].filter((r) =>
+                  r.name.toLowerCase().includes(q.toLowerCase()),
+                )
       Promise.resolve().then(() => !cancelled && setRecipes(pool))
       return () => {
         cancelled = true
@@ -102,6 +115,40 @@ function useRecipes(supabase: any, demo: boolean, mode: RecipeMode, query: strin
 }
 
 /** Home cooking's recipe finder: Trending and Suggested until you type, then search results. */
+/** Home cooking → Saved: other people's shared recipes you bookmarked. */
+export function SavedRecipes({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [saved, setSaved] = useRecipes(supabase, demo, 'saved', '', 100)
+  const [openId, setOpenId] = useState<string | null>(null)
+  if (saved === null) return <p className="text-sm text-muted-foreground">Loading…</p>
+  if (!saved.length)
+    return (
+      <p className="surface-soft text-sm">
+        Nothing saved yet. In Everyone’s recipes, tap 🔖 on one you want to keep.
+      </p>
+    )
+  return (
+    <div className="flex flex-col gap-2">
+      {saved.map((r) => (
+        <RecipeCard
+          key={r.id}
+          recipe={r}
+          open={openId === r.id}
+          onToggle={() => setOpenId(openId === r.id ? null : r.id)}
+          supabase={supabase}
+          demo={demo}
+          onChange={(next) =>
+            setSaved((all) =>
+              (all ?? [])
+                .map((x) => (x.id === next.id ? next : x))
+                .filter((x) => x.saved !== false),
+            )
+          }
+        />
+      ))}
+    </div>
+  )
+}
+
 export function RecipeFinder({
   supabase,
   demo,
@@ -191,6 +238,23 @@ function RecipeCard({
   const [score, setScore] = useState(mine?.score ?? 0)
   const [tip, setTip] = useState(mine?.tip ?? '')
   const photo = photoUrl(recipe.photo_path)
+  const steps = stepsOf(recipe.recipe)
+
+  async function toggleSave() {
+    const next = !recipe.saved
+    if (demo) {
+      if (next) demoSaved.add(recipe.id)
+      else demoSaved.delete(recipe.id)
+    } else {
+      const { error } = next
+        ? await supabase.from('recipe_saves').insert({ meal_id: recipe.id })
+        : await supabase.from('recipe_saves').delete().eq('meal_id', recipe.id)
+      if (error && error.code !== '23505') return toast.error(error.message)
+    }
+    haptic(next ? 'success' : 'tap')
+    toast(next ? 'Saved — find it in Home cooking → Saved' : 'Removed from Saved')
+    onChange({ ...recipe, saved: next })
+  }
 
   async function review(nextScore = score, nextTip = tip) {
     if (!nextScore) return toast('Tap the stars first')
@@ -223,6 +287,9 @@ function RecipeCard({
           {tag && <span className="tag mb-1 inline-block !text-[0.7rem]">{tag}</span>}
           <span className="block font-semibold">{recipe.name}</span>
           <span className="block text-xs text-muted-foreground">
+            {[recipe.kind, recipe.cuisine].filter(Boolean).length
+              ? `${[recipe.kind, recipe.cuisine].filter(Boolean).join(' · ')} · `
+              : ''}
             by {recipe.mine ? 'you' : recipe.by}
             {recipe.dietary.length ? ` · ${recipe.dietary.join(', ')}` : ''}
             {recipe.spice ? ` · ${'🌶️'.repeat(recipe.spice)}` : ''}
@@ -237,9 +304,37 @@ function RecipeCard({
           </span>
         </span>
       </button>
+      {!recipe.mine && (
+        <button
+          className={`chip chip-sm self-start ${recipe.saved ? 'chip-active' : ''}`}
+          aria-pressed={!!recipe.saved}
+          onClick={toggleSave}
+        >
+          <Bookmark size={14} /> {recipe.saved ? 'Saved' : 'Save'}
+        </button>
+      )}
       {open && (
         <div className="rise-panel flex flex-col gap-2">
-          {recipe.recipe && <p className="whitespace-pre-line text-sm">{recipe.recipe}</p>}
+          {(recipe.ingredients?.length ?? 0) > 0 && (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground">Ingredients</p>
+              <ul className="recipe-ingredients text-sm">
+                {recipe.ingredients!.map((i, n) => (
+                  <li key={n}>{ingredientText(i)}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {steps.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground">Steps</p>
+              <ol className="recipe-steps text-sm">
+                {steps.map((step, n) => (
+                  <li key={n}>{step}</li>
+                ))}
+              </ol>
+            </>
+          )}
           {recipe.notes && <p className="text-sm text-muted-foreground">{recipe.notes}</p>}
           {recipe.recipe_url && /^https?:\/\//.test(recipe.recipe_url) && (
             <a

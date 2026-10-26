@@ -21,7 +21,7 @@ export function r2Key(path: string) {
 }
 
 /** Shrinks a phone photo to at most `max` pixels on the long side (and fixes its rotation). */
-export async function shrinkImage(file: File, max = 1280): Promise<Blob> {
+export async function shrinkImage(file: File | Blob, max = 1280): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height))
   const canvas = document.createElement('canvas')
@@ -49,7 +49,7 @@ async function photoApi(body: Record<string, unknown>) {
   return data
 }
 
-export async function uploadPhoto(supabase: any, groupId: string, file: File) {
+export async function uploadPhoto(supabase: any, groupId: string, file: File | Blob) {
   const blob = await shrinkImage(file)
   if (process.env.NEXT_PUBLIC_R2_PUBLIC_URL) {
     const { url, path } = await photoApi({ op: 'upload', groupId })

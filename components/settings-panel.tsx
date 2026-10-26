@@ -9,7 +9,6 @@ import { Switch } from './switch'
 import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
-import { GroupSettingsCard } from './group-settings'
 import { YourDataCard } from './your-data-card'
 import { ImportPlaces } from './import-places'
 import { Overlay } from './overlay'
@@ -77,8 +76,6 @@ export function SettingsPanel({
   const [importing, setImporting] = useState(false)
   const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
   const [feedback, setFeedback] = useState('')
-  const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
-  const canManage = myRole === 'owner' || myRole === 'admin'
   const notify = profile?.notify ?? {}
 
   async function setNotify(key: string, on: boolean) {
@@ -122,11 +119,8 @@ export function SettingsPanel({
 
   return (
     <div className="stagger flex flex-col gap-4">
-      <button
-        className="surface settings-card flex items-center gap-3 text-left"
-        onClick={() => setGuide(true)}
-      >
-        <span className="text-2xl" aria-hidden="true">
+      <button className="surface guide-row" onClick={() => setGuide(true)}>
+        <span className="guide-row-icon" aria-hidden="true">
           📖
         </span>
         <span className="min-w-0 flex-1">
@@ -318,19 +312,6 @@ export function SettingsPanel({
             </div>
           ))}
         </section>
-      )}
-
-      {canManage && (
-        <GroupSettingsCard
-          group={group}
-          members={members}
-          userId={userId}
-          supabase={supabase}
-          demo={demo}
-          v4={v4}
-          onGroup={onGroup}
-          onReload={onReload}
-        />
       )}
 
       {v4 && (

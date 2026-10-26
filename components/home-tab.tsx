@@ -5,39 +5,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChefHat, Dices, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
-import { dishAverage } from '@/lib/stats'
-import { RecipeFinder } from './public-recipes'
+import { lastCooked, mealAverage } from '@/lib/meals'
+import { MealSheet } from './meal-sheet'
+import { RecipeFinder, SavedRecipes } from './public-recipes'
 import { Search } from 'lucide-react'
-import { Switch } from './switch'
 import { haptic } from '@/lib/motion'
 import { undoableDelete } from '@/lib/undoable'
 import { RatingStars } from './rating-stars'
-import { PhotoButton } from './photo-button'
-import { ReactionBar, timeAgo } from './social'
-import { Sheet } from './sheet'
+import { timeAgo } from './social'
 
-const DIETARY = ['Vegetarian', 'Vegan', 'Gluten-free', 'Dairy-free']
 const today = () => new Date().toISOString().slice(0, 10)
-
-export const mealAverage = (meal: HomeMeal) =>
-  meal.home_meal_ratings.length
-    ? meal.home_meal_ratings.reduce((sum, r) => sum + r.score, 0) / meal.home_meal_ratings.length
-    : 0
-const lastCooked = (meal: HomeMeal) =>
-  meal.home_meal_cooks
-    .map((cook) => cook.cooked_on)
-    .sort()
-    .at(-1) ?? null
-
-function safeUrl(url: string | null) {
-  if (!url) return null
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed : null
-  } catch {
-    return null
-  }
-}
+export { mealAverage } from '@/lib/meals'
 
 export function HomeTab({
   meals,
@@ -65,7 +43,10 @@ export function HomeTab({
 }) {
   const [filter, setFilter] = useState<'All' | 'Cooked' | 'Want to cook' | 'Shared'>('All')
   // Our kitchen (your group's meals and recipes) vs everyone else's recipes on Crumbs
-  const [section, setSection] = useState<'ours' | 'everyone'>('ours')
+  const [section, setSection] = useState<'ours' | 'everyone' | 'saved'>('ours')
+  // What kind of dish (Dessert, Soup…) — only kinds you've used show as filters.
+  const [kind, setKind] = useState<string | null>(null)
+  const kinds = [...new Set(meals.map((m) => m.kind).filter((k): k is string => !!k))]
   const [everyoneQuery, setEveryoneQuery] = useState('')
   // How your shared recipes are doing on Crumbs (average and count of everyone's ratings)
   const [crumbsScores, setCrumbsScores] = useState<Record<string, { avg: number; n: number }>>({})
@@ -111,14 +92,22 @@ export function HomeTab({
       (meal) =>
         (filter === 'All' ||
           (filter === 'Shared' ? !!meal.recipe_public : meal.status === filter)) &&
+        (!kind || meal.kind === kind) &&
         (!needle ||
-          [meal.name, meal.notes, meal.recipe].some((t) => t?.toLowerCase().includes(needle))),
+          [
+            meal.name,
+            meal.notes,
+            meal.recipe,
+            meal.kind,
+            meal.cuisine,
+            ...(meal.ingredients ?? []).map((i) => i.item),
+          ].some((t) => t?.toLowerCase().includes(needle))),
     )
     if (sort === 'Top rated') return [...list].sort((a, b) => mealAverage(b) - mealAverage(a))
     if (sort === 'Cooked lately')
       return [...list].sort((a, b) => (lastCooked(b) ?? '').localeCompare(lastCooked(a) ?? ''))
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  }, [meals, filter, sort, query])
+  }, [meals, filter, sort, query, kind])
 
   if (!v4 && !demo)
     return (
@@ -214,13 +203,19 @@ export function HomeTab({
   return (
     <div className="flex flex-col gap-4">
       {(v4 || demo) && (
-        <div className="segmented" role="tablist" aria-label="Our kitchen or everyone's recipes">
+        <div
+          className="segmented segmented-3"
+          role="tablist"
+          aria-label="Our kitchen, everyone's recipes or saved recipes"
+        >
           <span
             className="segmented-thumb"
             aria-hidden="true"
-            style={{ transform: `translateX(${section === 'ours' ? 0 : 100}%)` }}
+            style={{
+              transform: `translateX(${['ours', 'everyone', 'saved'].indexOf(section) * 100}%)`,
+            }}
           />
-          {(['ours', 'everyone'] as const).map((s) => (
+          {(['ours', 'everyone', 'saved'] as const).map((s) => (
             <button
               key={s}
               role="tab"
@@ -232,12 +227,19 @@ export function HomeTab({
                 setSection(s)
               }}
             >
-              {s === 'ours' ? 'Our kitchen' : 'Everyone’s recipes'}
+              {s === 'ours' ? 'Our kitchen' : s === 'everyone' ? 'Everyone’s' : 'Saved'}
             </button>
           ))}
         </div>
       )}
-      {section === 'everyone' ? (
+      {section === 'saved' ? (
+        <div key="saved" className="tab-pane tab-from-right flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Recipes from other people you saved (tap 🔖 on any shared recipe).
+          </p>
+          <SavedRecipes supabase={supabase} demo={demo} />
+        </div>
+      ) : section === 'everyone' ? (
         <div key="everyone" className="tab-pane tab-from-right flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             Home recipes other people shared on Crumbs. Rate one and leave a tip to make it better.
@@ -319,6 +321,20 @@ export function HomeTab({
               </button>
             ))}
           </div>
+          {kinds.length > 0 && (
+            <div className="chip-row" aria-label="Kind of dish">
+              {kinds.map((k) => (
+                <button
+                  key={k}
+                  aria-pressed={kind === k}
+                  className={`chip chip-sm ${kind === k ? 'chip-active' : ''}`}
+                  onClick={() => setKind(kind === k ? null : k)}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="chip-row">
             {(['Newest', 'Top rated', 'Cooked lately'] as const).map((item) => (
               <button
@@ -348,6 +364,9 @@ export function HomeTab({
                       <div className="min-w-0">
                         <h3 className="truncate font-serif text-2xl font-bold">{meal.name}</h3>
                         <p className="text-sm text-muted-foreground">
+                          {[meal.kind, meal.cuisine].filter(Boolean).length
+                            ? `${[meal.kind, meal.cuisine].filter(Boolean).join(' · ')} · `
+                            : ''}
                           {meal.home_meal_cooks.length
                             ? `Made ${meal.home_meal_cooks.length}× · last ${timeAgo(`${last}T12:00:00`)}`
                             : 'Not made yet'}
@@ -429,6 +448,24 @@ export function HomeTab({
             if (open.status !== 'Cooked' && !demo)
               await supabase.from('home_meals').update({ status: 'Cooked' }).eq('id', open.id)
           }}
+          onRemoveCook={async (cookId) => {
+            const before = open.home_meal_cooks
+            setMeals((current) =>
+              current.map((m) =>
+                m.id === open.id
+                  ? { ...m, home_meal_cooks: m.home_meal_cooks.filter((c) => c.id !== cookId) }
+                  : m,
+              ),
+            )
+            if (demo) return
+            const { error } = await supabase.from('home_meal_cooks').delete().eq('id', cookId)
+            if (error) {
+              toast.error(error.message)
+              setMeals((current) =>
+                current.map((m) => (m.id === open.id ? { ...m, home_meal_cooks: before } : m)),
+              )
+            } else toast('Entry removed')
+          }}
           onDelete={() => {
             const removed = open
             setOpenId(null)
@@ -447,302 +484,5 @@ export function HomeTab({
         />
       )}
     </div>
-  )
-}
-
-function MealSheet({
-  meal,
-  places,
-  v4,
-  userId,
-  names,
-  groupId,
-  supabase,
-  demo,
-  onClose,
-  onUpdate,
-  onCook,
-  onDelete,
-}: {
-  meal: HomeMeal
-  places: Place[]
-  v4: boolean
-  userId?: string
-  names: Record<string, string>
-  members: Profile[]
-  groupId: string
-  supabase: any
-  demo: boolean
-  onClose: () => void
-  onUpdate: (meal: HomeMeal) => void
-  onCook: () => void
-  onDelete: () => void
-}) {
-  const mine = meal.home_meal_ratings.find((r) => r.user_id === userId)
-  const [note, setNote] = useState(mine?.notes ?? '')
-  const [recipe, setRecipe] = useState(meal.recipe_url ?? '')
-  const [notes, setNotes] = useState(meal.notes ?? '')
-  const [steps, setSteps] = useState(meal.recipe ?? '')
-  const avg = mealAverage(meal)
-  // #123 the restaurant dish this was made from, to compare
-  const source = meal.from_dish
-    ? places
-        .flatMap((p) => (p.dishes ?? []).map((d) => ({ d, p })))
-        .find(({ d }) => d.id === meal.from_dish)
-    : null
-  const sourcePoints = source ? dishAverage(source.d) : null
-  const link = safeUrl(meal.recipe_url)
-
-  async function save(changes: Partial<HomeMeal>) {
-    const before = meal
-    onUpdate({ ...meal, ...changes })
-    if (demo) return true
-    const { error } = await supabase.from('home_meals').update(changes).eq('id', meal.id)
-    if (error) {
-      onUpdate(before)
-      toast.error(error.message)
-      return false
-    }
-    return true
-  }
-
-  async function rate(score: number, notesText = note) {
-    if (!userId) return
-    const row = { user_id: userId, score, notes: notesText.trim() || null }
-    onUpdate({
-      ...meal,
-      home_meal_ratings: [...meal.home_meal_ratings.filter((r) => r.user_id !== userId), row],
-    })
-    if (demo) return
-    const { error } = await supabase
-      .from('home_meal_ratings')
-      .upsert({ meal_id: meal.id, ...row, updated_at: new Date().toISOString() })
-    if (error) toast.error(error.message)
-  }
-
-  return (
-    <Sheet label={meal.name} onClose={onClose}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-primary">🏠 Home cooking</p>
-          <h2 className="font-serif text-3xl font-bold">{meal.name}</h2>
-        </div>
-        <button className="icon-btn" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="mt-5 flex flex-col gap-5">
-        <PhotoButton
-          label={meal.name}
-          path={meal.photo_path}
-          groupId={groupId}
-          supabase={supabase}
-          demo={demo}
-          onChange={(path) => save({ photo_path: path })}
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-sm text-muted-foreground">Group average</p>
-            <p className="font-serif text-5xl text-primary">{avg ? avg.toFixed(1) : '—'}</p>
-          </div>
-          <RatingStars
-            value={mine?.score ?? 0}
-            onChange={(score) => rate(score)}
-            label="Your rating"
-          />
-        </div>
-        {source && (
-          <div className="surface-soft flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0">
-              <span className="block font-semibold">vs {source.p.name}</span>
-              <span className="block text-muted-foreground">
-                Their {source.d.name}: {sourcePoints !== null ? `${sourcePoints}/100` : 'not rated'}
-                {avg ? ` · yours ${Math.round(avg * 20)}/100` : ' · rate yours to compare'}
-              </span>
-            </span>
-            {avg && sourcePoints !== null ? (
-              <span className="shrink-0 font-semibold">
-                {Math.round(avg * 20) >= sourcePoints ? '🏆 Home wins' : '🍽️ They win'}
-              </span>
-            ) : null}
-          </div>
-        )}
-        <button className="primary" onClick={onCook}>
-          🍳 We made it today
-        </button>
-        <div className="chip-row">
-          {(['Cooked', 'Want to cook'] as const).map((item) => (
-            <button
-              key={item}
-              aria-pressed={meal.status === item}
-              className={`chip ${meal.status === item ? 'chip-active' : ''}`}
-              onClick={() => save({ status: item })}
-            >
-              {item}
-            </button>
-          ))}
-          {(['again', 'never'] as const).map((kind) => (
-            <button
-              key={kind}
-              aria-pressed={meal.verdict === kind}
-              className={`chip ${meal.verdict === kind ? 'chip-active' : ''}`}
-              onClick={() => save({ verdict: meal.verdict === kind ? null : kind })}
-            >
-              {kind === 'again' ? '👍 Make again' : '👎 Never again'}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-col gap-2">
-          <h3 className="font-serif text-xl font-bold">Recipe</h3>
-          {link && (
-            <a
-              className="text-sm font-semibold text-primary underline"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open recipe on {link.hostname.replace(/^www\./, '')}
-            </a>
-          )}
-          <input
-            className="field"
-            aria-label="Recipe link"
-            inputMode="url"
-            placeholder="Paste a recipe link (optional)"
-            value={recipe}
-            onChange={(event) => setRecipe(event.target.value)}
-            onBlur={() => {
-              const clean = recipe.trim()
-              if (clean === (meal.recipe_url ?? '')) return
-              if (clean && !safeUrl(clean)) return toast.error('That doesn’t look like a web link')
-              save({ recipe_url: clean || null })
-            }}
-          />
-          <textarea
-            className="field min-h-20"
-            aria-label="Recipe notes"
-            placeholder="Tweaks, swaps, what to do differently next time…"
-            maxLength={2000}
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            onBlur={() =>
-              notes.trim() !== (meal.notes ?? '') && save({ notes: notes.trim() || null })
-            }
-          />
-          {v4 && (
-            <>
-              <textarea
-                className="field min-h-24"
-                aria-label="The recipe"
-                placeholder="The recipe: ingredients and steps (optional)"
-                maxLength={6000}
-                value={steps}
-                onChange={(event) => setSteps(event.target.value)}
-                onBlur={() =>
-                  steps.trim() !== (meal.recipe ?? '') && save({ recipe: steps.trim() || null })
-                }
-              />
-              <div className="settings-row">
-                <span>
-                  <span className="font-semibold">Share this recipe on Crumbs</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Everyone can see the name, photo, recipe and notes (with your first name), rate
-                    it and leave tips. Your group’s ratings stay private.
-                  </span>
-                </span>
-                <Switch
-                  label="Share this recipe on Crumbs"
-                  checked={!!meal.recipe_public}
-                  onChange={(on) => {
-                    if (on && !steps.trim() && !meal.recipe_url)
-                      return toast('Add the recipe or a link first')
-                    save({ recipe_public: on })
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {DIETARY.map((item) => {
-            const on = meal.dietary.includes(item)
-            return (
-              <button
-                key={item}
-                aria-pressed={on}
-                className={`chip chip-sm ${on ? 'chip-active' : ''}`}
-                onClick={() =>
-                  save({
-                    dietary: on ? meal.dietary.filter((d) => d !== item) : [...meal.dietary, item],
-                  })
-                }
-              >
-                {item}
-              </button>
-            )
-          })}
-          {[1, 2, 3].map((level) => (
-            <button
-              key={level}
-              aria-pressed={meal.spice === level}
-              className={`chip chip-sm ${meal.spice === level ? 'chip-active' : ''}`}
-              onClick={() => save({ spice: meal.spice === level ? null : level })}
-            >
-              {'🌶️'.repeat(level)}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-col gap-2">
-          <h3 className="font-serif text-xl font-bold">Ratings</h3>
-          {meal.home_meal_ratings.length ? (
-            meal.home_meal_ratings.map((rating) => (
-              <div key={rating.user_id} className="surface-soft flex flex-col gap-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">
-                    {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
-                  </span>
-                  <RatingStars value={rating.score} />
-                </div>
-                {rating.notes && <p className="text-sm text-muted-foreground">{rating.notes}</p>}
-                <ReactionBar target={`meal:${meal.id}:${rating.user_id}`} names={names} />
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No ratings yet.</p>
-          )}
-          <textarea
-            className="field min-h-16"
-            aria-label="Your note"
-            placeholder="Your note"
-            maxLength={1000}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            onBlur={() => mine && note.trim() !== (mine.notes ?? '') && rate(mine.score, note)}
-          />
-        </div>
-        {meal.home_meal_cooks.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <h3 className="font-serif text-xl font-bold">Cooked</h3>
-            {[...meal.home_meal_cooks]
-              .sort((a, b) => b.cooked_on.localeCompare(a.cooked_on))
-              .map((cook) => (
-                <p key={cook.id} className="text-sm text-muted-foreground">
-                  {new Date(`${cook.cooked_on}T12:00:00`).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                  {cook.cooked_by
-                    ? ` · by ${cook.cooked_by === userId ? 'you' : (names[cook.cooked_by] ?? 'someone')}`
-                    : ''}
-                </p>
-              ))}
-          </div>
-        )}
-        <button className="secondary text-destructive" onClick={onDelete}>
-          Delete meal
-        </button>
-      </div>
-    </Sheet>
   )
 }
