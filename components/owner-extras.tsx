@@ -306,44 +306,65 @@ export function OwnerInsights({
   )
 }
 
-/** #212 "Find us on Crumbs" poster: a QR code that adds your restaurant to the scanner's group. */
+/** #212 "Find us on Crumbs" poster: a QR code that adds your restaurant to the scanner's group.
+ *  Brand look: cookie-cream page, the Crumbs wordmark, Fredoka lettering, the Crumbs QR (plum dots, cookie + crumbs). */
 export function OwnerPoster({ restaurantId, name }: { restaurantId: string; name: string }) {
   const [busy, setBusy] = useState(false)
   async function make() {
     setBusy(true)
     try {
       const link = `${window.location.origin}/?add=${restaurantId}`
-      const QRCode = await import('qrcode')
-      const qr = await QRCode.toDataURL(link, {
-        margin: 1,
-        width: 900,
-        color: { dark: '#1c2a23', light: '#ffffff' },
-      })
-      const img = new Image()
-      await new Promise((ok, bad) => {
-        img.onload = ok
-        img.onerror = bad
-        img.src = qr
-      })
+      const [{ brandQrSvg, svgDataUrl }, { wordmarkSvg }] = await Promise.all([
+        import('@/lib/brand-qr'),
+        import('./wordmark'),
+      ])
+      const load = (src: string) =>
+        new Promise<HTMLImageElement>((ok, bad) => {
+          const img = new Image()
+          img.onload = () => ok(img)
+          img.onerror = bad
+          img.src = src
+        })
+      const fam =
+        getComputedStyle(document.body).getPropertyValue('--font-fredoka').trim() ||
+        'Fredoka, system-ui, sans-serif'
+      const [qr, word] = await Promise.all([
+        brandQrSvg(link, { size: 1000, label: `QR code that adds ${name} on Crumbs` }).then((svg) =>
+          load(svgDataUrl(svg)),
+        ),
+        load(svgDataUrl(wordmarkSvg())),
+        ...['400', '500', '600'].map((w) => document.fonts.load(`${w} 48px ${fam}`).catch(() => [])),
+      ])
+      const W = 1240
+      const H = 1754
       const canvas = document.createElement('canvas')
-      canvas.width = 1240
-      canvas.height = 1754
+      canvas.width = W
+      canvas.height = H
       const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#EEF3EE'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.fillStyle = '#7b2d5b'
-      ctx.fillRect(0, 0, canvas.width, 260)
-      ctx.fillStyle = '#ffffff'
-      ctx.textAlign = 'center'
-      ctx.font = 'bold 96px Georgia, serif'
-      ctx.fillText('Find us on Crumbs', canvas.width / 2, 170)
-      ctx.fillStyle = '#1c2a23'
-      ctx.font = 'bold 84px Georgia, serif'
-      ctx.fillText(name.slice(0, 26), canvas.width / 2, 420)
-      ctx.drawImage(img, 170, 500, 900, 900)
-      ctx.font = '48px Helvetica, Arial, sans-serif'
-      ctx.fillText('Scan to save us to your group,', canvas.width / 2, 1520)
-      ctx.fillText('rate your favourite dishes and see our specials.', canvas.width / 2, 1590)
+      ctx.fillStyle = '#FBF4E8'
+      ctx.fillRect(0, 0, W, H)
+      // wordmark leads
+      const ww = 600
+      const wh = ww / (word.naturalWidth / word.naturalHeight || 4.87)
+      ctx.drawImage(word, (W - ww) / 2, 110, ww, wh)
+      const line = (text: string, weight: number, px: number, y: number, color: string, maxW = 1080) => {
+        let size = px
+        ctx.font = `${weight} ${size}px ${fam}`
+        while (ctx.measureText(text).width > maxW && size > 28) {
+          size -= 2
+          ctx.font = `${weight} ${size}px ${fam}`
+        }
+        ctx.fillStyle = color
+        ctx.textAlign = 'center'
+        ctx.fillText(text, W / 2, y)
+      }
+      line(name.slice(0, 40), 600, 92, 110 + wh + 150, '#1C2A23')
+      line('Find us on Crumbs', 500, 50, 110 + wh + 228, '#7B2D5B')
+      const q = 860
+      const qy = 110 + wh + 290
+      ctx.drawImage(qr, (W - q) / 2, qy, q, q)
+      line('Scan to save us to your group,', 500, 54, qy + q + 110, '#1C2A23')
+      line('rate your favourite dishes and see our specials.', 400, 40, qy + q + 175, '#5F6E65')
       const a = document.createElement('a')
       a.href = canvas.toDataURL('image/png')
       a.download = `${name.replace(/[^\w -]/g, '').trim() || 'crumbs'}-poster.png`

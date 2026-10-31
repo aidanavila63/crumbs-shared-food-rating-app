@@ -38,6 +38,8 @@
   --destructive: #a53f48;
   --star: #d9931c;
   --shadow: 0 1px 2px rgb(28 42 35 / 6%), 0 6px 20px rgb(28 42 35 / 6%);
+  /* Brand wordmark letters: always Crumbs plum on light (not the accent colour), near-white on dark. */
+  --wordmark-ink: #7b2d5b;
 }
 :root[data-accent='tomato'] {
   --accent-l: #b23a26;
@@ -75,6 +77,7 @@
     --destructive: #f29a9a;
     --star: #f0b03a;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 20px rgb(0 0 0 / 25%);
+    --wordmark-ink: #f6eef3;
   }
 }
 :root[data-theme='dark'] {
@@ -91,6 +94,7 @@
   --destructive: #f29a9a;
   --star: #f0b03a;
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 20px rgb(0 0 0 / 25%);
+  --wordmark-ink: #f6eef3;
 }
 
 @layer base {

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Utensils } from 'lucide-react'
+import { Wordmark } from '@/components/wordmark'
 import { WaitlistForm } from '@/components/waitlist-form'
 
 // #94 Public "what is Crumbs" page + waitlist, for people who haven't been invited yet.
@@ -44,12 +44,7 @@ export default function Welcome() {
     <main className="welcome min-h-screen bg-background">
       <div className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-8 sm:px-8">
         <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <Utensils />
-            </div>
-            <span className="font-serif text-2xl font-bold">crumbs</span>
-          </div>
+          <Wordmark height={38} />
           <Link href="/" className="text-sm font-semibold text-primary underline">
             Sign in
           </Link>

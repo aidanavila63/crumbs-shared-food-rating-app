@@ -1,7 +1,7 @@
 // Crumbs service worker: fast static assets + graceful offline shell.
 // Never caches API, auth, or cross-origin (Supabase / Google) requests.
-const VERSION = 'crumbs-v3'
-const SHELL = ['/', '/manifest.webmanifest', '/icon.svg']
+const VERSION = 'crumbs-v4'
+const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png']
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -65,7 +65,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       tag: data.tag,
-      icon: '/icon.svg',
+      icon: '/icon-192.png',
       badge: '/icon.svg',
     }),
   )

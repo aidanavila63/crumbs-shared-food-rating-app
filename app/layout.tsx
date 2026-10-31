@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Figtree, Young_Serif } from 'next/font/google'
+import { Figtree, Fredoka, Young_Serif } from 'next/font/google'
 import { SwRegister } from '@/components/sw-register'
 import { OfflineBanner } from '@/components/offline-banner'
 import { EARLY_PREFS_SCRIPT } from '@/lib/early-prefs'
@@ -12,12 +12,25 @@ const youngSerif = Young_Serif({
   subsets: ['latin'],
   variable: '--font-young-serif',
 })
+// Brand lettering (posters, invite cards). Not preloaded: it's only fetched when a poster is drawn.
+const fredoka = Fredoka({
+  weight: ['400', '500', '600'],
+  subsets: ['latin'],
+  variable: '--font-fredoka',
+  preload: false,
+})
 
 export const metadata: Metadata = {
   title: 'Crumbs — your group food map',
   description: 'A shared food map for the places you love and the ones you want to try.',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon.svg', apple: '/apple-icon.png' },
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-light-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/apple-icon.png',
+  },
   appleWebApp: { capable: true, title: 'Crumbs', statusBarStyle: 'default' },
 }
 export const viewport: Viewport = {
@@ -36,7 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: EARLY_PREFS_SCRIPT }} />
       </head>
-      <body className={`${figtree.variable} ${youngSerif.variable}`}>
+      <body className={`${figtree.variable} ${youngSerif.variable} ${fredoka.variable}`}>
         {children}
         <OfflineBanner />
         <SwRegister />

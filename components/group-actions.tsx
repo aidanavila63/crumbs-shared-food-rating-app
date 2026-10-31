@@ -34,24 +34,21 @@ export function GroupActions({
   const [open, setOpen] = useState<'invite' | 'settings' | null>(null)
   const [showQr, setShowQr] = useState(true)
   const [qr, setQr] = useState<string | null>(null)
-  // The QR library is only downloaded when someone asks for the code.
+  // Crumbs-style QR (plum dots, cookie in the middle, crumb trail). The QR library is only downloaded when
+  // someone asks for the code.
   useEffect(() => {
     if (!open || !showQr) return
     let cancelled = false
-    import('qrcode')
-      .then((QRCode) =>
-        QRCode.toDataURL(inviteLink(group.join_code), {
-          margin: 1,
-          width: 480,
-          color: { dark: '#1c2a23', light: '#ffffff' },
-        }),
+    import('@/lib/brand-qr')
+      .then(({ brandQrSvg, svgDataUrl }) =>
+        brandQrSvg(inviteLink(group.join_code), { label: `QR code to join ${group.name}` }).then(svgDataUrl),
       )
       .then((url) => !cancelled && setQr(url))
       .catch(() => !cancelled && toast.error('Could not make a QR code'))
     return () => {
       cancelled = true
     }
-  }, [open, showQr, group.join_code])
+  }, [open, showQr, group.join_code, group.name])
 
   async function share() {
     const link = inviteLink(group.join_code)
@@ -152,10 +149,10 @@ export function GroupActions({
                     <img
                       src={qr}
                       alt={`QR code to join ${group.name}`}
-                      className="w-56 rounded-2xl border border-border bg-white p-2"
+                      className="w-60 rounded-[1.25rem] shadow-sm"
                     />
                   ) : (
-                    <div className="skeleton size-56" />
+                    <div className="skeleton size-60 rounded-[1.25rem]" />
                   )}
                   <p className="text-center text-xs text-muted-foreground">
                     Scan with a phone camera to join. New people sign in first, then join

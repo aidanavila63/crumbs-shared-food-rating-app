@@ -18,13 +18,13 @@ import {
   Plus,
   Search,
   Users,
-  Utensils,
   UtensilsCrossed,
   X,
   ArrowUpDown,
   MapPin,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Wordmark } from './wordmark'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
 import { WelcomeCard } from './welcome-card'
@@ -598,12 +598,7 @@ function CrumbsShell() {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-5">
         <div className="surface w-full max-w-sm">
-          <div className="flex items-center gap-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <Utensils />
-            </div>
-            <span className="font-serif text-2xl font-bold">crumbs</span>
-          </div>
+          <Wordmark height={38} />
           {invite && (
             <p className="tag preview-pop mt-6 w-fit">
               🎉 You’re invited — sign in to join the group
@@ -727,12 +722,7 @@ function CrumbsShell() {
     <main className="min-h-screen bg-background pb-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <header className="flex items-center justify-between py-5">
-          <div className="flex items-center gap-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <Utensils />
-            </div>
-            <span className="font-serif text-2xl font-bold">crumbs</span>
-          </div>
+          <Wordmark height={38} />
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
         {/* The group name is the group switcher: switch, start a new group, join, find one. */}
