@@ -3,8 +3,16 @@
 // phone, cuisine, price, menu link — without paying for a Google lookup.
 // Pure functions only (no fetching) so they can be tested.
 import type { Hours } from './place-info'
+import { nameMatch } from './osm-match.ts'
 
 export type SiteInfo = {
+  /** a restaurant/food business describes itself on the page (the facts below come from it) */
+  found: boolean
+  /** how many separate restaurants the page describes (chains list several) */
+  locations: number
+  name: string | null
+  address: string | null
+  location: { lat: number; lng: number } | null
   phone: string | null
   cuisine: string | null
   /** 1–4, from a "$$"-style price range */
@@ -158,10 +166,32 @@ function absolute(url: string | null, base: string) {
   }
 }
 
+function postalAddress(value: any): string | null {
+  const one = asArray(value)[0]
+  if (typeof one === 'string') return text(one)?.slice(0, 300) ?? null
+  if (!one || typeof one !== 'object') return null
+  const parts = [
+    text(one.streetAddress),
+    text(one.addressLocality),
+    [text(one.addressRegion), text(one.postalCode)].filter(Boolean).join(' ') || null,
+  ].filter(Boolean)
+  return parts.length >= 2 ? parts.join(', ').slice(0, 300) : null
+}
+
+function geo(value: any): { lat: number; lng: number } | null {
+  const one = asArray(value)[0]
+  const lat = Number(one?.latitude)
+  const lng = Number(one?.longitude)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null
+  return { lat, lng }
+}
+
 /** Everything useful the page says about itself. */
 export function readSiteInfo(html: string, base: string): SiteInfo {
   const nodes = jsonLdNodes(html)
-  const node = nodes.find(isFoodNode) ?? null
+  const food = nodes.filter(isFoodNode)
+  const node = food[0] ?? null
   const cuisine = asArray(node?.servesCuisine)
     .map(text)
     .filter(Boolean)
@@ -177,6 +207,11 @@ export function readSiteInfo(html: string, base: string): SiteInfo {
     .find(Boolean)
   const telLink = html.match(/href=["']tel:([^"']+)["']/i)?.[1] ?? null
   return {
+    found: !!node,
+    locations: new Set(food.map((n) => postalAddress(n.address) ?? n['@id'] ?? n.name)).size,
+    name: text(node?.name)?.slice(0, 160) ?? null,
+    address: postalAddress(node?.address),
+    location: geo(node?.geo),
     phone: cleanPhone(text(node?.telephone) ?? (telLink ? decodeURIComponent(telLink) : null)),
     cuisine: cuisine || null,
     price_level: priceLevel(node?.priceRange),
@@ -188,4 +223,56 @@ export function readSiteInfo(html: string, base: string): SiteInfo {
     description: (text(node?.description) ?? meta(html, 'og:description') ?? meta(html, 'description'))
       ?.slice(0, 280) ?? null,
   }
+}
+
+/** Metres between two points (good enough for "is this the same building"). */
+function metres(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const k = Math.PI / 180
+  const x = (b.lng - a.lng) * k * Math.cos(((a.lat + b.lat) / 2) * k)
+  const y = (b.lat - a.lat) * k
+  return Math.sqrt(x * x + y * y) * 6_371_000
+}
+
+export type SiteFacts = {
+  hours?: { utc: number; periods: Hours['periods'] }
+  phone?: string
+  cuisine?: string
+  price_level?: number
+  address?: string
+  location?: { lat: number; lng: number }
+  website?: string
+}
+
+/**
+ * The facts Crumbs can keep from a restaurant's own website (they're the restaurant's own
+ * published facts, not Google's). Only when the page clearly describes this restaurant:
+ * a food business with a matching name, one location, and (if we know where it is) nearby.
+ */
+export function siteFacts(
+  info: SiteInfo | null,
+  r: { name: string; website: string; latitude: number | null; longitude: number | null; utc: number },
+): SiteFacts {
+  if (!info?.found || info.locations > 1) return {}
+  // A different name means it's someone else's page (a parent brand, a booking site...).
+  if (info.name && nameMatch(info.name, r.name) < 0.5) return {}
+  const out: SiteFacts = {}
+  if (info.periods?.length) out.hours = { utc: r.utc, periods: info.periods }
+  if (info.phone) out.phone = info.phone
+  if (info.cuisine) out.cuisine = info.cuisine.slice(0, 60)
+  if (info.price_level) out.price_level = info.price_level
+  // Where it is and that this is its site: only when the page names the restaurant, and the
+  // spot it gives is close to where we already think it is (otherwise it may be a head office).
+  if (info.name) {
+    const near =
+      !info.location ||
+      r.latitude === null ||
+      r.longitude === null ||
+      metres(info.location, { lat: r.latitude, lng: r.longitude }) < 300
+    if (near) {
+      if (info.address) out.address = info.address
+      if (info.location) out.location = info.location
+      out.website = r.website
+    }
+  }
+  return out
 }

@@ -3,6 +3,14 @@
 // hosts are allowed, redirects are re-checked, and size/time are capped.
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { ROBOTS_AGENT, robotsAllows } from './robots.ts'
+
+/** The site's robots.txt asks readers like Crumbs to stay away from this page. */
+export class RobotsBlockedError extends Error {
+  constructor() {
+    super('This website asks apps not to read it')
+  }
+}
 
 export function isPrivateAddress(address: string) {
   if (address.includes(':')) {
@@ -38,16 +46,62 @@ async function assertPublicUrl(url: URL) {
 }
 
 const MAX_BYTES = 1_500_000
+const USER_AGENT = `Mozilla/5.0 (compatible; ${ROBOTS_AGENT}/1.0; +https://crumbs-shared-food-rating-app.vercel.app)`
+
+// robots.txt per site, kept for a day (an hour when the site couldn't answer).
+// null = no rules (missing file) → everything allowed; '' with blocked = read nothing.
+const robotsCache = new Map<string, { at: number; ttl: number; txt: string | null; blocked: boolean }>()
+
+async function robotsFor(origin: string) {
+  const hit = robotsCache.get(origin)
+  if (hit && Date.now() - hit.at < hit.ttl) return hit
+  let entry = { at: Date.now(), ttl: 864e5, txt: null as string | null, blocked: false }
+  try {
+    let url = new URL('/robots.txt', origin)
+    for (let hop = 0; hop < 4; hop++) {
+      await assertPublicUrl(url)
+      const response = await fetch(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(4000),
+        headers: { 'user-agent': USER_AGENT, accept: 'text/plain' },
+      })
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location')
+        if (!location) break
+        url = new URL(location, url)
+        continue
+      }
+      // No robots.txt (4xx) means no rules. A broken server (5xx) means stay away for now.
+      if (response.status >= 500) entry = { ...entry, ttl: 36e5, blocked: true }
+      else if (response.ok) entry.txt = (await response.text()).slice(0, 500_000)
+      break
+    }
+  } catch {
+    // Couldn't ask: be polite and try again later.
+    entry = { ...entry, ttl: 36e5, blocked: true }
+  }
+  if (robotsCache.size > 2000) robotsCache.clear()
+  robotsCache.set(origin, entry)
+  return entry
+}
+
+/** Does this site's robots.txt let Crumbs read the page? */
+export async function robotsPermit(url: URL) {
+  const rules = await robotsFor(url.origin)
+  if (rules.blocked) return false
+  return rules.txt === null || robotsAllows(rules.txt, url.pathname + url.search)
+}
 
 export async function fetchPage(start: string): Promise<{ url: string; html: string } | null> {
   let url = new URL(start)
   for (let hop = 0; hop < 4; hop++) {
     await assertPublicUrl(url)
+    if (!(await robotsPermit(url))) throw new RobotsBlockedError()
     const response = await fetch(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(6000),
       headers: {
-        'user-agent': 'Mozilla/5.0 (compatible; CrumbsMenuReader/1.0)',
+        'user-agent': USER_AGENT,
         accept: 'text/html,application/xhtml+xml',
       },
     })
@@ -119,7 +173,7 @@ export async function readMenuText(website: string) {
     try {
       const page = await fetchPage(link)
       if (page) pages.push(htmlToText(page.html))
-    } catch {}
+    } catch {} // a blocked or broken menu page: use what we have
   }
   return pages.join('\n\n').slice(0, 14000)
 }

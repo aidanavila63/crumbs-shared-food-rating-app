@@ -8,6 +8,8 @@ import {
   linkRestaurant,
   loadInsights,
   matchOpenData,
+  matchSiteData,
+  isOwned,
   loadMenu,
   loadRestaurant,
   ownerLocked,
@@ -144,12 +146,21 @@ export function useRestaurant({
         // Fill gaps from OpenStreetMap (free data we can keep) — at most every ~3 months.
         const stale =
           !r.osm_checked_at || Date.now() - new Date(r.osm_checked_at).getTime() > 90 * 864e5
+        let changed = false
         if (stale && r.latitude !== null) {
           const result = await matchOpenData(r.id, localUtcOffset()).catch(() => null)
-          if (!cancelled && result?.matched) {
-            const fresh = await loadRestaurant(supabase, r.id)
-            if (fresh && !cancelled) setRestaurant(fresh)
-          }
+          changed = !!result?.matched
+        }
+        // …and from the restaurant's own website (its own published facts) — at most monthly.
+        const siteStale =
+          !r.site_checked_at || Date.now() - new Date(r.site_checked_at).getTime() > 30 * 864e5
+        if (siteStale && r.website && !r.owner_verified && !cancelled) {
+          const result = await matchSiteData(r.id, localUtcOffset()).catch(() => null)
+          changed = changed || !!result?.applied?.length
+        }
+        if (changed && !cancelled) {
+          const fresh = await loadRestaurant(supabase, r.id)
+          if (fresh && !cancelled) setRestaurant(fresh)
         }
       } catch {
         // The menu is a bonus; the place page works without it.
@@ -184,7 +195,7 @@ export function useRestaurant({
       const n = (restaurant.verified?.[fact]?.n ?? 0) + 1
       next.verified = { ...restaurant.verified, [fact]: { n, at: new Date().toISOString() } }
       setRestaurant(next)
-      const wasOurs = ['crumbs', 'osm', 'owner'].includes(restaurant.sources?.[fact] ?? '')
+      const wasOurs = isOwned(restaurant, fact)
       return { applied: true, agree: n, points: wasOurs ? 0 : 2 }
     }
     const result = await contributeFact(supabase, restaurant.id, fact, val, how)

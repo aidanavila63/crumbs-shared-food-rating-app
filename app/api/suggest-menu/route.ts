@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { flagAllows } from '@/lib/flags-server'
-import { readMenuText } from '@/lib/menu-fetch'
+import { RobotsBlockedError, readMenuText } from '@/lib/menu-fetch'
 
 export const maxDuration = 30
 
@@ -67,6 +67,8 @@ export async function POST(request: Request) {
       reason: result.object.dishes.length ? 'ok' : 'no-menu',
     })
   } catch (error: any) {
+    // The site's robots.txt asks apps not to read it: respect that.
+    if (error instanceof RobotsBlockedError) return Response.json({ dishes: [], reason: 'blocked' })
     return Response.json({ error: error?.message || 'AI request failed' }, { status: 502 })
   }
 }

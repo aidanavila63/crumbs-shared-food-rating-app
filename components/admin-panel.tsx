@@ -48,10 +48,13 @@ const demoData = {
     menu_dishes: 4,
     owned_hours: 1,
     owned_address: 3,
+    owned_location: 2,
+    site_fields: 4,
     facts: 5,
     claimed_facts: 2,
     claimed_dishes: 1,
     borrowed_fields: 9,
+    borrowed_stale: 3,
     db_bytes: 38 * 1024 ** 2,
     storage_bytes: 120 * 1024 ** 2,
   },
@@ -99,6 +102,92 @@ function Meter({
         <span className="bar-fill" style={{ width: `${Math.max(2, pct)}%` }} />
       </span>
       {pct >= 60 && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+/**
+ * Going public: Google's terms only let Crumbs keep the place ID (map pins for 30 days). This
+ * clears Google-only details older than that — members, restaurants' websites and OpenStreetMap
+ * replace them over time. Check first (counts only), then confirm.
+ */
+function ForgetGoogle({
+  supabase,
+  demo,
+  borrowed,
+  stale,
+}: {
+  supabase: any
+  demo: boolean
+  borrowed: number
+  stale: number
+}) {
+  const [plan, setPlan] = useState<{
+    fields: Record<string, number>
+    restaurants: number
+    unlinked_places: number
+    names_to_check: number
+  } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function run(apply: boolean) {
+    if (demo) {
+      setPlan({ fields: { hours: 2, location: 1 }, restaurants: 2, unlinked_places: 0, names_to_check: 3 })
+      if (apply) toast('Demo: nothing was changed')
+      return
+    }
+    setBusy(true)
+    const { data, error } = await supabase.rpc('forget_google_facts', { apply })
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    setPlan(data)
+    if (apply) toast.success(`Forgot Google details on ${data.restaurants} restaurants`)
+  }
+
+  const total = plan ? Object.values(plan.fields).reduce((a, b) => a + b, 0) : 0
+  return (
+    <div className="mt-2 rounded-xl bg-[var(--card)] px-3 py-2 text-xs">
+      <p className="text-muted-foreground">
+        Going-public check: {borrowed} details are still only Google’s ({stale} older than the 30
+        days Google allows). Members’ answers, restaurants’ websites and OpenStreetMap replace them
+        as places get opened.
+      </p>
+      {plan && (
+        <p className="mt-1">
+          {total
+            ? `${total} details on ${plan.restaurants} restaurants would be forgotten (${Object.entries(
+                plan.fields,
+              )
+                .map(([k, n]) => `${k} ${n}`)
+                .join(', ')}).`
+            : 'Nothing past 30 days right now.'}{' '}
+          {plan.names_to_check} names still need a member check (names are kept).
+          {plan.unlinked_places
+            ? ` ${plan.unlinked_places} saved places haven’t been opened since shared profiles began, so they still hold a Google copy.`
+            : ''}
+        </p>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button className="secondary text-xs" disabled={busy} onClick={() => run(false)}>
+          Check what would go
+        </button>
+        {plan && total > 0 && (
+          <button
+            className="secondary text-xs"
+            disabled={busy}
+            onClick={async () => {
+              const ok = await askConfirm(`Forget ${total} Google details for good?`, {
+                body: 'Map pins without a replacement disappear until a member, the restaurant’s website or OpenStreetMap gives one. This can’t be undone.',
+                confirm: 'Forget them',
+                danger: true,
+              })
+              if (ok) run(true)
+            }}
+          >
+            Forget {total} details
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -219,17 +308,18 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
             <div>
               <p className="text-sm font-semibold">Data Crumbs owns</p>
               <p className="text-xs text-muted-foreground">
-                Restaurants whose hours / address came from members or OpenStreetMap (kept forever),
-                not Google (borrowed).
+                Restaurants whose details came from members, the restaurant’s own website or
+                OpenStreetMap (kept forever), not Google (borrowed). {stats.site_fields ?? 0} details
+                came from restaurants’ websites.
               </p>
-              {(['owned_hours', 'owned_address'] as const).map((key) => {
+              {(['owned_hours', 'owned_address', 'owned_location'] as const).map((key) => {
                 const pct = stats.restaurants
                   ? Math.round(((stats[key] ?? 0) / stats.restaurants) * 100)
                   : 0
                 return (
                   <div key={key} className="mt-1 flex items-center gap-2 text-sm">
                     <span className="w-16 shrink-0">
-                      {key === 'owned_hours' ? 'Hours' : 'Address'}
+                      {key === 'owned_hours' ? 'Hours' : key === 'owned_address' ? 'Address' : 'Map pin'}
                     </span>
                     <span className="owned-bar flex-1">
                       <span className="bar-fill" style={{ width: `${pct}%` }} />
@@ -243,10 +333,12 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
                 {stats.claimed_dishes ?? 0} menu dishes cross-checked by 2+ groups (claimed as
                 Crumbs’ own).
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Going-public check: {stats.borrowed_fields ?? 0} details are still only Google’s and
-                would need to be shown live (not stored) or replaced.
-              </p>
+              <ForgetGoogle
+                supabase={supabase}
+                demo={demo}
+                borrowed={stats.borrowed_fields ?? 0}
+                stale={stats.borrowed_stale ?? 0}
+              />
             </div>
           </div>
         )}

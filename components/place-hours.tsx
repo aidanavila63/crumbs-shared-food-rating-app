@@ -19,10 +19,10 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
   // #27 Another group may have fetched these hours recently: reuse them (no Google call).
   if (!demo && place.restaurant_id) {
     const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
-    // Hours members or OpenStreetMap gave us are Crumbs' own: trust them for ~3 months.
+    // Hours members, their website or OpenStreetMap gave us are Crumbs' own: trust them ~3 months.
     // A verified owner's hours are always used (no Google call at all).
     const byOwner = !!shared?.owner_verified || shared?.sources?.hours === 'owner'
-    const owned = shared?.sources?.hours === 'crumbs' || shared?.sources?.hours === 'osm'
+    const owned = ['crumbs', 'site', 'osm'].includes(shared?.sources?.hours ?? '')
     if (
       shared?.opening_hours &&
       (byOwner || (shared.hours_checked_at && !hoursAreStale(shared, owned ? 90 : 14)))

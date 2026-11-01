@@ -9,6 +9,8 @@ import type { RestaurantStore } from '@/hooks/use-restaurant'
 import {
   PROFILE_FIELDS,
   claimRestaurant,
+  factOrigin,
+  isOwned,
   ownerLocked,
   type Evidence,
   type FactField,
@@ -176,8 +178,8 @@ export function RestaurantInfoEditor({
           )}
           {PROFILE_FIELDS.map((f) => {
             const text = show(r, f)
-            const owned =
-              r.sources?.[f] === 'owner' || r.sources?.[f] === 'crumbs' || r.sources?.[f] === 'osm'
+            const owned = isOwned(r, f)
+            const origin = text ? factOrigin(r, f) : null
             const locked = !store.manages && ownerLocked(r, f)
             return (
               <div key={f} className="profile-row flex flex-col gap-1 py-2">
@@ -199,6 +201,12 @@ export function RestaurantInfoEditor({
                     )
                   )}
                 </div>
+                {origin && editing !== f && (
+                  <p className="pl-[72px] text-[0.6875rem] text-muted-foreground">
+                    {origin}
+                    {r.sources?.[f] === 'google' && ' · not kept, add what you see'}
+                  </p>
+                )}
                 {editing !== f && locked && (
                   <div className="flex gap-3 pl-[72px] text-xs font-semibold">
                     <button className="text-primary underline" onClick={() => setEditing(f)}>
@@ -256,9 +264,10 @@ export function RestaurantInfoEditor({
               </span>
             </div>
           ) : null}
-          {r.osm_id && (
+          {(r.osm_id || Object.values(r.sources ?? {}).includes('site')) && (
             <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-              Some details © OpenStreetMap contributors.
+              {Object.values(r.sources ?? {}).includes('site') && 'Some details from the restaurant’s own website. '}
+              {r.osm_id && 'Some details © OpenStreetMap contributors.'}
             </p>
           )}
           {claims && !store.manages && supabase && (

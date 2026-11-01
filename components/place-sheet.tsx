@@ -706,6 +706,7 @@ export function PlaceSheet({
         const why: Record<string, string> = {
           'no-website': 'No website saved for this place, so there is no menu to read.',
           unreadable: "Couldn't read their website. Add dishes yourself as you try them.",
+          blocked: 'Their website asks apps not to read it. Snap the menu instead.',
           'no-menu': "Didn't find a menu on their website. Add dishes yourself as you try them.",
         }
         return toast(why[result.reason] ?? 'No new dishes to add')

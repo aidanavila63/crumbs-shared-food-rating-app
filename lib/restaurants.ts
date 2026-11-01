@@ -22,6 +22,10 @@ export type Restaurant = {
   places_count: number
   // Data ownership (#27): where each field came from, and how many members confirmed it.
   sources?: Partial<Record<FactField, FactSource>>
+  /** when each fact was last checked/changed (ISO) */
+  source_at?: Partial<Record<FactField, string>>
+  /** when the restaurant's own website was last read */
+  site_checked_at?: string | null
   verified?: Partial<
     Record<FactField, { n: number; at: string; groups?: number; claimed?: boolean }>
   >
@@ -42,7 +46,32 @@ export type FactField =
   | 'price_level'
   | 'cuisine'
   | 'status'
-export type FactSource = 'owner' | 'crumbs' | 'osm' | 'google'
+/** owner > crumbs (members) > site (the restaurant's own website) > osm > google (temporary) */
+export type FactSource = 'owner' | 'crumbs' | 'site' | 'osm' | 'google'
+
+/** Facts Crumbs may keep for good (everything except Google's). */
+export const OWNED_SOURCES: FactSource[] = ['owner', 'crumbs', 'site', 'osm']
+export const isOwned = (r: Restaurant | null | undefined, f: FactField) =>
+  OWNED_SOURCES.includes(r?.sources?.[f] as FactSource)
+
+const SOURCE_LABEL: Record<FactSource, string> = {
+  owner: 'From the restaurant',
+  crumbs: 'From members',
+  site: 'From their website',
+  osm: 'From OpenStreetMap',
+  google: 'From Google',
+}
+
+/** "From their website · Oct 2026" — where a fact came from and when it was last checked. */
+export function factOrigin(r: Restaurant | null | undefined, f: FactField): string | null {
+  const src = r?.sources?.[f]
+  if (!src || !SOURCE_LABEL[src]) return null
+  const at = r?.verified?.[f]?.at ?? r?.source_at?.[f]
+  const when = at
+    ? new Date(at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : null
+  return when ? `${SOURCE_LABEL[src]} · ${when}` : SOURCE_LABEL[src]
+}
 export type Evidence = 'in_person' | 'photo' | 'website' | 'receipt' | 'phone_call'
 
 /**
@@ -283,6 +312,16 @@ export async function matchOpenData(restaurantId: string, utc: number) {
   return response.ok
     ? ((await response.json()) as { matched: string | null; fields?: string[] })
     : null
+}
+
+/** Save the facts the restaurant's own website publishes onto its profile (monthly at most). */
+export async function matchSiteData(restaurantId: string, utc: number) {
+  const response = await fetch('/api/site-info', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ restaurantId, utc }),
+  })
+  return response.ok ? ((await response.json()) as { applied: string[]; skipped?: boolean }) : null
 }
 
 export type Insights = {

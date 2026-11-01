@@ -41,5 +41,7 @@ export async function POST(request: Request) {
     osm: match?.osm ?? null,
   })
   if (error) return Response.json({ error: error.message }, { status: 403 })
+  // Open data that still says the same thing keeps those facts' "last checked" date fresh.
+  if (match) await supabase.rpc('touch_open_data', { target: r.id, fields: Object.keys(match.data) })
   return Response.json({ matched: match?.osm ?? null, fields: Object.keys(match?.data ?? {}) })
 }

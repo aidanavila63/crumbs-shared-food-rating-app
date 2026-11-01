@@ -45,3 +45,52 @@ test('openingHours text and tel: fallback', () => {
 test('closed days (00:00-00:00) are skipped', () => {
   assert.deepEqual(periodsFromSpec({ dayOfWeek: 'Sunday', opens: '00:00', closes: '00:00' }), [])
 })
+
+import { siteFacts } from '../lib/site-info.ts'
+
+const page = (node: object) =>
+  `<script type="application/ld+json">${JSON.stringify(node)}</script>`
+const here = { name: 'Bamiyan Kabob', website: 'https://bamiyan.ca', latitude: 43.7, longitude: -79.4, utc: -240 }
+
+test('keeps facts from the restaurant’s own page, including where it is', () => {
+  const info = readSiteInfo(
+    page({
+      '@type': 'Restaurant',
+      name: 'Bamiyan Kabob',
+      telephone: '416 555 0199',
+      address: { streetAddress: '1 King St W', addressLocality: 'Toronto', addressRegion: 'ON', postalCode: 'M5H 1A1' },
+      geo: { latitude: '43.7005', longitude: -79.4004 },
+      openingHours: 'Mo-Su 11:00-22:00',
+    }),
+    'https://bamiyan.ca',
+  )
+  assert.equal(info.address, '1 King St W, Toronto, ON M5H 1A1')
+  const facts = siteFacts(info, here)
+  assert.deepEqual(facts.location, { lat: 43.7005, lng: -79.4004 })
+  assert.equal(facts.website, 'https://bamiyan.ca')
+  assert.equal(facts.hours?.periods.length, 7)
+  assert.equal(facts.hours?.utc, -240)
+})
+
+test('ignores pages about someone else, chains and far-away head offices', () => {
+  const other = readSiteInfo(page({ '@type': 'Restaurant', name: 'Pizza Palace', telephone: '416 555 0100' }), 'https://x.ca')
+  assert.deepEqual(siteFacts(other, here), {})
+  const chain = readSiteInfo(
+    page({ '@graph': [
+      { '@type': 'Restaurant', name: 'Bamiyan Kabob', address: 'A St, Toronto' },
+      { '@type': 'Restaurant', name: 'Bamiyan Kabob', address: 'B St, Ottawa' },
+    ] }),
+    'https://x.ca',
+  )
+  assert.deepEqual(siteFacts(chain, here), {})
+  const far = readSiteInfo(
+    page({ '@type': 'Restaurant', name: 'Bamiyan Kabob', telephone: '416 555 0100', geo: { latitude: 45.4, longitude: -75.7 } }),
+    'https://x.ca',
+  )
+  const facts = siteFacts(far, here)
+  assert.equal(facts.phone, '416 555 0100')
+  assert.equal(facts.location, undefined)
+  assert.equal(facts.website, undefined)
+  // A tel: link alone, with no restaurant described, isn't enough.
+  assert.deepEqual(siteFacts(readSiteInfo('<a href="tel:4165550100">Call</a>', 'https://x.ca'), here), {})
+})
