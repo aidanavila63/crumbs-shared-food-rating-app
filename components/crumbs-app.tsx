@@ -1,6 +1,15 @@
 'use client'
 import { identify, resetAnalytics, track } from '@/lib/analytics'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   CheckCheck,
   ChevronDown,
@@ -11,31 +20,23 @@ import {
   Users,
   Utensils,
   UtensilsCrossed,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
-import { PlaceSheet } from './place-sheet'
-import { AddPlaceSheet } from './add-place-sheet'
 import { WelcomeCard } from './welcome-card'
-import { MapTab } from './map-tab'
-import { ListsTab } from './lists-tab'
-import { DecideTab } from './decide-tab'
-import { GroupTab } from './group-tab'
 import { MapsProvider } from './maps-provider'
-import { SurpriseSheet } from './surprise-sheet'
 import { notifyMates } from '@/lib/push'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
-import { haptic, useMotionPrefs } from '@/lib/motion'
+import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
-import { QuickLogSheet } from './quick-log-sheet'
 import { captureJoinCode, clearJoinCode, pendingJoinCode, stripJoinParam } from '@/lib/invite'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
-import { HomeTab } from './home-tab'
 import { useFlags } from '@/hooks/use-flags'
 import { useDecide } from '@/hooks/use-decide'
 import { installErrorReporter } from '@/lib/report-errors'
@@ -45,14 +46,48 @@ import { fromShare } from '@/lib/maps-link'
 import { inArea } from '@/lib/decide-more'
 import { catchUpSeen, isNewMember } from '@/lib/catch-up'
 import { CatchUpCard } from './catch-up-card'
-import { DraftsReview } from './drafts-review'
-import { Walkthrough } from './guidebook'
 import { tourDone } from '@/lib/guidebook'
 import { GroupSwitcher } from './group-switcher'
 import { GroupActions } from './group-actions'
 import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
+
+// Screens and sheets load on demand (then all get fetched quietly once the app is idle),
+// so the first paint only carries the Places list.
+const load = {
+  map: () => import('./map-tab'),
+  lists: () => import('./lists-tab'),
+  decide: () => import('./decide-tab'),
+  group: () => import('./group-tab'),
+  home: () => import('./home-tab'),
+  place: () => import('./place-sheet'),
+  add: () => import('./add-place-sheet'),
+  surprise: () => import('./surprise-sheet'),
+  quickLog: () => import('./quick-log-sheet'),
+  drafts: () => import('./drafts-review'),
+  guide: () => import('./guidebook'),
+}
+function PaneSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading">
+      <div className="skeleton h-12" />
+      <div className="skeleton h-40" />
+      <div className="skeleton h-28" />
+    </div>
+  )
+}
+const MapTab = dynamic(() => import('./map-tab').then((m) => m.MapTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const ListsTab = dynamic(() => import('./lists-tab').then((m) => m.ListsTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const DecideTab = dynamic(() => import('./decide-tab').then((m) => m.DecideTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const GroupTab = dynamic(() => import('./group-tab').then((m) => m.GroupTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const HomeTab = dynamic(() => import('./home-tab').then((m) => m.HomeTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const PlaceSheet = dynamic(() => import('./place-sheet').then((m) => m.PlaceSheet), { ssr: false })
+const AddPlaceSheet = dynamic(() => import('./add-place-sheet').then((m) => m.AddPlaceSheet), { ssr: false })
+const SurpriseSheet = dynamic(() => import('./surprise-sheet').then((m) => m.SurpriseSheet), { ssr: false })
+const QuickLogSheet = dynamic(() => import('./quick-log-sheet').then((m) => m.QuickLogSheet), { ssr: false })
+const DraftsReview = dynamic(() => import('./drafts-review').then((m) => m.DraftsReview), { ssr: false })
+const Walkthrough = dynamic(() => import('./guidebook').then((m) => m.Walkthrough), { ssr: false })
 
 const tabs = [
   { id: 'Places', label: 'Places', icon: UtensilsCrossed },
@@ -134,15 +169,45 @@ function CrumbsShell() {
   }, [])
   const [hub, setHub] = useState<HubPage[]>([])
   const [switching, setSwitching] = useState(false)
+  // Each tab keeps its own scroll spot; tapping the tab you're on goes back to the top.
+  const scrolls = useRef<Partial<Record<Tab, number>>>({})
+  const restore = useRef<number | null>(null)
   function setTab(next: Tab) {
-    if (next === tab) return
+    if (next === tab) {
+      haptic('tap')
+      window.scrollTo({ top: 0, behavior: motionAllowed() ? 'smooth' : 'auto' })
+      return
+    }
     haptic('tap')
+    scrolls.current[tab] = window.scrollY
+    restore.current = scrolls.current[next] ?? 0
     setDirection(tabIndex(next) > tabIndex(tab) ? 'right' : 'left')
     setTabState(next)
     track('tab', { tab: next })
-    sessionStorage.setItem('crumbs-tab', next)
-    window.scrollTo({ top: 0 })
+    try {
+      sessionStorage.setItem('crumbs-tab', next)
+    } catch {}
   }
+  useLayoutEffect(() => {
+    if (restore.current === null) return
+    const top = restore.current
+    restore.current = null
+    window.scrollTo({ top })
+    // Lazy screens can arrive a frame later; try again once they've laid out.
+    if (top) requestAnimationFrame(() => window.scrollTo({ top }))
+  }, [tab])
+  // Places ⇄ Lists ⇄ Home slide the way you tapped.
+  const [subDirection, setSubDirection] = useState<'left' | 'right'>('right')
+  useEffect(() => {
+    const prefetch = () => Object.values(load).forEach((get) => get().catch(() => {}))
+    const w = window as any
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(prefetch, { timeout: 5000 })
+      return () => w.cancelIdleCallback(id)
+    }
+    const id = setTimeout(prefetch, 3000)
+    return () => clearTimeout(id)
+  }, [])
   function signOut() {
     resetAnalytics()
     setHub([])
@@ -259,7 +324,7 @@ function CrumbsShell() {
       labels: Object.fromEntries(stops.map((p, i) => [p.id, `${i + 1}`])) as Record<string, string>,
     }
   }, [tripList, data.places])
-  const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
+  const setSelected = useCallback((place: Place | null) => setSelectedId(place?.id ?? null), [])
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
   const [quickLog, setQuickLog] = useState(false)
   // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
@@ -273,6 +338,8 @@ function CrumbsShell() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [query, setQuery] = useState('')
+  // Typing stays snappy on big groups; the list catches up a beat later.
+  const deferredQuery = useDeferredValue(query)
   const [filter, setFilter] = useState('All')
   const [groupName, setGroupName] = useState('')
   const [joinCode, setJoinCode] = useState('')
@@ -299,25 +366,25 @@ function CrumbsShell() {
   // #225 search everything
   const found = useMemo(
     () =>
-      searchAll(query, {
+      searchAll(deferredQuery, {
         places: data.places,
         lists: data.lists,
         meals: data.homeMeals,
         plans: decide?.plans ?? [],
       }),
-    [query, data.places, data.lists, data.homeMeals, decide?.plans],
+    [deferredQuery, data.places, data.lists, data.homeMeals, decide?.plans],
   )
   // #128 a saved area to filter the list by
   const [areaName, setAreaName] = useState<string | null>(null)
   const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const list = view.filter((place) => {
-      if (area && !inArea(place, area)) return false
-      const inFilter =
-        filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
-      // #82: search also looks inside dishes and everyone's notes.
-      const haystack = [
+  // #82: search also looks inside dishes and everyone's notes. Built once per data change,
+  // not on every keystroke.
+  const haystacks = useMemo(() => {
+    const text = new Map<string, string>()
+    for (const place of view)
+      text.set(
+        place.id,
+        [
         place.name,
         place.formatted_address,
         place.cuisine,
@@ -332,10 +399,39 @@ function CrumbsShell() {
       ]
         .filter(Boolean)
         .join(' ')
-        .toLowerCase()
-      return inFilter && haystack.includes(needle)
-    })
-    if (sort === 'Top rated') return [...list].sort((a, b) => placeAverage(b) - placeAverage(a))
+        .toLowerCase(),
+      )
+    return text
+  }, [view])
+  const inFilter = useCallback(
+    (place: Place, which: string) =>
+      which === 'All' ? true : which === 'Pinned' ? !!place.pinned : place.status === which,
+    [],
+  )
+  // How many each filter chip would show (with the current search and area).
+  const counts = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase()
+    const base = view.filter(
+      (place) =>
+        (!area || inArea(place, area)) &&
+        (!needle || (haystacks.get(place.id) ?? '').includes(needle)),
+    )
+    return Object.fromEntries(
+      ['All', 'Been', 'Want to try', 'Pinned'].map((f) => [f, base.filter((p) => inFilter(p, f)).length]),
+    ) as Record<string, number>
+  }, [view, area, deferredQuery, haystacks, inFilter])
+  const filtered = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase()
+    const list = view.filter(
+      (place) =>
+        (!area || inArea(place, area)) &&
+        inFilter(place, filter) &&
+        (!needle || (haystacks.get(place.id) ?? '').includes(needle)),
+    )
+    if (sort === 'Top rated') {
+      const score = new Map(list.map((place) => [place.id, placeAverage(place)]))
+      return [...list].sort((a, b) => score.get(b.id)! - score.get(a.id)!)
+    }
     if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === 'Nearest' && origin) {
       const km = (place: Place) =>
@@ -345,7 +441,26 @@ function CrumbsShell() {
       return [...list].sort((a, b) => km(a) - km(b))
     }
     return list
-  }, [view, filter, query, sort, origin, area])
+  }, [view, filter, deferredQuery, sort, origin, area, haystacks, inFilter])
+  // Blind ratings: which cards hide the group score (looked up once, not per card).
+  const hiddenIds = useMemo(() => {
+    if (!blind) return null
+    const ids = new Set<string>()
+    for (const real of data.places)
+      if (
+        !real.place_ratings.some((rating) => rating.user_id === userId) &&
+        real.place_ratings.some((rating) => rating.user_id !== userId)
+      )
+        ids.add(real.id)
+    return ids
+  }, [blind, data.places, userId])
+  const filtersOn = filter !== 'All' || !!areaName || query.trim() !== ''
+  function clearFilters() {
+    haptic('tap')
+    setQuery('')
+    setFilter('All')
+    setAreaName(null)
+  }
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -739,6 +854,7 @@ function CrumbsShell() {
                     onClick={() => {
                       if (view === placesView) return
                       haptic('tap')
+                      setSubDirection(views.indexOf(view) > views.indexOf(placesView) ? 'right' : 'left')
                       setPlacesView(view)
                     }}
                   >
@@ -747,7 +863,7 @@ function CrumbsShell() {
                 ))}
               </div>
               {placesView === 'home' && views.includes('home') ? (
-                <div className="tab-pane tab-from-right">
+                <div key="home" className={`tab-pane tab-from-${subDirection}`}>
                   <HomeTab
                     meals={data.homeMeals}
                     setMeals={data.setHomeMeals}
@@ -762,7 +878,7 @@ function CrumbsShell() {
                   />
                 </div>
               ) : placesView === 'lists' ? (
-                <div className="tab-pane tab-from-right">
+                <div key="lists" className={`tab-pane tab-from-${subDirection}`}>
                   <ListsTab
                     lists={plainLists}
                     places={view}
@@ -782,7 +898,7 @@ function CrumbsShell() {
                   />
                 </div>
               ) : (
-                <div className="tab-pane tab-from-left flex flex-col gap-4">
+                <div key="places" className={`tab-pane tab-from-${subDirection} flex flex-col gap-4`}>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Search
@@ -791,11 +907,27 @@ function CrumbsShell() {
                       />
                       <input
                         aria-label="Search places"
-                        className="field field-icon"
-                        placeholder="Search places"
+                        className="field field-icon search-field"
+                        placeholder="Search places, dishes, notes"
+                        type="search"
+                        enterKeyHint="search"
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Escape' && query && setQuery('')}
                       />
+                      {query && (
+                        <button
+                          type="button"
+                          className="search-clear"
+                          aria-label="Clear search"
+                          onClick={() => {
+                            haptic('tap')
+                            setQuery('')
+                          }}
+                        >
+                          <X size={16} strokeWidth={2.5} />
+                        </button>
+                      )}
                     </div>
                     <button
                       className="secondary !min-h-12 shrink-0 !px-3"
@@ -812,7 +944,7 @@ function CrumbsShell() {
                       <Plus />
                     </button>
                   </div>
-                  {query.trim().length >= 2 && (found || filtered.length > 0) && (
+                  {deferredQuery.trim().length >= 2 && (found || filtered.length > 0) && (
                     // #225 everything that matches, grouped: places first, then food, lists…
                     <div className="surface-soft rise-panel flex flex-col gap-2 text-sm">
                       {filtered.length > 0 && (
@@ -847,7 +979,7 @@ function CrumbsShell() {
                             Lists
                           </p>
                           {found.lists.map((l) => (
-                            <button key={l.id} className="text-left" onClick={() => setPlacesView('lists')}>
+                            <button key={l.id} className="text-left" onClick={() => (setSubDirection('right'), setPlacesView('lists'))}>
                               {l.emoji} <strong>{l.name}</strong>
                             </button>
                           ))}
@@ -871,7 +1003,7 @@ function CrumbsShell() {
                             Home cooking
                           </p>
                           {found.meals.map((m) => (
-                            <button key={m.id} className="text-left" onClick={() => setPlacesView('home')}>
+                            <button key={m.id} className="text-left" onClick={() => (setSubDirection('right'), setPlacesView('home'))}>
                               🍳 <strong>{m.name}</strong>
                             </button>
                           ))}
@@ -885,9 +1017,17 @@ function CrumbsShell() {
                         key={item}
                         aria-pressed={filter === item}
                         className={`chip ${filter === item ? 'chip-active' : ''}`}
-                        onClick={() => setFilter(item)}
+                        onClick={() => {
+                          if (item !== filter) haptic('select')
+                          setFilter(item)
+                        }}
                       >
                         {item}
+                        {!data.loading && data.places.length > 0 && (
+                          <span className="chip-count" aria-label={`${counts[item] ?? 0} places`}>
+                            {counts[item] ?? 0}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -897,7 +1037,10 @@ function CrumbsShell() {
                         key={item}
                         aria-pressed={sort === item}
                         className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-                        onClick={() => setSort(item)}
+                        onClick={() => {
+                          if (item !== sort) haptic('select')
+                          setSort(item)
+                        }}
                       >
                         {item}
                       </button>
@@ -933,7 +1076,7 @@ function CrumbsShell() {
                       <div className="skeleton h-28" />
                     </div>
                   ) : filtered.length ? (
-                    <div className="stagger flex flex-col gap-4">
+                    <div className="stagger place-list flex flex-col gap-4">
                       {filtered.map((place) => (
                         <PlaceCard
                           key={place.id}
@@ -941,16 +1084,23 @@ function CrumbsShell() {
                           names={names}
                           members={data.members}
                           home={home}
-                          hidden={
-                            blind &&
-                            !place.place_ratings.some((rating) => rating.user_id === userId) &&
-                            data.places
-                              .find((real) => real.id === place.id)!
-                              .place_ratings.some((rating) => rating.user_id !== userId)
-                          }
+                          hidden={!!hiddenIds?.has(place.id)}
                           onSelect={setSelected}
                         />
                       ))}
+                    </div>
+                  ) : data.places.length > 0 && filtersOn ? (
+                    <div className="empty pop-in">
+                      <p className="text-4xl" aria-hidden="true">🔍</p>
+                      <p className="mt-2 font-serif text-xl font-bold">Nothing matches</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {query.trim()
+                          ? `No places with “${query.trim()}”${filter !== 'All' ? ` in ${filter}` : ''}${areaName ? ` around ${areaName}` : ''}.`
+                          : `No places in ${filter !== 'All' ? filter : 'this view'}${areaName ? ` around ${areaName}` : ''} yet.`}
+                      </p>
+                      <button className="secondary mx-auto mt-4" onClick={clearFilters}>
+                        Show everything
+                      </button>
                     </div>
                   ) : (
                     <WelcomeCard

@@ -8,6 +8,7 @@ import { haptic } from '@/lib/motion'
 import { Switch } from './switch'
 import { PhotoButton } from './photo-button'
 import { JOIN_MODES } from './group-switcher'
+import { askConfirm } from '@/lib/ask'
 
 // One emoji per group, picked from a list (free typing let two squeeze in and get cut off).
 export const GROUP_EMOJIS = [
@@ -387,8 +388,14 @@ export function GroupSettingsCard({
                       <button
                         className="text-xs font-bold text-destructive underline"
                         disabled={busy}
-                        onClick={() => {
-                          if (!window.confirm(`Remove ${member.display_name} from ${group.name}?`)) return
+                        onClick={async () => {
+                          if (
+                            !(await askConfirm(`Remove ${member.display_name} from ${group.name}?`, {
+                              confirm: 'Remove',
+                              danger: true,
+                            }))
+                          )
+                            return
                           rpc('remove_member', { target_group: group.id, target_user: member.id }, `Removed ${member.display_name}`)
                         }}
                       >
@@ -412,7 +419,13 @@ export function GroupSettingsCard({
               className="secondary shrink-0 !min-h-10 !px-3 text-sm"
               disabled={busy}
               onClick={async () => {
-                if (!window.confirm('Make a new invite code? The old one stops working.')) return
+                if (
+                  !(await askConfirm('Make a new invite code?', {
+                    body: 'The old one stops working.',
+                    confirm: 'New code',
+                  }))
+                )
+                  return
                 const code = await rpc('reset_join_code', { target_group: group.id }, 'New invite code made')
                 if (typeof code === 'string') onGroup({ ...group, join_code: code })
               }}

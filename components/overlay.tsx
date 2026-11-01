@@ -2,9 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { haptic, motionAllowed } from '@/lib/motion'
-
-// Open overlays, newest last, so Escape only closes the one on top.
-const stack: object[] = []
+import { isTopLayer, pushLayer } from '@/lib/layers'
 
 /**
  * Full-screen panel that opens with an animation when you tap a button (no swipe gestures)
@@ -45,15 +43,12 @@ export function Overlay({
   useEffect(() => {
     haptic('tap')
     const previous = document.activeElement as HTMLElement | null
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     const me = {}
-    stack.push(me)
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && stack.at(-1) === me && close()
+    const release = pushLayer(me)
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && isTopLayer(me) && close()
     window.addEventListener('keydown', onKey)
     return () => {
-      stack.splice(stack.indexOf(me), 1)
-      document.body.style.overflow = overflow
+      release()
       window.removeEventListener('keydown', onKey)
       previous?.focus?.()
     }

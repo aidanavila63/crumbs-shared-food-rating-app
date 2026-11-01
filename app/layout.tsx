@@ -4,6 +4,7 @@ import { SwRegister } from '@/components/sw-register'
 import { OfflineBanner } from '@/components/offline-banner'
 import { EARLY_PREFS_SCRIPT } from '@/lib/early-prefs'
 import './globals.css'
+import './polish.css'
 
 const figtree = Figtree({ subsets: ['latin'], variable: '--font-figtree' })
 const youngSerif = Young_Serif({

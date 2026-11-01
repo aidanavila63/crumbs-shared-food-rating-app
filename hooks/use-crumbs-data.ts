@@ -413,8 +413,13 @@ export function useCrumbsData() {
   const load = useCallback(async () => {
     if (demo || !user || !group) return
     if (!loadedOnce.current) setLoading(true)
-    const [{ data: placeRows, error: placesError }, { data: listRows, error: listsError }] =
-      await Promise.all([
+    // Everything that only needs the group id goes out together (was 4 round trips in a row).
+    const [
+      { data: placeRows, error: placesError },
+      { data: listRows, error: listsError },
+      { data: memberRows },
+      meals,
+    ] = await Promise.all([
         supabase
           .from('places')
           .select(
@@ -424,13 +429,18 @@ export function useCrumbsData() {
           .order('pinned', { ascending: false })
           .order('created_at', { ascending: false }),
         supabase.from('lists').select('*,list_places(*)').eq('group_id', group.id),
+        supabase.from('group_members').select('*').eq('group_id', group.id),
+        // Is the v4 database update in? (home_meals only exists after it.)
+        supabase
+          .from('home_meals')
+          .select(
+            '*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by)',
+          )
+          .eq('group_id', group.id)
+          .order('created_at', { ascending: false }),
       ])
     if (placesError) throw placesError
     if (listsError) throw listsError
-    const { data: memberRows } = await supabase
-      .from('group_members')
-      .select('*')
-      .eq('group_id', group.id)
     const ids = (memberRows ?? []).map((row: any) => row.user_id)
     const roles = Object.fromEntries((memberRows ?? []).map((row: any) => [row.user_id, row.role]))
     const joined = Object.fromEntries(
@@ -445,14 +455,6 @@ export function useCrumbsData() {
         joined_at: joined[row.id] ?? null,
       }))
     }
-    // Is the v4 database update in? (home_meals only exists after it.)
-    const meals = await supabase
-      .from('home_meals')
-      .select(
-        '*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by)',
-      )
-      .eq('group_id', group.id)
-      .order('created_at', { ascending: false })
     setV4(!meals.error)
     setHomeMeals(meals.error ? [] : ((meals.data ?? []) as HomeMeal[]))
     setMembers(profileRows)
@@ -556,13 +558,30 @@ export function useCrumbsData() {
     loadRef.current = load
   }, [load])
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // While the app is in the background, changes just mark it stale; one reload on return.
+  const stale = useRef(false)
   const scheduleLoad = useCallback(() => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      stale.current = true
+      return
+    }
     clearTimeout(reloadTimer.current)
     reloadTimer.current = setTimeout(() => {
       loadRef.current().catch((error) => console.error(error))
     }, 250)
   }, [])
-  useEffect(() => () => clearTimeout(reloadTimer.current), [])
+  useEffect(() => {
+    const onShow = () => {
+      if (document.hidden || !stale.current) return
+      stale.current = false
+      scheduleLoad()
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onShow)
+      clearTimeout(reloadTimer.current)
+    }
+  }, [scheduleLoad])
   useEffect(() => {
     if (demo || !group) return
     const channel = supabase

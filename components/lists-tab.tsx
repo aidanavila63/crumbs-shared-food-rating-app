@@ -11,6 +11,7 @@ import { smartLists } from '@/lib/smart-lists'
 import { useGems } from '@/hooks/use-gems'
 import { haptic } from '@/lib/motion'
 import { placeAverage } from './place-card'
+import { askConfirm, askText } from '@/lib/ask'
 export function ListsTab({
   lists,
   places,
@@ -79,7 +80,7 @@ export function ListsTab({
     toast.success('List created')
   }
   async function rename(list: List) {
-    const next = window.prompt('Rename list', list.name)?.trim()
+    const next = await askText('Rename list', list.name)
     if (!next || next === list.name) return
     if (!demo) {
       const { error } = await supabase.from('lists').update({ name: next }).eq('id', list.id)
@@ -320,9 +321,10 @@ export function ListsTab({
                       className="chip chip-sm"
                       onClick={async () => {
                         if (
-                          !window.confirm(
-                            `Copy “${active.name}” to ${g.name}? Places they don’t have are added as Want to try (no ratings or notes).`,
-                          )
+                          !(await askConfirm(`Copy “${active.name}” to ${g.name}?`, {
+                            body: 'Places they don’t have are added as Want to try (no ratings or notes).',
+                            confirm: 'Copy',
+                          }))
                         )
                           return
                         if (demo) return toast.success(`Copied to ${g.name}`)

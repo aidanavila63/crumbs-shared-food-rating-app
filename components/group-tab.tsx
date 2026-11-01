@@ -10,6 +10,7 @@ import { photoUrl } from '@/lib/photos'
 import { tasteProfile } from '@/lib/catch-up'
 import { oneEmoji } from '@/lib/group-look'
 import { JoinRequestsCard } from './join-requests'
+import { askConfirm } from '@/lib/ask'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -155,7 +156,14 @@ export function GroupTab({
       <button
         className="secondary text-destructive"
         onClick={async () => {
-          if (!window.confirm(`Leave ${group.name}? You can rejoin with the code.`)) return
+          if (
+            !(await askConfirm(`Leave ${group.name}?`, {
+              body: 'You can rejoin with the code.',
+              confirm: 'Leave',
+              danger: true,
+            }))
+          )
+            return
           if (!demo) {
             const { error } = await supabase
               .from('group_members')

@@ -11,6 +11,7 @@ import { DAY_CAPS, POINTS, type DayCaps, type PointRules } from '@/lib/tiers'
 import { BACKUP_BUCKET } from '@/lib/backup'
 import { monthPace } from '@/lib/limits'
 import { Switch } from './switch'
+import { askConfirm } from '@/lib/ask'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -865,9 +866,10 @@ function ClaimsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   }
   async function removeOwner(c: Claim) {
     if (
-      !window.confirm(
+      !(await askConfirm(
         `Remove ${c.contact_name} as owner of ${c.restaurants?.name ?? 'this restaurant'}?`,
-      )
+        { confirm: 'Remove', danger: true },
+      ))
     )
       return
     const { error } = await supabase.rpc('remove_manager', {
@@ -1017,9 +1019,10 @@ function QualityCard({ supabase, demo }: { supabase: any; demo: boolean }) {
       ? [d.a, d.b, d.a_name, d.b_name]
       : [d.b, d.a, d.b_name, d.a_name]
     if (
-      !window.confirm(
-        `Merge “${dupeName}” into “${keepName}”? Saved places, menus and details move over.`,
-      )
+      !(await askConfirm(`Merge “${dupeName}” into “${keepName}”?`, {
+        body: 'Saved places, menus and details move over.',
+        confirm: 'Merge',
+      }))
     )
       return
     if (!demo) {

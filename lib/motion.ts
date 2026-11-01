@@ -62,6 +62,7 @@ const PATTERNS = {
   select: 12,
   success: [14, 40, 22],
   celebrate: [18, 50, 18, 50, 30],
+  warn: [10, 30, 10],
 } as const
 export type HapticKind = keyof typeof PATTERNS
 

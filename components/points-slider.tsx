@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { askConfirm } from '@/lib/ask'
 
 /** 0-100 score slider. Saves once when you let go, not on every tick. After saving it rests for a
  *  moment ("Saved ✓") so a second touch can't change it by accident. */
@@ -69,8 +70,8 @@ export function PointsSlider({
           type="button"
           className="text-xs font-semibold text-muted-foreground underline"
           aria-label={`Clear your score for ${label}`}
-          onClick={() => {
-            if (window.confirm(`Take your score off ${label}?`)) onClear()
+          onClick={async () => {
+            if (await askConfirm(`Take your score off ${label}?`, { confirm: 'Clear', danger: true })) onClear()
           }}
         >
           Clear

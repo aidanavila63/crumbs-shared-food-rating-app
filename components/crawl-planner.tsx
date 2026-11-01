@@ -10,6 +10,7 @@ import { crawlDirectionsUrl, crawlRoute, tidyRoute } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { NearbyOffList, centreOf } from './nearby-off-list'
+import { askConfirm } from '@/lib/ask'
 
 const ordered = (list: List) =>
   [...(list.list_places ?? [])].sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
@@ -129,7 +130,8 @@ export function CrawlPlanner({
   }
 
   async function removeCrawl(list: List) {
-    if (!window.confirm(`Delete the crawl “${list.name}”?`)) return
+    if (!(await askConfirm(`Delete the crawl “${list.name}”?`, { confirm: 'Delete', danger: true })))
+      return
     if (!demo) {
       const { error } = await supabase.from('lists').delete().eq('id', list.id)
       if (error) return toast.error(error.message)

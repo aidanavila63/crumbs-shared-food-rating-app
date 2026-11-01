@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { FileText, Trash2 } from 'lucide-react'
 import { haptic } from '@/lib/motion'
 import { timeAgo } from './social'
+import { askConfirm } from '@/lib/ask'
 
 type MenuFile = {
   id: string
@@ -104,7 +105,14 @@ export function OwnerMenuPdf({
     }
   }
   async function remove(f: MenuFile) {
-    if (!window.confirm('Delete this PDF? Dishes already added stay on your menu.')) return
+    if (
+      !(await askConfirm('Delete this PDF?', {
+        body: 'Dishes already added stay on your menu.',
+        confirm: 'Delete',
+        danger: true,
+      }))
+    )
+      return
     setFiles((all) => all.filter((x) => x.id !== f.id))
     if (demo) return
     await supabase.storage.from('crumbs-menus').remove([f.path])

@@ -8,6 +8,7 @@ import type { DecideStore, Plan, Rsvp } from '@/hooks/use-decide'
 import { bookingText, didYouGo, goodPickAsks, planIcs } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
 import { PlanB } from './plan-b'
+import { askConfirm } from '@/lib/ask'
 
 export type PlanDraft = Partial<Plan> & { title: string }
 
@@ -382,9 +383,10 @@ function PlanCard({
         <button
           className="icon-btn"
           aria-label={`Delete ${plan.title}`}
-          onClick={() =>
-            window.confirm(`Delete “${plan.title}” for everyone?`) && store.deletePlan(plan.id)
-          }
+          onClick={async () => {
+            if (await askConfirm(`Delete “${plan.title}” for everyone?`, { confirm: 'Delete', danger: true }))
+              store.deletePlan(plan.id)
+          }}
         >
           <Trash2 size={16} />
         </button>

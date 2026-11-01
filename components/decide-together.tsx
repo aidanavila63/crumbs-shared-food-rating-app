@@ -13,6 +13,7 @@ import { average5 } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { useShowScore } from './score-input'
 import { timeAgo } from './social'
+import { askConfirm } from '@/lib/ask'
 
 type Source = { id: string; label: string; pick: (places: Place[]) => Place[]; listId?: string }
 
@@ -656,8 +657,8 @@ function SessionView({
             {session.created_by === userId && (
               <button
                 className="secondary text-destructive"
-                onClick={() => {
-                  if (!window.confirm('Delete this vote for everyone?')) return
+                onClick={async () => {
+                  if (!(await askConfirm('Delete this vote for everyone?', { confirm: 'Delete', danger: true }))) return
                   store.deleteSession(session.id)
                   onBack()
                 }}
