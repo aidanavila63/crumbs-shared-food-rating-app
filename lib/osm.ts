@@ -94,22 +94,34 @@ const OVERPASS_SERVERS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 
-/** Runs an Overpass query, trying each free server in turn (about 8 s each). */
+/**
+ * Runs an Overpass query on all the free servers at once and takes the first good answer
+ * (one slow server used to hold everything up for 8 s before the next was tried).
+ */
 export async function overpass(query: string): Promise<any> {
-  let last = ''
-  for (const server of OVERPASS_SERVERS) {
-    try {
-      const response = await fetch(server, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
-        body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(8000),
-      })
-      if (response.ok) return await response.json()
-      last = `status ${response.status}`
-    } catch (error: any) {
-      last = error?.name === 'TimeoutError' ? 'timeout' : error?.message || 'error'
-    }
+  const stop = new AbortController()
+  const errors: string[] = []
+  try {
+    return await Promise.any(
+      OVERPASS_SERVERS.map(async (server) => {
+        try {
+          const response = await fetch(server, {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': OSM_UA },
+            body: new URLSearchParams({ data: query }),
+            signal: AbortSignal.any([stop.signal, AbortSignal.timeout(12_000)]),
+          })
+          if (!response.ok) throw new Error(`status ${response.status}`)
+          const json = await response.json()
+          stop.abort() // got one; cancel the others
+          return json
+        } catch (error: any) {
+          errors.push(error?.name === 'TimeoutError' ? 'timeout' : error?.message || 'error')
+          throw error
+        }
+      }),
+    )
+  } catch {
+    throw new Error(`Map data is busy right now (${errors[0] ?? 'error'}). Try again in a minute.`)
   }
-  throw new Error(`Map data is busy right now (${last}). Try again in a minute.`)
 }

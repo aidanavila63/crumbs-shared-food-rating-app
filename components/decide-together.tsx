@@ -387,7 +387,7 @@ function SessionView({
   // #187 everyone's private limits, overlapped
   const [overlap, setOverlap] = useState<Overlap | null>(null)
   const [limitsOpen, setLimitsOpen] = useState(false)
-  const here = useUserLocation(!!overlap?.max_km)
+  const here = useUserLocation(!!overlap?.max_km, { ask: true })
   useEffect(() => {
     let cancelled = false
     store.overlap(session.id).then((o) => !cancelled && setOverlap(o))

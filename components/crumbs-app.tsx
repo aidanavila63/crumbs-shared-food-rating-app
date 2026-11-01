@@ -21,6 +21,8 @@ import {
   Utensils,
   UtensilsCrossed,
   X,
+  ArrowUpDown,
+  MapPin,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
@@ -328,7 +330,7 @@ function CrumbsShell() {
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
   const [quickLog, setQuickLog] = useState(false)
   // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
-  const here = useUserLocation(sort === 'Nearest')
+  const here = useUserLocation(sort === 'Nearest', { ask: true })
   const origin = here ?? home
   const [adding, setAdding] = useState(false)
   // #163/#164 Home-screen shortcuts (?do=log, ?do=add) and things shared to Crumbs (?title=&text=&url=).
@@ -734,7 +736,7 @@ function CrumbsShell() {
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
         {/* The group name is the group switcher: switch, start a new group, join, find one. */}
-        <div className="mb-5 flex items-end gap-2">
+        <div className="mb-5 flex items-center gap-2">
         <button
           type="button"
           className="group-title min-w-0 flex-1"
@@ -745,7 +747,7 @@ function CrumbsShell() {
           }}
         >
           <span className="text-sm text-muted-foreground">Your shared food map</span>
-          <span className="flex min-w-0 items-center gap-2 font-serif text-3xl font-bold">
+          <span className="group-name-row font-serif font-bold">
             {oneEmoji(data.group.emoji) && (
               <span
                 className="group-badge"
@@ -755,7 +757,18 @@ function CrumbsShell() {
                 {oneEmoji(data.group.emoji)}
               </span>
             )}
-            <span className="truncate">{data.group.name}</span>
+            {/* Long names drop a size and wrap onto a second line instead of running under the buttons. */}
+            <span
+              className={`group-name ${
+                data.group.name.length > 22
+                  ? 'text-xl'
+                  : data.group.name.length > 14
+                    ? 'text-2xl'
+                    : 'text-3xl'
+              }`}
+            >
+              {data.group.name}
+            </span>
             <ChevronDown size={22} className="shrink-0 text-muted-foreground" aria-hidden="true" />
           </span>
         </button>
@@ -1011,55 +1024,62 @@ function CrumbsShell() {
                       )}
                     </div>
                   )}
-                  <div className="chip-row">
-                    {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
-                      <button
-                        key={item}
-                        aria-pressed={filter === item}
-                        className={`chip ${filter === item ? 'chip-active' : ''}`}
-                        onClick={() => {
-                          if (item !== filter) haptic('select')
-                          setFilter(item)
+                  <StatusFilter
+                    value={filter}
+                    counts={!data.loading && data.places.length > 0 ? counts : null}
+                    onChange={(item) => {
+                      if (item !== filter) haptic('select')
+                      setFilter(item)
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="pick-pill">
+                      <ArrowUpDown size={15} aria-hidden="true" />
+                      <span aria-hidden="true">{sort}</span>
+                      <select
+                        aria-label="Sort by"
+                        value={sort}
+                        onChange={(event) => {
+                          haptic('select')
+                          setSort(event.target.value as typeof sort)
                         }}
                       >
-                        {item}
-                        {!data.loading && data.places.length > 0 && (
-                          <span className="chip-count" aria-label={`${counts[item] ?? 0} places`}>
-                            {counts[item] ?? 0}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="chip-row min-w-0">
-                    {(['Newest', 'Top rated', 'Nearest', 'A–Z'] as const).map((item) => (
-                      <button
-                        key={item}
-                        aria-pressed={sort === item}
-                        className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-                        onClick={() => {
-                          if (item !== sort) haptic('select')
-                          setSort(item)
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                  {(me?.areas?.length ?? 0) > 0 && (
-                    <div className="chip-row min-w-0" aria-label="Saved areas">
-                      {me!.areas!.map((a) => (
-                        <button
-                          key={a.name}
-                          aria-pressed={areaName === a.name}
-                          className={`chip chip-sm ${areaName === a.name ? 'chip-active' : ''}`}
-                          onClick={() => setAreaName(areaName === a.name ? null : a.name)}
+                        {(['Newest', 'Top rated', 'Nearest', 'A–Z'] as const).map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={15} aria-hidden="true" />
+                    </label>
+                    {(me?.areas?.length ?? 0) > 0 && (
+                      <label className={`pick-pill ${areaName ? 'pick-pill-on' : ''}`}>
+                        <MapPin size={15} aria-hidden="true" />
+                        <span aria-hidden="true">{areaName ? `Near ${areaName}` : 'Anywhere'}</span>
+                        <select
+                          aria-label="Area"
+                          value={areaName ?? ''}
+                          onChange={(event) => {
+                            haptic('select')
+                            setAreaName(event.target.value || null)
+                          }}
                         >
-                          📍 {a.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                          <option value="">Anywhere</option>
+                          {me!.areas!.map((a) => (
+                            <option key={a.name} value={a.name}>
+                              Near {a.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={15} aria-hidden="true" />
+                      </label>
+                    )}
+                    {filtersOn && (
+                      <button type="button" className="text-sm font-semibold text-primary" onClick={clearFilters}>
+                        Reset
+                      </button>
+                    )}
+                  </div>
                   {sort === 'Nearest' && !origin && (
                     <p className="text-xs text-muted-foreground">
                       Finding you… If location is blocked, set Home in Settings to sort by distance.
@@ -1421,5 +1441,54 @@ function CrumbsShell() {
     </main>
     </ScaleContext.Provider>
     </SocialContext.Provider>
+  )
+}
+
+/** All · Been · Want to try · Pinned as one track with a sliding highlight. */
+const STATUSES = ['All', 'Been', 'Want to try', 'Pinned'] as const
+function StatusFilter({
+  value,
+  counts,
+  onChange,
+}: {
+  value: string
+  counts: Record<string, number> | null
+  onChange: (value: string) => void
+}) {
+  const track = useRef<HTMLDivElement>(null)
+  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const measure = () => {
+      const active = track.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+      if (active) setThumb({ left: active.offsetLeft, width: active.offsetWidth })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    if (track.current) observer.observe(track.current)
+    return () => observer.disconnect()
+  }, [value, counts])
+  return (
+    <div ref={track} className="status-track" role="tablist" aria-label="Show">
+      {thumb && (
+        <span
+          className="status-thumb"
+          aria-hidden="true"
+          style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
+        />
+      )}
+      {STATUSES.map((item) => (
+        <button
+          key={item}
+          type="button"
+          role="tab"
+          aria-selected={value === item}
+          className={value === item ? 'status-on' : ''}
+          onClick={() => onChange(item)}
+        >
+          {item === 'Pinned' ? '📌 Pinned' : item}
+          {counts && <span className="status-count">{counts[item] ?? 0}</span>}
+        </button>
+      ))}
+    </div>
   )
 }

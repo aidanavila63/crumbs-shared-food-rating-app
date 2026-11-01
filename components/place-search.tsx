@@ -7,6 +7,7 @@ import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { hoursFromGoogle, type Hours } from '@/lib/place-info'
 import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
+import { isFoodPlace } from '@/lib/food-types'
 
 export type FoundPlace = {
   google_place_id: string
@@ -169,6 +170,9 @@ export function PlaceSearch({
   const googleDown = useGoogleDown()
   const [waited, setWaited] = useState(false)
   const [results, setResults] = useState<Suggestion[]>([])
+  // Something matched but wasn't a place to eat (e.g. a hardware store of the same name).
+  const [hiddenCount, setHiddenCount] = useState(0)
+  const [searched, setSearched] = useState('')
   const [crumbs, setCrumbs] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
@@ -187,6 +191,8 @@ export function PlaceSearch({
     if ((!places && !useOsm) || value.trim().length < 3) {
       setResults([])
       setCrumbs([])
+      setHiddenCount(0)
+      setSearched('')
       return
     }
     let cancelled = false
@@ -209,6 +215,8 @@ export function PlaceSearch({
           try {
             const found = await searchOsm(value.trim(), location)
             if (cancelled) return
+            setHiddenCount(0)
+            setSearched(value.trim())
             setResults(
               found.map((item) => ({
                 id: item.google_place_id,
@@ -232,9 +240,12 @@ export function PlaceSearch({
           const { suggestions } =
             await places!.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
           if (cancelled) return
+          const predictions = suggestions.filter((item: any) => item.placePrediction)
+          const food = predictions.filter((item: any) => isFoodPlace(item.placePrediction.types))
+          setHiddenCount(predictions.length - food.length)
+          setSearched(value.trim())
           setResults(
-            suggestions
-              .filter((item: any) => item.placePrediction)
+            food
               .slice(0, 5)
               .map((item: any) => ({
                 id: item.placePrediction.placeId,
@@ -301,6 +312,7 @@ export function PlaceSearch({
       }
       setResults([])
       setCrumbs([])
+      setSearched('')
       skipValue.current = found.name
       onChange(found.name)
       onPick(found)
@@ -330,6 +342,16 @@ export function PlaceSearch({
         </p>
       )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}
+      {!loading && searched && searched === value.trim() && (
+        <p className="text-xs text-muted-foreground">
+          {results.length + crumbs.length === 0
+            ? hiddenCount
+              ? 'Only places to eat and drink show here. '
+              : 'No matches. '
+            : 'Not the one? '}
+          If it’s missing or listed wrong, paste its Google Maps link below.
+        </p>
+      )}
       {results.length + crumbs.length > 0 && (
         <div className="suggestions" role="listbox">
           {[

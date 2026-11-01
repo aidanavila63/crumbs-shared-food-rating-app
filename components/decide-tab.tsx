@@ -26,6 +26,7 @@ import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
 import { mealTimeAt } from '@/lib/visit-rating'
 import { pickLearning } from '@/lib/decide-more'
 import { QuickDecide } from './quick-decide'
+import { locate } from '@/lib/location'
 
 type Idea = { title: string; why: string }
 
@@ -92,14 +93,16 @@ export function DecideTab({
   const [page, setPage] = useState<'together' | 'plans' | 'crawl' | 'discover' | null>(null)
   // Discover: places to eat near you that aren't on your list (your location, else home).
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null)
+  const [locating, setLocating] = useState(false)
   function openDiscover() {
     haptic('select')
     setPage('discover')
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => setHere({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setHere(home ?? centreOf(allPlaces)),
-      { timeout: 8000 },
-    )
+    setHere(null)
+    setLocating(true)
+    locate().then((fix) => {
+      setHere(fix ?? home ?? centreOf(allPlaces))
+      setLocating(false)
+    })
   }
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [draft, setDraft] = useState<PlanDraft | null>(null)
@@ -588,7 +591,11 @@ export function DecideTab({
                 }}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">Finding where you are…</p>
+              <p className="text-sm text-muted-foreground">
+                {locating
+                  ? 'Finding where you are…'
+                  : 'Crumbs can’t see your location. Allow location for Crumbs, or set Home in Settings, then try again.'}
+              </p>
             )}
           </div>
         </Overlay>

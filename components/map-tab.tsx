@@ -12,6 +12,7 @@ import { OsmMap } from './osm-map'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
+import { ROUGH, locate } from '@/lib/location'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -254,10 +255,13 @@ export function MapTab({
       localStorage.setItem('crumbs-map', osm ? 'osm' : 'google')
     } catch {}
   }
+  // Centre on you only if location is already allowed (or remembered); the Locate button asks.
   useEffect(() => {
-    navigator.geolocation?.getCurrentPosition((position) =>
-      setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }),
-    )
+    let live = true
+    locate({ maxAge: ROUGH, ask: false }).then((fix) => live && fix && setLocation(fix))
+    return () => {
+      live = false
+    }
   }, [])
   return (
     <div className="flex flex-col gap-3">
@@ -654,16 +658,12 @@ export function MapTab({
           type="button"
           aria-label="Locate me"
           className="icon-btn absolute bottom-4 right-4 z-10"
-          onClick={() =>
-            navigator.geolocation?.getCurrentPosition(
-              (position) =>
-                setLocateTarget({
-                  lat: position.coords.latitude,
-                  lng: position.coords.longitude,
-                }),
-              () => {},
-            )
-          }
+          onClick={async () => {
+            haptic('tap')
+            const fix = await locate({ maxAge: 2 * 60 * 1000, precise: true })
+            if (fix) setLocateTarget(fix)
+            else toast.error('Location is off for Crumbs. Allow it in your browser settings.')
+          }}
         >
           <LocateFixed />
         </button>

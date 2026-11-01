@@ -38,7 +38,7 @@ export async function readPhotoText(file: File, onProgress?: (pct: number) => vo
   }
 }
 
-/** Camera button: take or pick a photo, get its text back. */
+/** Photo button: take a photo or pick one from the camera roll, get its text back. */
 export function ReadPhotoButton({
   label,
   className = 'secondary !min-h-10 !px-3 text-sm',
@@ -71,7 +71,6 @@ export function ReadPhotoButton({
         ref={input}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={(event) => pick(event.target.files?.[0])}
       />
@@ -122,28 +121,47 @@ export function AiMenuPhotoButton({
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
-  async function pick(file?: File) {
-    if (!file) return
+  const [page, setPage] = useState<[number, number] | null>(null)
+  // Menus are often several pages: pick up to 4 photos at once and they're read one by one.
+  async function pick(list?: FileList | null) {
+    const files = Array.from(list ?? []).slice(0, 4)
+    if (!files.length) return
+    if ((list?.length ?? 0) > 4) toast('Reading the first 4 photos')
     setBusy(true)
     try {
       if (demo) {
         await new Promise((r) => setTimeout(r, 600))
         return onDishes(DEMO_AI_MENU)
       }
-      const response = await fetch('/api/read-menu-photo', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ image: await toDataUrl(file), placeName }),
-      })
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(body.error || 'AI reading failed')
-      track('menu_ai', { dishes: body.dishes?.length ?? 0 })
-      if (!body.dishes?.length) toast('No dishes found — try a straighter, closer photo')
-      else onDishes(body.dishes)
+      const all: MenuLine[] = []
+      let failed = 0
+      for (const [i, file] of files.entries()) {
+        setPage(files.length > 1 ? [i + 1, files.length] : null)
+        try {
+          const response = await fetch('/api/read-menu-photo', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ image: await toDataUrl(file), placeName }),
+          })
+          const body = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(body.error || 'AI reading failed')
+          for (const dish of (body.dishes ?? []) as MenuLine[])
+            if (!all.some((d) => d.name.toLowerCase() === dish.name.toLowerCase())) all.push(dish)
+        } catch (error) {
+          // One bad page shouldn't lose the others (unless it's the only one).
+          if (files.length === 1) throw error
+          failed++
+        }
+      }
+      track('menu_ai', { dishes: all.length, photos: files.length })
+      if (failed) toast(`Couldn’t read ${failed} of the photos`)
+      if (!all.length) toast('No dishes found — try a straighter, closer photo')
+      else onDishes(all)
     } catch (error: any) {
       toast.error(error?.message || 'AI reading failed')
     } finally {
       setBusy(false)
+      setPage(null)
       if (input.current) input.current.value = ''
     }
   }
@@ -153,9 +171,9 @@ export function AiMenuPhotoButton({
         ref={input}
         type="file"
         accept="image/*"
-        capture="environment"
+        multiple
         className="hidden"
-        onChange={(event) => pick(event.target.files?.[0])}
+        onChange={(event) => pick(event.target.files)}
       />
       <button
         type="button"
@@ -164,7 +182,11 @@ export function AiMenuPhotoButton({
         onClick={() => input.current?.click()}
       >
         <Sparkles size={16} />
-        {busy ? 'Reading the menu…' : 'Menu photo (AI)'}
+        {busy
+          ? page
+            ? `Reading page ${page[0]} of ${page[1]}…`
+            : 'Reading the menu…'
+          : 'Menu photos (AI)'}
       </button>
     </>
   )

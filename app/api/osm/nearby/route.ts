@@ -8,8 +8,8 @@ import { overpassQuery, overpassToPlaces } from '@/lib/nearby'
 // Results are cached per area + cuisine for a day so repeat looks don't hit Overpass again.
 const cache = new Map<string, { at: number; results: unknown[] }>()
 
-// Up to three free servers are tried (about 8 s each).
-export const maxDuration = 30
+// The free servers are asked together (up to 12 s).
+export const maxDuration = 20
 
 export async function GET(request: Request) {
   const supabase = await createClient()

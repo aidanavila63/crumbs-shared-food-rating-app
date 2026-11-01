@@ -52,6 +52,7 @@ import {
   placeWarnings,
 } from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
+import { PlaceLinks } from './place-links'
 import { basedOn } from '@/lib/based-on'
 import { busyText, ratingFromVisits, ratingRow, waitText } from '@/lib/visit-rating'
 import { FactsEditor } from './facts-editor'
@@ -1004,8 +1005,8 @@ export function PlaceSheet({
   return (
     <Sheet label={place.name} onClose={onClose}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-serif text-3xl font-bold">{place.name}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
           {restaurant.restaurant?.owner_verified && <VerifiedBadge />}
           <p className="mt-1 text-sm text-muted-foreground">
             {place.formatted_address || 'Address not added'}
@@ -1019,6 +1020,7 @@ export function PlaceSheet({
               restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
             }
           />
+          <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
           {onOpenPlace && allPlaces.length > 1 && (
             <button
               className="text-sm font-semibold text-primary underline"
@@ -1468,16 +1470,6 @@ export function PlaceSheet({
               onSave={addMenuDishes}
             />
           )}
-          {place.website && (
-            <a
-              className="text-sm font-semibold text-primary underline"
-              href={place.website}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {place.name} website: {websiteHost(place.website)}
-            </a>
-          )}
           {importedOn && (
             <p className="text-xs text-muted-foreground">
               Auto-added from their website on {importedOn}. Dishes and prices may have changed, so
@@ -1607,12 +1599,4 @@ export function PlaceSheet({
       )}
     </Sheet>
   )
-}
-
-function websiteHost(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return 'open site'
-  }
 }

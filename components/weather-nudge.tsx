@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { currentWeather, fitsNudge, weatherNudge, type Weather } from '@/lib/weather'
+import { ROUGH, locate } from '@/lib/location'
 
 export const WEATHER_KEY = 'crumbs-weather-nudges'
 export const weatherNudgesOn = () => {
@@ -35,17 +36,9 @@ export function WeatherNudge({
         .catch(() => {})
     if (home) load(home.lat, home.lng)
     else
-      navigator.permissions
-        ?.query({ name: 'geolocation' as PermissionName })
-        .then((status) => {
-          if (status.state !== 'granted' || cancelled) return
-          navigator.geolocation.getCurrentPosition(
-            (position) => load(position.coords.latitude, position.coords.longitude),
-            () => {},
-            { maximumAge: 30 * 60 * 1000, timeout: 8000 },
-          )
-        })
-        .catch(() => {})
+      locate({ maxAge: ROUGH, ask: false }).then((fix) => {
+        if (fix && !cancelled) load(fix.lat, fix.lng)
+      })
     return () => {
       cancelled = true
     }

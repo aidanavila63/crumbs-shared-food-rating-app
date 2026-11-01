@@ -27,7 +27,7 @@ export function SurpriseSheet({
   const [openNow, setOpenNow] = useState(false)
   const [skipWarned, setSkipWarned] = useState(true)
   const [picked, setPicked] = useState<Place | null>(null)
-  const location = useUserLocation(near)
+  const location = useUserLocation(near, { ask: true })
   const wishlist = useMemo(() => places.filter((place) => place.status === 'Want to try'), [places])
   const cuisines = useMemo(
     () => [...new Set(wishlist.map((place) => place.cuisine).filter(Boolean) as string[])].sort(),

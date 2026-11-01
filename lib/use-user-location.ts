@@ -1,21 +1,26 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { FRESH, ROUGH, lastFix, locate, onFix, type LatLng } from './location'
 
-export type LatLng = { lat: number; lng: number }
-let cached: LatLng | null = null
+export type { LatLng }
 
-export function useUserLocation(enabled = true) {
-  const [location, setLocation] = useState<LatLng | null>(cached)
+/**
+ * The phone's location for a screen. `ask` = this is something you tapped for, so the
+ * permission popup may show; otherwise it only uses a remembered fix or already-allowed
+ * location and never pops up.
+ */
+export function useUserLocation(enabled = true, { ask = false }: { ask?: boolean } = {}) {
+  const maxAge = ask ? FRESH : ROUGH
+  const [location, setLocation] = useState<LatLng | null>(() => lastFix(maxAge))
   useEffect(() => {
-    if (!enabled || cached || !navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        cached = { lat: position.coords.latitude, lng: position.coords.longitude }
-        setLocation(cached)
-      },
-      () => {},
-      { timeout: 8000, maximumAge: 10 * 60 * 1000 },
-    )
-  }, [enabled])
-  return location
+    if (!enabled) return
+    let live = true
+    locate({ maxAge, ask }).then((fix) => live && fix && setLocation(fix))
+    const off = onFix((fix) => live && setLocation(fix))
+    return () => {
+      live = false
+      off()
+    }
+  }, [enabled, ask, maxAge])
+  return enabled ? location : null
 }

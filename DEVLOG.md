@@ -455,3 +455,13 @@ New SQL `supabase/migrations/20261026_builders.sql` (after `20261026_after_v4.sq
 - **Groups you can own at once** by tier (default Taster 1, Regular 1, Local guide 2, Insider 3, Legend no limit) — Admin → Points, last row. `create_group` refuses past it with a friendly message.
 - **Group page**: invite (👤+) and settings (⚙️, owner/admins) are small round buttons beside the group name; the invite code, link and QR open on their own page. The Group tab is now just the group.
 - **Craving**: still there (it's hidden in demo/without notification keys, which is why screenshots missed it) — now its own button next to "Decide in 60s", opening a sheet with quick picks (ramen, tacos…) or your own words.
+
+## Round 45 - Location, website info, filters, food-only search (Nov 1, Claude)
+No SQL. Applies after Round 44 (polish pass).
+- **Location asks far less**: `lib/location.ts` is now the only place that talks to GPS. The last fix is remembered on the phone (15 min for Nearest/Discover, 12 h for search bias, map centre, weather). Background uses never show the popup; only things you tap (Locate me, Nearest, Discover, Surprise near me, Set home) can. iPhone home-screen apps still forget "Allow" each launch unless Safari's Location setting is Allow.
+- **Place page**: website, Menu, Call and Book links sit under the hours at the top. `/api/site-info` reads the restaurant's own site (schema.org data most site builders add) and fills missing hours, cuisine and price for free; Google still overwrites hours when it answers.
+- **Places filters**: All · Been · Want to try · 📌 Pinned is one underline tab bar with counts; sort and area are two small pills that open the phone's own picker. Two rows instead of three.
+- **Long group names** drop a size and wrap to two lines instead of running under the buttons.
+- **Discover nearby**: free map servers are asked in parallel (not one after another), 20 s limit, a Try again state instead of spinning forever, and Google nearby search as a backup (uses the Google allowance).
+- **Search is food-only**: Google results that aren't somewhere to eat or drink are dropped (searching "Canadian Tire" no longer offers the store); a hint points to pasting a Google Maps link when something's missing.
+- **Menu photos** can come from the camera roll (iPhone shows Take Photo / Photo Library), and the AI reader takes up to 4 pages at once.
