@@ -474,3 +474,10 @@ Brand guide + source: Claude project `claude/brand/` (canvas "Crumbs logo").
 - **QR codes** (`lib/brand-qr.ts`): plum liquid dots on cookie cream, rounded corners, ringed plum circle with the cookie C, crumb trail out through a flat-ended gap in the ring, error correction H. The trail for every QR size (versions 2–16) is precomputed in `lib/brand-qr-data.ts` (lazy-loaded with the QR library). Each code tries all 8 masks (and up to 4 bigger sizes) and keeps one where the covered middle + trail use at most 72% of what error correction can fix in every block (`qrDamage`; measured: over 100% never scans). Used by the invite QR and the owner poster.
 - **Owner poster** (#212/#155): cookie-cream page, wordmark, restaurant name + text in Fredoka (`--font-fredoka`, not preloaded), the Crumbs QR. Same link as before (`/?add=<id>`).
 - Checks: typecheck, 129/129 unit tests (new `tests/brand-qr.test.ts`), lint 0 errors, demo build + click-through pass. QR scan tests (ZXing) on 14 links × sizes 160–600 px: all decode; in-app invite QR and poster decode from screenshots. Not yet scanned with a real phone.
+
+## Round 48 - Search stays near you (Nov 2, Claude in Cowork)
+No SQL. Applies on `main` @ 12fc45c.
+- **Bug**: searching "mcdonalds" showed McDonald's in Indonesia, Greece… Cause: since Round 45 search never asks for location, so on iPhone (which forgets "Allow") it often had no location and Google searched the whole world; the food-only filter then picked from those.
+- **Fix**: search now always has an area: a live/remembered fix (remembered up to 30 days for search), else the home spot from Settings, else the middle (median) of the group's places (`knownArea` + `middleOf` in `lib/location.ts`). Bias circle 30 → 50 km (Google's max). Still never pops up by itself; a small **Search near me** link under the box asks when you tap it.
+- **Food filter softer**: non-food matches are no longer dropped — "Show N other matches" reveals them.
+- Checks: typecheck, 139/139 unit tests (new `tests/location.test.ts`), lint 0 errors, demo build; demo Add place shows "Searching around your usual area".

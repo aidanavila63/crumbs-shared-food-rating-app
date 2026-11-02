@@ -54,6 +54,7 @@ import { GroupActions } from './group-actions'
 import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
+import { middleOf } from '@/lib/location'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -1366,6 +1367,7 @@ function CrumbsShell() {
           demo={data.demo}
           supabase={data.supabase}
           shared={shared}
+          near={middleOf(data.places)}
           onClose={() => {
             setAdding(false)
             setShared(null)

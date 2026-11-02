@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
@@ -8,6 +8,7 @@ import { hoursFromGoogle, type Hours } from '@/lib/place-info'
 import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { isFoodPlace } from '@/lib/food-types'
+import { knownArea, locate, type LatLng } from '@/lib/location'
 
 export type FoundPlace = {
   google_place_id: string
@@ -156,9 +157,12 @@ export function PlaceSearch({
   placeholder = 'Search restaurants',
   autoFocus,
   supabase,
+  near = null,
 }: {
   /** When given, Crumbs' own shared restaurants are searched first (free). */
   supabase?: any
+  /** Where to search around when the phone's location isn't known (e.g. the group's places). */
+  near?: LatLng | null
   value: string
   onChange: (text: string) => void
   onPick: (place: FoundPlace) => void
@@ -166,12 +170,20 @@ export function PlaceSearch({
   autoFocus?: boolean
 }) {
   const places = useMapsLibrary('places')
-  const location = useUserLocation(true)
+  const here = useUserLocation(true)
+  // Never search the whole world: without a current fix, use the last known area, home, or
+  // the middle of the group's places (searching "mcdonalds" used to show Indonesia and Greece).
+  const nearKey = near ? `${near.lat.toFixed(2)},${near.lng.toFixed(2)}` : ''
+  const fallback = useMemo(() => knownArea(near), [nearKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const location = here ?? fallback
+  const [locating, setLocating] = useState(false)
   const googleDown = useGoogleDown()
   const [waited, setWaited] = useState(false)
   const [results, setResults] = useState<Suggestion[]>([])
   // Something matched but wasn't a place to eat (e.g. a hardware store of the same name).
-  const [hiddenCount, setHiddenCount] = useState(0)
+  const [hidden, setHidden] = useState<Suggestion[]>([])
+  const [showHidden, setShowHidden] = useState(false)
+  const hiddenCount = hidden.length
   const [searched, setSearched] = useState('')
   const [crumbs, setCrumbs] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -191,7 +203,8 @@ export function PlaceSearch({
     if ((!places && !useOsm) || value.trim().length < 3) {
       setResults([])
       setCrumbs([])
-      setHiddenCount(0)
+      setHidden([])
+      setShowHidden(false)
       setSearched('')
       return
     }
@@ -215,7 +228,8 @@ export function PlaceSearch({
           try {
             const found = await searchOsm(value.trim(), location)
             if (cancelled) return
-            setHiddenCount(0)
+            setHidden([])
+            setShowHidden(false)
             setSearched(value.trim())
             setResults(
               found.map((item) => ({
@@ -235,25 +249,29 @@ export function PlaceSearch({
           const request: any = { input: value.trim(), sessionToken: token.current }
           if (location) {
             request.origin = location
-            request.locationBias = { center: location, radius: 30000 }
+            request.locationBias = { center: location, radius: 50000 } // the most allowed
           }
           const { suggestions } =
             await places!.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
           if (cancelled) return
           const predictions = suggestions.filter((item: any) => item.placePrediction)
+          const toSuggestion = (item: any): Suggestion => ({
+            id: item.placePrediction.placeId,
+            main: item.placePrediction.mainText?.text ?? item.placePrediction.text.text,
+            secondary: item.placePrediction.secondaryText?.text ?? '',
+            prediction: item.placePrediction,
+          })
           const food = predictions.filter((item: any) => isFoodPlace(item.placePrediction.types))
-          setHiddenCount(predictions.length - food.length)
-          setSearched(value.trim())
-          setResults(
-            food
-              .slice(0, 5)
-              .map((item: any) => ({
-                id: item.placePrediction.placeId,
-                main: item.placePrediction.mainText?.text ?? item.placePrediction.text.text,
-                secondary: item.placePrediction.secondaryText?.text ?? '',
-                prediction: item.placePrediction,
-              })),
+          // Not food by Google's labels: kept behind "Show other matches" rather than dropped,
+          // in case the labels are wrong for a place you want.
+          setHidden(
+            predictions
+              .filter((item: any) => !isFoodPlace(item.placePrediction.types))
+              .map(toSuggestion),
           )
+          setShowHidden(false)
+          setSearched(value.trim())
+          setResults(food.slice(0, 5).map(toSuggestion))
         } catch {
           if (cancelled) return
           setResults([])
@@ -312,6 +330,7 @@ export function PlaceSearch({
       }
       setResults([])
       setCrumbs([])
+      setHidden([])
       setSearched('')
       skipValue.current = found.name
       onChange(found.name)
@@ -342,6 +361,27 @@ export function PlaceSearch({
         </p>
       )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}
+      {!here && value.trim().length >= 3 && (
+        <p className="text-xs text-muted-foreground">
+          {location
+            ? 'Searching around your usual area. '
+            : 'Not sure where you are, so results may be far away. '}
+          <button
+            type="button"
+            className="font-semibold text-primary underline"
+            disabled={locating}
+            onClick={async () => {
+              setLocating(true)
+              // You tapped for it, so the permission popup may show here.
+              const fix = await locate({ ask: true })
+              setLocating(false)
+              if (!fix) toast('Location is off for Crumbs. Turn it on in your phone settings.')
+            }}
+          >
+            {locating ? 'Finding you…' : 'Search near me'}
+          </button>
+        </p>
+      )}
       {!loading && searched && searched === value.trim() && (
         <p className="text-xs text-muted-foreground">
           {results.length + crumbs.length === 0
@@ -349,10 +389,22 @@ export function PlaceSearch({
               ? 'Only places to eat and drink show here. '
               : 'No matches. '
             : 'Not the one? '}
+          {hiddenCount > 0 && !showHidden && (
+            <>
+              <button
+                type="button"
+                className="font-semibold text-primary underline"
+                onClick={() => setShowHidden(true)}
+              >
+                Show {hiddenCount} other {hiddenCount === 1 ? 'match' : 'matches'}
+              </button>
+              {' · '}
+            </>
+          )}
           If it’s missing or listed wrong, paste its Google Maps link below.
         </p>
       )}
-      {results.length + crumbs.length > 0 && (
+      {results.length + crumbs.length + (showHidden ? hiddenCount : 0) > 0 && (
         <div className="suggestions" role="listbox">
           {[
             ...crumbs,
@@ -360,6 +412,7 @@ export function PlaceSearch({
               (item) =>
                 !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
             ),
+            ...(showHidden ? hidden : []),
           ].map((item) => (
             <button key={item.id} type="button" onClick={() => pick(item)}>
               <span className="font-semibold">

@@ -92,3 +92,43 @@ export function onFix(fn: (fix: LatLng) => void) {
     listeners.delete(fn)
   }
 }
+
+/** How old a remembered fix may be and still say which city you're in (for search). */
+export const AREA = 30 * 24 * 60 * MIN
+
+/**
+ * Roughly where you are, for steering search results — never shows the permission popup.
+ * The remembered fix (up to 30 days), then the home spot from Settings, then `fallback`
+ * (e.g. the middle of your group's places). Null when there's nothing to go on.
+ */
+export function knownArea(fallback: LatLng | null = null): LatLng | null {
+  const fix = lastFix(AREA)
+  if (fix) return fix
+  try {
+    const home = JSON.parse(localStorage.getItem('crumbs-home') ?? 'null')
+    if (home && Number.isFinite(home.lat) && Number.isFinite(home.lng))
+      return { lat: home.lat, lng: home.lng }
+  } catch {}
+  return fallback
+}
+
+/** The middle of some places (median, so one trip abroad doesn't drag it away). */
+export function middleOf(
+  points: readonly { latitude?: number | null; longitude?: number | null }[],
+): LatLng | null {
+  const lats: number[] = []
+  const lngs: number[] = []
+  for (const p of points) {
+    if (Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) {
+      lats.push(p.latitude as number)
+      lngs.push(p.longitude as number)
+    }
+  }
+  if (!lats.length) return null
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b)
+    const mid = sorted.length >> 1
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  return { lat: median(lats), lng: median(lngs) }
+}

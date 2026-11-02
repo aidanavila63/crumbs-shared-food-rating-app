@@ -16,7 +16,10 @@ export function AddPlaceSheet({
   onSaved,
   supabase,
   shared,
+  near,
 }: {
+  /** Middle of the group's places: where search looks when your location isn't known */
+  near?: { lat: number; lng: number } | null
   userId?: string
   groupId?: string
   demo: boolean
@@ -130,6 +133,7 @@ export function AddPlaceSheet({
       <div className="mt-5 flex flex-col gap-3">
         <PlaceSearch
           supabase={demo ? undefined : supabase}
+          near={near}
           autoFocus
           value={name}
           onChange={(text) => {
