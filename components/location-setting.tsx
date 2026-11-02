@@ -1,7 +1,13 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { autoLocation, onAutoLocation, setAutoLocation } from '@/lib/location'
+import {
+  autoLocation,
+  fixLocationAction,
+  onAutoLocation,
+  openLocationSetup,
+  setAutoLocation,
+} from '@/lib/location'
 import { Switch } from './switch'
 
 const IPHONE_TIP =
@@ -26,6 +32,13 @@ export function LocationSwitchRow() {
             ? 'Search, the map, Nearest and distances use where you are now. Kept on this phone, never shown to your group.'
             : 'Off: Crumbs only uses your location when you tap something like Locate me or Nearest.'}
           {on && iphone && <span className="mt-1 block">{IPHONE_TIP}</span>}
+          <button
+            type="button"
+            className="mt-1 block font-semibold text-primary"
+            onClick={openLocationSetup}
+          >
+            Location setup ›
+          </button>
         </span>
       </span>
       <Switch
@@ -38,8 +51,7 @@ export function LocationSwitchRow() {
           setBusy(true)
           const fix = await setAutoLocation(true)
           setBusy(false)
-          if (!fix)
-            toast('Location is blocked for Crumbs. Allow it in your phone’s settings, then try again.')
+          if (!fix) toast('Location is blocked for Crumbs.', { action: fixLocationAction })
         }}
       />
     </div>
@@ -53,11 +65,22 @@ export function LocationSwitchRow() {
 export function LocationPrompt({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   return (
-    <div className="next-time-note mb-4 flex flex-col gap-2 text-sm" role="dialog" aria-label="Location">
+    <div
+      className="next-time-note mb-4 flex flex-col gap-2 text-sm"
+      role="dialog"
+      aria-label="Location"
+    >
       <p>
-        <span className="font-semibold">📍 Find food near you?</span> Crumbs can check where you
-        are each time it opens, so search, the map and distances start from where you are. It
-        stays on this phone and is never shown to your group. You can turn it off in Settings.
+        <span className="font-semibold">📍 Find food near you?</span> Crumbs can check where you are
+        each time it opens, so search, the map and distances start from where you are. It stays on
+        this phone and is never shown to your group. You can turn it off in Settings.{' '}
+        <button
+          type="button"
+          className="font-semibold text-primary underline"
+          onClick={openLocationSetup}
+        >
+          How to stop the popup
+        </button>
       </p>
       <div className="flex gap-2">
         <button
@@ -67,8 +90,7 @@ export function LocationPrompt({ onDone }: { onDone: () => void }) {
             setBusy(true)
             const fix = await setAutoLocation(true)
             setBusy(false)
-            if (!fix)
-              toast('Location is blocked for Crumbs. You can allow it later in your phone’s settings.')
+            if (!fix) toast('Location is blocked for Crumbs.', { action: fixLocationAction })
             onDone()
           }}
         >

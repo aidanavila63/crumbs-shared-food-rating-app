@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { GUIDE, TIPS, TOUR, setTourDone } from '@/lib/guidebook'
 import { haptic } from '@/lib/motion'
+import { openLocationSetup } from '@/lib/location'
 import { Overlay } from './overlay'
 
 export function Walkthrough({ onDone }: { onDone: () => void }) {
@@ -82,6 +83,9 @@ export function Guidebook({ onClose, onReplay }: { onClose: () => void; onReplay
             ))}
           </ul>
         </details>
+        <button className="secondary" onClick={openLocationSetup}>
+          📍 Location setup
+        </button>
         <button className="secondary" onClick={onReplay}>
           Replay the welcome tour
         </button>

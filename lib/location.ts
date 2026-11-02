@@ -214,3 +214,13 @@ export function startAutoLocation() {
   document.addEventListener('visibilitychange', onVisible)
   return () => document.removeEventListener('visibilitychange', onVisible)
 }
+
+export const LOCATION_SETUP_EVENT = 'crumbs:location-setup'
+
+/** Open the Location setup page (step-by-step phone settings) from anywhere. */
+export function openLocationSetup() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LOCATION_SETUP_EVENT))
+}
+
+/** For "location is off" messages: a toast button that opens Location setup. */
+export const fixLocationAction = { label: 'How to fix', onClick: () => openLocationSetup() }

@@ -54,7 +54,7 @@ import { GroupActions } from './group-actions'
 import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
-import { middleOf, startAutoLocation } from '@/lib/location'
+import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -91,6 +91,7 @@ const SurpriseSheet = dynamic(() => import('./surprise-sheet').then((m) => m.Sur
 const QuickLogSheet = dynamic(() => import('./quick-log-sheet').then((m) => m.QuickLogSheet), { ssr: false })
 const DraftsReview = dynamic(() => import('./drafts-review').then((m) => m.DraftsReview), { ssr: false })
 const LocationPrompt = dynamic(() => import('./location-setting').then((m) => m.LocationPrompt), { ssr: false })
+const LocationSetupHost = dynamic(() => import('./location-setup').then((m) => m.LocationSetupHost), { ssr: false })
 const Walkthrough = dynamic(() => import('./guidebook').then((m) => m.Walkthrough), { ssr: false })
 
 const tabs = [
@@ -1085,7 +1086,15 @@ function CrumbsShell() {
                   </div>
                   {sort === 'Nearest' && !origin && (
                     <p className="text-xs text-muted-foreground">
-                      Finding you… If location is blocked, set Home in Settings to sort by distance.
+                      Finding you… If location is blocked, see{' '}
+                      <button
+                        type="button"
+                        className="font-semibold text-primary underline"
+                        onClick={openLocationSetup}
+                      >
+                        Location setup
+                      </button>{' '}
+                      or set Home in Settings to sort by distance.
                     </p>
                   )}
                   {data.loading ? (
@@ -1442,6 +1451,7 @@ function CrumbsShell() {
           }
         />
       )}
+      <LocationSetupHost />
     </main>
     </ScaleContext.Provider>
     </SocialContext.Provider>

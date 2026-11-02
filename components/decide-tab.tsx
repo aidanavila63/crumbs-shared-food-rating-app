@@ -26,7 +26,7 @@ import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
 import { mealTimeAt } from '@/lib/visit-rating'
 import { pickLearning } from '@/lib/decide-more'
 import { QuickDecide } from './quick-decide'
-import { locate } from '@/lib/location'
+import { locate, openLocationSetup } from '@/lib/location'
 
 type Idea = { title: string; why: string }
 
@@ -592,9 +592,21 @@ export function DecideTab({
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                {locating
-                  ? 'Finding where you are…'
-                  : 'Crumbs can’t see your location. Allow location for Crumbs, or set Home in Settings, then try again.'}
+                {locating ? (
+                  'Finding where you are…'
+                ) : (
+                  <>
+                    Crumbs can’t see your location.{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-primary underline"
+                      onClick={openLocationSetup}
+                    >
+                      Location setup
+                    </button>{' '}
+                    shows how to allow it, or set Home in Settings.
+                  </>
+                )}
               </p>
             )}
           </div>

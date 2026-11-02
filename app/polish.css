@@ -357,3 +357,17 @@ button.chip:active {
     border-color: var(--primary);
   }
 }
+
+/* Location setup: numbered steps */
+.setup-step-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 700;
+  font-size: 0.85rem;
+}

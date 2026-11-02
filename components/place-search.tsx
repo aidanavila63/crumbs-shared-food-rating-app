@@ -8,7 +8,7 @@ import { hoursFromGoogle, type Hours } from '@/lib/place-info'
 import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { isFoodPlace } from '@/lib/food-types'
-import { knownArea, locate, type LatLng } from '@/lib/location'
+import { fixLocationAction, knownArea, locate, type LatLng } from '@/lib/location'
 
 export type FoundPlace = {
   google_place_id: string
@@ -375,7 +375,7 @@ export function PlaceSearch({
               // You tapped for it, so the permission popup may show here.
               const fix = await locate({ ask: true })
               setLocating(false)
-              if (!fix) toast('Location is off for Crumbs. Turn it on in your phone settings.')
+              if (!fix) toast('Location is off for Crumbs.', { action: fixLocationAction })
             }}
           >
             {locating ? 'Finding you…' : 'Search near me'}

@@ -12,7 +12,7 @@ import { OsmMap } from './osm-map'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
-import { ROUGH, locate } from '@/lib/location'
+import { ROUGH, fixLocationAction, locate } from '@/lib/location'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -662,7 +662,8 @@ export function MapTab({
             haptic('tap')
             const fix = await locate({ maxAge: 2 * 60 * 1000, precise: true })
             if (fix) setLocateTarget(fix)
-            else toast.error('Location is off for Crumbs. Allow it in your browser settings.')
+            else
+              toast.error('Location is off for Crumbs.', { action: fixLocationAction })
           }}
         >
           <LocateFixed />
