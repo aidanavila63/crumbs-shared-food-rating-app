@@ -481,3 +481,11 @@ No SQL. Applies on `main` @ 12fc45c.
 - **Fix**: search now always has an area: a live/remembered fix (remembered up to 30 days for search), else the home spot from Settings, else the middle (median) of the group's places (`knownArea` + `middleOf` in `lib/location.ts`). Bias circle 30 → 50 km (Google's max). Still never pops up by itself; a small **Search near me** link under the box asks when you tap it.
 - **Food filter softer**: non-food matches are no longer dropped — "Show N other matches" reveals them.
 - Checks: typecheck, 139/139 unit tests (new `tests/location.test.ts`), lint 0 errors, demo build; demo Add place shows "Searching around your usual area".
+
+## Round 49 - "Update location when Crumbs opens" switch (Nov 2, Claude in Cowork)
+No SQL. Applies after Round 48.
+- **Settings → Look & feel → Update location when Crumbs opens** (saved on the phone, `crumbs-location` = on/off). On: Crumbs gets a fresh fix each time it opens and when it comes back after 5+ minutes away (`startAutoLocation`), and background uses (search, map centre, weather) may ask the phone too — the switch is the consent. Off: forgets the remembered fix; only things you tap (Locate me, Nearest, Discover, Search near me, Set home) use location.
+- **Asked once per phone** after the welcome tour: a small card "📍 Find food near you?" — Yes turns the switch on (then the phone's own popup), Not now turns it off. Not shown in demo mode.
+- If the phone refuses, Crumbs stops asking in the background until the next open or until the switch is turned on again.
+- iPhone: home-screen apps can still show the phone's popup on each open unless iPhone Settings → Apps → Safari → Location → Allow; the switch shows that tip on iPhones.
+- Checks: typecheck, 140/140 unit tests (switch on/off/refused in `tests/location.test.ts`), lint 0 errors, demo build; Settings switch on → fix saved, off → fix cleared (browser test).

@@ -54,7 +54,7 @@ import { GroupActions } from './group-actions'
 import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
-import { middleOf } from '@/lib/location'
+import { middleOf, startAutoLocation } from '@/lib/location'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -90,6 +90,7 @@ const AddPlaceSheet = dynamic(() => import('./add-place-sheet').then((m) => m.Ad
 const SurpriseSheet = dynamic(() => import('./surprise-sheet').then((m) => m.SurpriseSheet), { ssr: false })
 const QuickLogSheet = dynamic(() => import('./quick-log-sheet').then((m) => m.QuickLogSheet), { ssr: false })
 const DraftsReview = dynamic(() => import('./drafts-review').then((m) => m.DraftsReview), { ssr: false })
+const LocationPrompt = dynamic(() => import('./location-setting').then((m) => m.LocationPrompt), { ssr: false })
 const Walkthrough = dynamic(() => import('./guidebook').then((m) => m.Walkthrough), { ssr: false })
 
 const tabs = [
@@ -358,6 +359,16 @@ function CrumbsShell() {
     const timer = setTimeout(() => setTouring(true), 600)
     return () => clearTimeout(timer)
   }, [data.group, data.demo, data.loading])
+  // Location: refresh it each time Crumbs opens (if switched on), and ask once per phone
+  // (after the welcome tour) whether to switch it on.
+  useEffect(() => startAutoLocation(), [])
+  const [askLocation, setAskLocation] = useState(false)
+  useEffect(() => {
+    if (!data.group || data.demo || data.loading || touring || !tourDone()) return
+    if (localStorage.getItem('crumbs-location')) return
+    const timer = setTimeout(() => setAskLocation(true), 800)
+    return () => clearTimeout(timer)
+  }, [data.group, data.demo, data.loading, touring])
   // #190 catch-up card for someone who just joined (dismissed per group on this phone)
   const [catchUpSeenNow, setCatchUpSeen] = useState(false)
   const catchUp =
@@ -809,6 +820,7 @@ function CrumbsShell() {
           />
         )}
         {touring && <Walkthrough onDone={() => setTouring(false)} />}
+        {askLocation && !touring && <LocationPrompt onDone={() => setAskLocation(false)} />}
         {data.offlineCopy && (
           <p className="next-time-note mb-4 text-sm">
             📴 No signal — showing the copy saved on this phone (

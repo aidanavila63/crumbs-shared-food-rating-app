@@ -9,6 +9,10 @@
 //
 // iPhone home-screen apps forget "Allow" each time they're closed unless Safari's Location
 // setting is "Allow", so remembering the last fix is what keeps the popup away there.
+//
+// "Update location when Crumbs opens" (Settings, on this phone): when on, Crumbs asks the phone
+// where you are each time it opens (or comes back after a while), and background uses may ask
+// too. That switch is your consent; off = only things you tap for ever use location.
 export type LatLng = { lat: number; lng: number }
 type Fix = LatLng & { at: number }
 
@@ -19,7 +23,51 @@ export const FRESH = 15 * MIN
 /** Good enough to bias search results and centre the map. */
 export const ROUGH = 12 * 60 * MIN
 
+const AUTO_KEY = 'crumbs-location'
 let memory: Fix | null = null
+// You said no to the phone's popup since Crumbs opened: don't keep asking in the background.
+let deniedThisSession = false
+const settingListeners = new Set<() => void>()
+
+/** The "update location when Crumbs opens" switch: 'on', 'off', or null (not chosen yet). */
+export function autoLocation(): 'on' | 'off' | null {
+  try {
+    const value = localStorage.getItem(AUTO_KEY)
+    return value === 'on' || value === 'off' ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** Turn the switch on (asks the phone right away) or off (forgets the remembered fix). */
+export async function setAutoLocation(on: boolean): Promise<LatLng | null> {
+  try {
+    localStorage.setItem(AUTO_KEY, on ? 'on' : 'off')
+  } catch {}
+  settingListeners.forEach((fn) => fn())
+  if (!on) {
+    memory = null
+    try {
+      localStorage.removeItem(KEY)
+    } catch {}
+    return null
+  }
+  deniedThisSession = false
+  return locate({ ask: true, maxAge: MIN })
+}
+
+/** Hear about the switch changing. Returns an unsubscribe. */
+export function onAutoLocation(fn: () => void) {
+  settingListeners.add(fn)
+  return () => {
+    settingListeners.delete(fn)
+  }
+}
+
+/** Did the phone refuse location since Crumbs opened? */
+export function locationDenied() {
+  return deniedThisSession
+}
 let pending: Promise<LatLng | null> | null = null
 const listeners = new Set<(fix: LatLng) => void>()
 
@@ -61,7 +109,8 @@ export async function locationAllowed() {
 
 /**
  * Where the phone is. Uses the remembered fix when it's recent enough. With ask: false it never
- * shows the permission popup (returns null instead). Several callers at once share one request.
+ * shows the permission popup (returns null instead) — unless "update location when Crumbs opens"
+ * is on, which counts as saying yes. Several callers at once share one request.
  */
 export async function locate({
   maxAge = FRESH,
@@ -71,11 +120,21 @@ export async function locate({
   if (typeof navigator === 'undefined' || !navigator.geolocation) return null
   const known = lastFix(maxAge)
   if (known) return known
-  if (!ask && !(await locationAllowed())) return null
+  if (!ask) {
+    const setting = autoLocation()
+    if (setting === 'off' || (setting === 'on' && deniedThisSession)) return null
+    if (setting !== 'on' && !(await locationAllowed())) return null
+  }
   pending ??= new Promise<LatLng | null>((resolve) =>
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve(save(p.coords.latitude, p.coords.longitude)),
-      () => resolve(null),
+      (p) => {
+        deniedThisSession = false
+        resolve(save(p.coords.latitude, p.coords.longitude))
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) deniedThisSession = true
+        resolve(null)
+      },
       { timeout: 10_000, maximumAge: maxAge, enableHighAccuracy: precise },
     ),
   ).finally(() => {
@@ -131,4 +190,27 @@ export function middleOf(
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
   }
   return { lat: median(lats), lng: median(lngs) }
+}
+
+/** How long Crumbs can be in the background before coming back counts as opening again. */
+const REOPEN = 5 * MIN
+
+/**
+ * Call once when the app starts. With the switch on: gets a fresh fix now, and again whenever
+ * Crumbs comes back to the screen after 5+ minutes away. Returns a cleanup.
+ */
+export function startAutoLocation() {
+  if (typeof document === 'undefined') return () => {}
+  const refresh = () => {
+    if (autoLocation() !== 'on' || deniedThisSession) return
+    locate({ ask: true, maxAge: MIN })
+  }
+  refresh()
+  let hiddenAt = 0
+  const onVisible = () => {
+    if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+    else if (hiddenAt && Date.now() - hiddenAt >= REOPEN) refresh()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  return () => document.removeEventListener('visibilitychange', onVisible)
 }

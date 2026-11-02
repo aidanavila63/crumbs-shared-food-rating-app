@@ -9,6 +9,7 @@ import { Switch } from './switch'
 import { WEATHER_KEY, weatherNudgesOn } from './weather-nudge'
 import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
+import { LocationSwitchRow } from './location-setting'
 import { YourDataCard } from './your-data-card'
 import { ImportPlaces } from './import-places'
 import { Overlay } from './overlay'
@@ -262,6 +263,7 @@ export function SettingsPanel({
             }}
           />
         </div>
+        <LocationSwitchRow />
       </section>
 
       <section className="surface settings-card">
