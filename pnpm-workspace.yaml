@@ -8,3 +8,6 @@ onlyBuiltDependencies:
   - unrs-resolver
 allowBuilds:
   unrs-resolver: true
+  # Their install scripts only print messages; skipping them keeps installs (Vercel, CI) from stopping.
+  core-js: false
+  tesseract.js: false

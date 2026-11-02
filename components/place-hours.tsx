@@ -3,12 +3,46 @@ import { useEffect, useRef } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
-import { hasGoogleId, hoursAreStale, hoursFromGoogle, isClosedForever, openStatus, takeQuota } from '@/lib/place-info'
+import { loadRestaurant, shareHours } from '@/lib/restaurants'
+import { takeAllowance } from '@/lib/allowance'
+import {
+  hasGoogleId,
+  hoursAreStale,
+  hoursFromGoogle,
+  isClosedForever,
+  openStatus,
+  takeQuota,
+} from '@/lib/place-info'
 
 /** Asks Google for opening hours + whether the place has closed, and saves them on the place. */
 async function refreshHours(places: any, supabase: any, place: Place, demo: boolean) {
+  // #27 Another group may have fetched these hours recently: reuse them (no Google call).
+  if (!demo && place.restaurant_id) {
+    const shared = await loadRestaurant(supabase, place.restaurant_id).catch(() => null)
+    // Hours members, their website or OpenStreetMap gave us are Crumbs' own: trust them ~3 months.
+    // A verified owner's hours are always used (no Google call at all).
+    const byOwner = !!shared?.owner_verified || shared?.sources?.hours === 'owner'
+    const owned = ['crumbs', 'site', 'osm'].includes(shared?.sources?.hours ?? '')
+    if (
+      shared?.opening_hours &&
+      (byOwner || (shared.hours_checked_at && !hoursAreStale(shared, owned ? 90 : 14)))
+    ) {
+      const reused = {
+        opening_hours: shared.opening_hours,
+        business_status: shared.business_status,
+        hours_checked_at: byOwner ? new Date().toISOString() : shared.hours_checked_at,
+      }
+      const { error } = await supabase.from('places').update(reused).eq('id', place.id)
+      if (error) throw error
+      return reused
+    }
+  }
+  // Counts against Crumbs' Google budget (and this person's daily allowance).
+  if (!demo && !(await takeAllowance(supabase, 'google')).ok) throw new Error('google-budget')
   const googlePlace = new places.Place({ id: place.google_place_id })
-  await googlePlace.fetchFields({ fields: ['regularOpeningHours', 'businessStatus', 'utcOffsetMinutes'] })
+  await googlePlace.fetchFields({
+    fields: ['regularOpeningHours', 'businessStatus', 'utcOffsetMinutes'],
+  })
   const changes = {
     opening_hours: hoursFromGoogle(googlePlace),
     business_status: (googlePlace.businessStatus as string | null) ?? null,
@@ -17,6 +51,14 @@ async function refreshHours(places: any, supabase: any, place: Place, demo: bool
   if (!demo) {
     const { error } = await supabase.from('places').update(changes).eq('id', place.id)
     if (error) throw error
+    // Share so the next group that opens this restaurant doesn't pay for the same lookup.
+    if (place.restaurant_id)
+      shareHours(
+        supabase,
+        place.restaurant_id,
+        changes.opening_hours,
+        changes.business_status,
+      ).catch(() => {})
   }
   return changes
 }
@@ -27,23 +69,27 @@ export function PlaceHours({
   supabase,
   demo,
   onUpdate,
+  onAddHours,
 }: {
   place: Place
   supabase: any
   demo: boolean
   onUpdate: (place: Place) => void
+  /** #126 no hours yet: offer to add them (opens the edit form on Hours) */
+  onAddHours?: () => void
 }) {
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
   const tried = useRef(false)
   useEffect(() => {
-    if (tried.current || !places || googleDown || !hasGoogleId(place) || !hoursAreStale(place)) return
+    if (tried.current || !places || googleDown || !hasGoogleId(place) || !hoursAreStale(place))
+      return
     tried.current = true
     if (!takeQuota('hours', 12)) return
     refreshHours(places, supabase, place, demo)
       .then((changes) => onUpdate({ ...place, ...changes }))
-      .catch(() => {
-        if (navigator.onLine) markGoogleDown()
+      .catch((error) => {
+        if (navigator.onLine && error?.message !== 'google-budget') markGoogleDown()
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places, googleDown, place.id])
@@ -53,9 +99,17 @@ export function PlaceHours({
   if (place.business_status === 'CLOSED_TEMPORARILY')
     return <p className="text-sm font-semibold text-destructive">Temporarily closed</p>
   const status = openStatus(place.opening_hours)
-  if (!status) return null
+  if (!status)
+    return onAddHours ? (
+      <button className="text-sm text-muted-foreground" onClick={onAddHours}>
+        🕒 Hours not added yet ·{' '}
+        <span className="font-semibold text-primary underline">Add them</span>
+      </button>
+    ) : null
   return (
-    <p className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}>
+    <p
+      className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}
+    >
       {status.open ? '● ' : '○ '}
       {status.text}
     </p>
@@ -81,7 +135,9 @@ export function HoursRefresher({
     if (done.current || !places || googleDown || !all.length) return
     done.current = true
     const stale = all
-      .filter((place) => place.status === 'Want to try' && hasGoogleId(place) && hoursAreStale(place))
+      .filter(
+        (place) => place.status === 'Want to try' && hasGoogleId(place) && hoursAreStale(place),
+      )
       .slice(0, 2)
     ;(async () => {
       for (const place of stale) {

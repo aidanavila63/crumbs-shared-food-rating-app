@@ -1,27 +1,32 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useCountUp } from '@/lib/motion'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import {
   BINGO_CUISINES,
-  averageGiven,
   bestDishes,
   cuisineBingo,
   onThisDay,
-  spendByMonth,
+  rankedCourses,
   tasteMatch,
-  yearInReview,
+  type DishCourse,
 } from '@/lib/stats'
+import { DISH_KINDS, bestOfKind, rankedKinds } from '@/lib/dish-kinds'
+import { safeDishes } from '@/lib/dish-helpers'
 
-const money = (n: number) => `$${n.toFixed(n % 1 ? 2 : 0)}`
-const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
-const first = (name?: string) => (name ?? 'Partner').split(' ')[0]
+const COURSE_LABEL: Record<DishCourse, string> = {
+  starter: 'Starters',
+  main: 'Mains',
+  side: 'Sides',
+  dessert: 'Desserts',
+  drink: 'Drinks',
+}
 
 /** Everything fun we can work out from your ratings, visits and dish scores. */
 export function StatsPanel({
   places,
   members,
   userId,
-  names,
   onSelect,
 }: {
   places: Place[]
@@ -30,22 +35,27 @@ export function StatsPanel({
   names: Record<string, string>
   onSelect?: (place: Place) => void
 }) {
-  const year = new Date().getFullYear()
+  // Year in review, spend by month and "who rates harder" were removed (backlog #62, #64, #67 = No).
+  // lib/stats.ts keeps yearInReview/spendByMonth for a future "Crumbs Wrapped" (#61).
   const partner = members.find((member) => member.id !== userId)
-  const stats = useMemo(() => {
-    const spend = spendByMonth(places, year)
-    return {
-      dishes: bestDishes(places, 10),
+  const me = members.find((member) => member.id === userId)
+  // #121 Safe for me, only when you switched it on (Settings → Your preferences)
+  const safe = useMemo(() => (me?.safe_for_me ? safeDishes(places, me, 8) : []), [places, me])
+  const [course, setCourse] = useState<DishCourse | null>(null)
+  const courses = useMemo(() => rankedCourses(places), [places])
+  // #178 Best of a kind ("Best ramen") across all your places.
+  const [kind, setKind] = useState<string | null>(null)
+  const kinds = useMemo(() => rankedKinds(places), [places])
+  const stats = useMemo(
+    () => ({
+      dishes: kind ? bestOfKind(places, kind) : bestDishes(places, 10, course ?? undefined),
       match: userId && partner ? tasteMatch(places, userId, partner.id) : null,
-      mine: userId ? averageGiven(places, userId) : null,
-      theirs: partner ? averageGiven(places, partner.id) : null,
-      bingo: cuisineBingo(places),
-      review: yearInReview(places, year),
-      spend,
-      spendMax: Math.max(...spend, 1),
       memories: onThisDay(places),
-    }
-  }, [places, userId, partner, year])
+      cuisines: cuisineBreakdown(places),
+    }),
+    [places, userId, partner, course, kind],
+  )
+  const matchShown = useCountUp(stats.match?.percent ?? 0)
 
   return (
     <>
@@ -67,9 +77,49 @@ export function StatsPanel({
         </div>
       )}
 
-      {stats.dishes.length > 0 && (
+      {(stats.dishes.length > 0 || course || kind) && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">Best dishes</span>
+          <span className="tag w-fit">
+            {kind
+              ? `Best ${DISH_KINDS.find((k) => k.id === kind)?.label.toLowerCase()}`
+              : 'Best dishes'}
+          </span>
+          {courses.length > 0 && (
+            <div className="chip-row" role="radiogroup" aria-label="Kind of dish">
+              {[null, ...courses].map((c) => (
+                <button
+                  key={c ?? 'all'}
+                  role="radio"
+                  aria-checked={!kind && course === c}
+                  className={`chip chip-sm ${!kind && course === c ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    setCourse(c)
+                    setKind(null)
+                  }}
+                >
+                  {c ? COURSE_LABEL[c] : 'All'}
+                </button>
+              ))}
+            </div>
+          )}
+          {kinds.length > 0 && (
+            <div className="chip-row" role="radiogroup" aria-label="Best of a kind">
+              {kinds.map((k) => (
+                <button
+                  key={k.id}
+                  role="radio"
+                  aria-checked={kind === k.id}
+                  className={`chip chip-sm ${kind === k.id ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    setKind(kind === k.id ? null : k.id)
+                    setCourse(null)
+                  }}
+                >
+                  {k.emoji} {k.label}
+                </button>
+              ))}
+            </div>
+          )}
           {stats.dishes.map(({ dish, place, points }, index) => (
             <button
               key={dish.id}
@@ -87,122 +137,133 @@ export function StatsPanel({
         </div>
       )}
 
-      {(stats.match || stats.mine) && (
+      {me?.safe_for_me && (
+        <div className="surface flex flex-col gap-2">
+          <span className="tag w-fit">✅ Safe for me</span>
+          {safe.length ? (
+            safe.map(({ dish, place, points }) => (
+              <button
+                key={dish.id}
+                className="surface-soft flex items-center gap-3 text-left"
+                onClick={() => onSelect?.(place)}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{dish.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {place.name}
+                    {dish.dietary?.length ? ` · ${dish.dietary.join(', ')}` : ''}
+                  </span>
+                </span>
+                {points !== null && (
+                  <span className="font-serif text-xl text-primary">{points}</span>
+                )}
+              </button>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nothing yet — tag dishes with their diet (Vegan, Gluten-free…) and allergens and
+              they’ll show here.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Based only on what people reported. Always confirm allergies with the restaurant.
+          </p>
+        </div>
+      )}
+
+      {stats.match && (
         <div className="surface flex flex-col gap-2">
           <span className="tag w-fit">You two</span>
           {stats.match && (
             <p className="text-sm">
               Taste match{' '}
-              <strong className="font-serif text-2xl text-primary">{stats.match.percent}%</strong>
+              <strong className="font-serif text-2xl text-primary">{matchShown}%</strong>
               <span className="text-muted-foreground">
                 {' '}
                 across {stats.match.count} place{stats.match.count === 1 ? '' : 's'} you both rated
               </span>
             </p>
           )}
-          {stats.mine && stats.theirs && (
-            <p className="text-sm">
-              {stats.mine.average === stats.theirs.average ? (
-                'You rate exactly as hard as each other.'
-              ) : (
-                <>
-                  <strong>
-                    {stats.mine.average < stats.theirs.average
-                      ? 'You'
-                      : first(partner ? names[partner.id] : undefined)}
-                  </strong>{' '}
-                  rate{stats.mine.average < stats.theirs.average ? '' : 's'} harder (avg{' '}
-                  {Math.min(stats.mine.average, stats.theirs.average).toFixed(1)}★ vs{' '}
-                  {Math.max(stats.mine.average, stats.theirs.average).toFixed(1)}★).
-                </>
-              )}
-            </p>
-          )}
         </div>
       )}
-
-      <div className="surface flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="tag w-fit">Cuisine bingo</span>
-          <span className="text-xs text-muted-foreground">
-            {stats.bingo.filled}/25 · {stats.bingo.bingos} bingo
-            {stats.bingo.bingos === 1 ? '' : 's'}
-          </span>
-        </div>
-        <div className="grid grid-cols-5 gap-1.5" role="list" aria-label="Cuisine bingo">
-          {BINGO_CUISINES.map((cuisine, index) => (
-            <div
-              key={cuisine}
-              role="listitem"
-              aria-label={`${cuisine}: ${stats.bingo.done[index] ? 'tried' : 'not yet'}`}
-              className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[10px] font-semibold leading-tight ${
-                stats.bingo.done[index]
-                  ? 'bg-primary text-primary-foreground'
-                  : 'surface-soft text-muted-foreground'
-              }`}
-            >
-              {cuisine}
+      {stats.cuisines.length > 0 && (
+        <div className="surface flex flex-col gap-3">
+          <span className="tag w-fit">Cuisines</span>
+          {stats.cuisines.map((row) => (
+            <div key={row.cuisine} className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="font-semibold">{row.cuisine}</span>
+                <span className="text-xs text-muted-foreground">
+                  {row.count} place{row.count === 1 ? '' : 's'}
+                  {row.average ? ` · ${row.average.toFixed(1)}★` : ''}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div
+                  className="bar-fill h-full rounded-full bg-primary"
+                  style={{ width: `${(row.average / 5) * 100}%` }}
+                />
+              </div>
             </div>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">
-          A square fills when you&apos;ve been to a place with that cuisine or tag.
-        </p>
-      </div>
-
-      {stats.review && (
-        <div className="surface flex flex-col gap-2">
-          <span className="tag w-fit">{year} so far</span>
-          <p className="text-sm">
-            <strong className="font-serif text-2xl text-primary">{stats.review.visits}</strong>{' '}
-            visit
-            {stats.review.visits === 1 ? '' : 's'}
-            {stats.review.spend > 0 && (
-              <>
-                {' '}
-                · <strong>{money(stats.review.spend)}</strong> spent
-              </>
-            )}
-          </p>
-          {stats.review.topCuisine && (
-            <p className="text-sm">
-              Most visited cuisine: <strong>{stats.review.topCuisine[0]}</strong> (
-              {stats.review.topCuisine[1]}×)
-            </p>
-          )}
-          {stats.review.mostVisited && stats.review.mostVisited[1] > 1 && (
-            <p className="text-sm">
-              Your regular spot: <strong>{stats.review.mostVisited[0]}</strong> (
-              {stats.review.mostVisited[1]}×)
-            </p>
-          )}
-          {stats.review.topRated && (
-            <button
-              className="text-left text-sm underline"
-              onClick={() => onSelect?.(stats.review!.topRated!)}
-            >
-              Best rated: {stats.review.topRated.name}
-            </button>
-          )}
-          {stats.spend.some((n) => n > 0) && (
-            <div className="mt-1 flex h-24 items-end gap-1" role="img" aria-label="Spend by month">
-              {stats.spend.map((amount, index) => (
-                <div key={index} className="flex flex-1 flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded-t-md bg-primary"
-                    style={{
-                      height: `${Math.max(2, (amount / stats.spendMax) * 70)}px`,
-                      opacity: amount ? 1 : 0.15,
-                    }}
-                    title={money(amount)}
-                  />
-                  <span className="text-[10px] text-muted-foreground">{MONTHS[index]}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       )}
     </>
+  )
+}
+
+/** #63: every cuisine you've been to, with how many places and the group's average. */
+function cuisineBreakdown(places: Place[]) {
+  const rows = new Map<string, { cuisine: string; count: number; scores: number[] }>()
+  places
+    .filter((place) => place.status === 'Been' && place.cuisine)
+    .forEach((place) => {
+      const key = place.cuisine!.trim()
+      const row = rows.get(key.toLowerCase()) ?? { cuisine: key, count: 0, scores: [] }
+      row.count += 1
+      place.place_ratings.forEach((rating) => row.scores.push(rating.score))
+      rows.set(key.toLowerCase(), row)
+    })
+  return [...rows.values()]
+    .map((row) => ({
+      cuisine: row.cuisine,
+      count: row.count,
+      average: row.scores.length ? row.scores.reduce((a, b) => a + b, 0) / row.scores.length : 0,
+    }))
+    .sort((a, b) => b.average - a.average || b.count - a.count)
+}
+
+/** 5×5 cuisine bingo card (the "cuisine passport"). */
+export function BingoCard({ places }: { places: Place[] }) {
+  const bingo = useMemo(() => cuisineBingo(places), [places])
+  return (
+    <div className="surface flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="tag w-fit">Cuisine bingo</span>
+        <span className="text-xs text-muted-foreground">
+          {bingo.filled}/25 · {bingo.bingos} bingo
+          {bingo.bingos === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div className="bingo-grid grid grid-cols-5 gap-1.5" role="list" aria-label="Cuisine bingo">
+        {BINGO_CUISINES.map((cuisine, index) => (
+          <div
+            key={cuisine}
+            role="listitem"
+            aria-label={`${cuisine}: ${bingo.done[index] ? 'tried' : 'not yet'}`}
+            className={`flex aspect-square items-center justify-center rounded-xl p-1 text-center text-[0.625rem] font-semibold leading-tight ${
+              bingo.done[index]
+                ? 'bingo-filled bg-primary text-primary-foreground'
+                : 'surface-soft text-muted-foreground'
+            }`}
+          >
+            {cuisine}
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A square fills when you&apos;ve been to a place with that cuisine or tag.
+      </p>
+    </div>
   )
 }

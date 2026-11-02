@@ -14,3 +14,9 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# click-through test screenshots
+smoke-*.png

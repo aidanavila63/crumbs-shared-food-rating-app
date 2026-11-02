@@ -55,8 +55,8 @@ export function NotificationsToggle({ userId, supabase }: { userId?: string; sup
       </div>
       {!supported && (
         <p className="text-xs text-muted-foreground">
-          On iPhone this only works from the Home Screen app: in Safari tap Share → Add to Home
-          Screen, then open Crumbs from there (needs iOS 16.4 or newer).
+          On some phones this only works from the Home Screen app: tap Share → Add to Home Screen,
+          then open Crumbs from there (needs an up-to-date phone).
         </p>
       )}
     </div>

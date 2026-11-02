@@ -1,9 +1,11 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import { normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
 import { surprisePool } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
+import { haptic, motionAllowed } from '@/lib/motion'
+import { wheelRotation } from '@/lib/decide-more'
 import { Sheet } from './sheet'
 
 /** Pick a want-to-try place at random, from only the ones that fit what you feel like. */
@@ -25,7 +27,7 @@ export function SurpriseSheet({
   const [openNow, setOpenNow] = useState(false)
   const [skipWarned, setSkipWarned] = useState(true)
   const [picked, setPicked] = useState<Place | null>(null)
-  const location = useUserLocation(near)
+  const location = useUserLocation(near, { ask: true })
   const wishlist = useMemo(() => places.filter((place) => place.status === 'Want to try'), [places])
   const cuisines = useMemo(
     () => [...new Set(wishlist.map((place) => place.cuisine).filter(Boolean) as string[])].sort(),
@@ -44,9 +46,35 @@ export function SurpriseSheet({
   )
   const waiting = near && !location
 
+  // #132 Spin the wheel: up to 8 of the matching places on a wheel that lands on the pick.
+  const [wheel, setWheel] = useState<{ items: Place[]; rotation: number } | null>(null)
+  const [spinning, setSpinning] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   function spin() {
+    if (spinning) return
+    haptic('select')
     const options = pool.length > 1 ? pool.filter((place) => place.id !== picked?.id) : pool
-    setPicked(options[Math.floor(Math.random() * options.length)] ?? null)
+    const winner = options[Math.floor(Math.random() * options.length)] ?? null
+    if (!winner) return setPicked(null)
+    if (!motionAllowed() || pool.length < 2) return setPicked(winner)
+    const others = pool
+      .filter((p) => p.id !== winner.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 7)
+    const at = Math.floor(Math.random() * (others.length + 1))
+    const items = [...others.slice(0, at), winner, ...others.slice(at)]
+    setPicked(null)
+    setSpinning(true)
+    setWheel((w) => ({
+      items,
+      rotation: wheelRotation(w?.rotation ?? 0, at, items.length),
+    }))
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      setSpinning(false)
+      setPicked(winner)
+      haptic('success')
+    }, 3200)
   }
   const chip = (active: boolean) => `chip chip-sm ${active ? 'chip-active' : ''}`
 
@@ -109,10 +137,18 @@ export function SurpriseSheet({
           <button aria-pressed={near} className={chip(near)} onClick={() => setNear(!near)}>
             📍 Within 10 km
           </button>
-          <button aria-pressed={openNow} className={chip(openNow)} onClick={() => setOpenNow(!openNow)}>
+          <button
+            aria-pressed={openNow}
+            className={chip(openNow)}
+            onClick={() => setOpenNow(!openNow)}
+          >
             🕒 Open now
           </button>
-          <button aria-pressed={skipWarned} className={chip(skipWarned)} onClick={() => setSkipWarned(!skipWarned)}>
+          <button
+            aria-pressed={skipWarned}
+            className={chip(skipWarned)}
+            onClick={() => setSkipWarned(!skipWarned)}
+          >
             ⚠ Skip dealbreakers
           </button>
         </div>
@@ -122,8 +158,46 @@ export function SurpriseSheet({
             : `${pool.length} place${pool.length === 1 ? '' : 's'} on your want-to-try list match.`}{' '}
           Places you&apos;ve been are never picked.
         </p>
+        {wheel && (
+          <div className="spin-wheel-wrap" aria-hidden="true">
+            <span className="spin-pointer">▼</span>
+            <svg
+              viewBox="-100 -100 200 200"
+              className="spin-wheel"
+              style={{ transform: `rotate(${wheel.rotation}deg)` }}
+            >
+              {wheel.items.map((p, i) => {
+                const n = wheel.items.length
+                const a0 = ((i * 360) / n - 90) * (Math.PI / 180)
+                const a1 = (((i + 1) * 360) / n - 90) * (Math.PI / 180)
+                const mid = (((i + 0.5) * 360) / n - 90) * (Math.PI / 180)
+                const large = 360 / n > 180 ? 1 : 0
+                const label = p.name.length > 13 ? `${p.name.slice(0, 12)}…` : p.name
+                return (
+                  <g key={p.id}>
+                    <path
+                      d={`M0 0 L${96 * Math.cos(a0)} ${96 * Math.sin(a0)} A96 96 0 ${large} 1 ${96 * Math.cos(a1)} ${96 * Math.sin(a1)} Z`}
+                      className={`spin-slice-${'abc'[n % 2 === 0 ? i % 2 : i === n - 1 && i % 3 === 0 ? 1 : i % 3]}`}
+                    />
+                    <text
+                      x={58 * Math.cos(mid)}
+                      y={58 * Math.sin(mid)}
+                      transform={`rotate(${((i + 0.5) * 360) / n} ${58 * Math.cos(mid)} ${58 * Math.sin(mid)})`}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="spin-label"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                )
+              })}
+              <circle r="14" className="spin-hub" />
+            </svg>
+          </div>
+        )}
         {picked && (
-          <div className="surface flex flex-col gap-2">
+          <div key={picked.id} className="surface dice-reveal flex flex-col gap-2">
             <p className="font-serif text-2xl font-bold">{picked.name}</p>
             <p className="text-sm text-muted-foreground">
               {[
@@ -139,8 +213,8 @@ export function SurpriseSheet({
             </button>
           </div>
         )}
-        <button className="primary" disabled={!pool.length || waiting} onClick={spin}>
-          {picked ? 'Spin again' : 'Pick for us'}
+        <button className="primary" disabled={!pool.length || waiting || spinning} onClick={spin}>
+          {spinning ? 'Spinning…' : picked ? 'Spin again' : '🎡 Spin the wheel'}
         </button>
       </div>
     </Sheet>

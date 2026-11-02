@@ -3,9 +3,11 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { RatingStars } from './rating-stars'
+import { linkRestaurant } from '@/lib/restaurants'
 import { Sheet } from './sheet'
 import { PlaceSearch, type FoundPlace } from './place-search'
 import { MapsLinkImport } from './maps-link-import'
+import { recall, remember } from '@/lib/remember'
 export function AddPlaceSheet({
   userId,
   groupId,
@@ -13,6 +15,7 @@ export function AddPlaceSheet({
   onClose,
   onSaved,
   supabase,
+  shared,
 }: {
   userId?: string
   groupId?: string
@@ -20,16 +23,19 @@ export function AddPlaceSheet({
   onClose: () => void
   onSaved: (place: Place) => void
   supabase: any
+  /** #164 shared from another app: a map link to read, or a name to search */
+  shared?: { link: string | null; name: string | null } | null
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(shared?.name ?? '')
   const [address, setAddress] = useState('')
-  const [status, setStatus] = useState<Status>('Want to try')
+  const [status, setStatus] = useState<Status>(() => recall('add', 'status', 'Want to try'))
   const [score, setScore] = useState(0)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [found, setFound] = useState<FoundPlace | null>(null)
   async function save() {
     if (!name.trim()) return toast.error('Add a restaurant name first')
+    remember('add', { status })
     setSaving(true)
     try {
       if (demo) {
@@ -45,6 +51,9 @@ export function AddPlaceSheet({
           cuisine: found?.cuisine ?? null,
           website: found?.website ?? null,
           google_maps_url: found?.google_maps_url ?? null,
+          opening_hours: found?.opening_hours ?? null,
+          business_status: found?.business_status ?? null,
+          hours_checked_at: found?.hours_checked_at ?? null,
           status,
           pinned: false,
           tags: [],
@@ -67,6 +76,14 @@ export function AddPlaceSheet({
             website: found?.website ?? null,
             google_maps_url: found?.google_maps_url ?? null,
             google_place_id: found?.google_place_id ?? `manual:${crypto.randomUUID()}`,
+            // Hours came in the same Google request; saving them skips a second lookup.
+            ...(found?.hours_checked_at
+              ? {
+                  opening_hours: found.opening_hours ?? null,
+                  business_status: found.business_status ?? null,
+                  hours_checked_at: found.hours_checked_at,
+                }
+              : {}),
             status,
             pinned: false,
             tags: [],
@@ -82,7 +99,13 @@ export function AddPlaceSheet({
             .upsert({ place_id: data.id, user_id: userId, score, notes })
           if (rating.error) throw rating.error
         }
-        onSaved(data)
+        // #27 Link to the shared restaurant profile (creates it if this is the first group).
+        let saved = data
+        try {
+          const shared = await linkRestaurant(supabase, data.id)
+          if (shared) saved = { ...data, restaurant_id: shared.id }
+        } catch {}
+        onSaved(saved)
       }
       toast.success('Place added')
       onClose()
@@ -106,6 +129,7 @@ export function AddPlaceSheet({
       </div>
       <div className="mt-5 flex flex-col gap-3">
         <PlaceSearch
+          supabase={demo ? undefined : supabase}
           autoFocus
           value={name}
           onChange={(text) => {
@@ -119,6 +143,8 @@ export function AddPlaceSheet({
           placeholder="Search for a restaurant"
         />
         <MapsLinkImport
+          supabase={demo ? undefined : supabase}
+          initialLink={shared?.link}
           onFound={(place) => {
             setFound(place)
             setName(place.name)

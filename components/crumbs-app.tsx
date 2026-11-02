@@ -1,26 +1,106 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Utensils } from 'lucide-react'
+import { identify, resetAnalytics, track } from '@/lib/analytics'
+import dynamic from 'next/dynamic'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import {
+  CheckCheck,
+  ChevronDown,
+  Dices,
+  Map as MapIcon,
+  Plus,
+  Search,
+  Users,
+  UtensilsCrossed,
+  X,
+  ArrowUpDown,
+  MapPin,
+} from 'lucide-react'
 import { toast } from 'sonner'
+import { Wordmark } from './wordmark'
 import { useCrumbsData, type Place } from '@/hooks/use-crumbs-data'
 import { PlaceCard, placeAverage } from './place-card'
-import { PlaceSheet } from './place-sheet'
-import { AddPlaceSheet } from './add-place-sheet'
 import { WelcomeCard } from './welcome-card'
-import { MapTab } from './map-tab'
-import { ListsTab } from './lists-tab'
-import { ForYouTab } from './for-you-tab'
-import { GroupTab } from './group-tab'
 import { MapsProvider } from './maps-provider'
-import { SurpriseSheet } from './surprise-sheet'
 import { notifyMates } from '@/lib/push'
-import { GoalsTab } from './goals-tab'
-import { TonightCard } from './tonight-card'
-import { CravingButton } from './craving-button'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
+import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
+import { distanceKm } from '@/lib/stats'
+import { useUserLocation } from '@/lib/use-user-location'
+import { captureJoinCode, clearJoinCode, pendingJoinCode, stripJoinParam } from '@/lib/invite'
+import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
+import { SocialContext, useSocialStore } from '@/hooks/use-social'
+import { ScaleContext } from './score-input'
+import { useFlags } from '@/hooks/use-flags'
+import { useDecide } from '@/hooks/use-decide'
+import { installErrorReporter } from '@/lib/report-errors'
+import { flushQueue } from '@/lib/offline-queue'
+import { addFoundPlace } from '@/lib/add-found'
+import { fromShare } from '@/lib/maps-link'
+import { inArea } from '@/lib/decide-more'
+import { catchUpSeen, isNewMember } from '@/lib/catch-up'
+import { CatchUpCard } from './catch-up-card'
+import { tourDone } from '@/lib/guidebook'
+import { GroupSwitcher } from './group-switcher'
+import { GroupActions } from './group-actions'
+import { oneEmoji } from '@/lib/group-look'
+import { cuisineWords, searchAll } from '@/lib/search-all'
+import { settingsOf } from '@/lib/ratings'
 
-const tabs = ['Places', 'Map', 'Lists', 'Goals', 'For you', 'Group']
+// Screens and sheets load on demand (then all get fetched quietly once the app is idle),
+// so the first paint only carries the Places list.
+const load = {
+  map: () => import('./map-tab'),
+  lists: () => import('./lists-tab'),
+  decide: () => import('./decide-tab'),
+  group: () => import('./group-tab'),
+  home: () => import('./home-tab'),
+  place: () => import('./place-sheet'),
+  add: () => import('./add-place-sheet'),
+  surprise: () => import('./surprise-sheet'),
+  quickLog: () => import('./quick-log-sheet'),
+  drafts: () => import('./drafts-review'),
+  guide: () => import('./guidebook'),
+}
+function PaneSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading">
+      <div className="skeleton h-12" />
+      <div className="skeleton h-40" />
+      <div className="skeleton h-28" />
+    </div>
+  )
+}
+const MapTab = dynamic(() => import('./map-tab').then((m) => m.MapTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const ListsTab = dynamic(() => import('./lists-tab').then((m) => m.ListsTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const DecideTab = dynamic(() => import('./decide-tab').then((m) => m.DecideTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const GroupTab = dynamic(() => import('./group-tab').then((m) => m.GroupTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const HomeTab = dynamic(() => import('./home-tab').then((m) => m.HomeTab), { ssr: false, loading: () => <PaneSkeleton /> })
+const PlaceSheet = dynamic(() => import('./place-sheet').then((m) => m.PlaceSheet), { ssr: false })
+const AddPlaceSheet = dynamic(() => import('./add-place-sheet').then((m) => m.AddPlaceSheet), { ssr: false })
+const SurpriseSheet = dynamic(() => import('./surprise-sheet').then((m) => m.SurpriseSheet), { ssr: false })
+const QuickLogSheet = dynamic(() => import('./quick-log-sheet').then((m) => m.QuickLogSheet), { ssr: false })
+const DraftsReview = dynamic(() => import('./drafts-review').then((m) => m.DraftsReview), { ssr: false })
+const Walkthrough = dynamic(() => import('./guidebook').then((m) => m.Walkthrough), { ssr: false })
+
+const tabs = [
+  { id: 'Places', label: 'Places', icon: UtensilsCrossed },
+  { id: 'Map', label: 'Map', icon: MapIcon },
+  { id: 'Decide', label: 'Decide & Plan', icon: Dices },
+  { id: 'Group', label: 'Group', icon: Users },
+] as const
+type Tab = (typeof tabs)[number]['id']
+// Old tab names (before the Oct 2026 layout) map onto the new ones.
+const OLD_TABS: Record<string, Tab> = { Lists: 'Places', Goals: 'Decide', 'For you': 'Decide' }
+const tabIndex = (id: Tab) => tabs.findIndex((item) => item.id === id)
 export function CrumbsApp() {
   return (
     <MapsProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
@@ -31,13 +111,112 @@ export function CrumbsApp() {
 
 function CrumbsShell() {
   const data = useCrumbsData()
-  const [tab, setTabState] = useState(() =>
-    typeof window === 'undefined' ? 'Places' : (sessionStorage.getItem('crumbs-tab') ?? 'Places'),
-  )
-  function setTab(next: string) {
+  const social = useSocialStore({
+    groupId: data.group?.id,
+    userId: data.user?.id,
+    supabase: data.supabase,
+    demo: data.demo,
+    v4: data.v4,
+  })
+  const decide = useDecide({
+    groupId: data.group?.id,
+    userId: data.user?.id,
+    supabase: data.supabase,
+    demo: data.demo,
+    v4: data.v4,
+  })
+  const isAdmin = !!data.members.find((member) => member.id === data.user?.id)?.is_admin
+  const flag = useFlags({ supabase: data.supabase, demo: data.demo, v4: data.v4, isAdmin })
+  // #107 Anonymous usage counts (only when a PostHog key is set).
+  useEffect(() => {
+    if (data.demo || !data.user?.id || !data.group) return
+    identify(data.user.id, { group_size: data.members.length, v4: data.v4 })
+    track('app_open')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user?.id, data.group?.id])
+  // #75 Send Quick logs that were saved offline, now and whenever the signal comes back.
+  useEffect(() => {
+    const uid = data.user?.id
+    if (data.demo || !uid) return
+    const sync = async () => {
+      const sent = await flushQueue(data.supabase, uid)
+      if (!sent) return
+      toast.success(`Synced ${sent} saved log${sent === 1 ? '' : 's'}`)
+      data.load().catch(() => {})
+    }
+    sync()
+    window.addEventListener('online', sync)
+    return () => window.removeEventListener('online', sync)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.demo, data.user?.id, data.supabase])
+  // #110 Send a few browser errors to the admin error log (only once the table exists).
+  useEffect(() => {
+    if (data.demo || !data.v4 || !data.user?.id) return
+    return installErrorReporter(data.supabase, data.user.id)
+  }, [data.demo, data.v4, data.user?.id, data.supabase])
+  useMotionPrefs() // applies the Animations setting to the page
+  // Start on Places (same as the server render), then go back to the tab you were on.
+  const [tab, setTabState] = useState<Tab>('Places')
+  const [direction, setDirection] = useState<'left' | 'right'>('right')
+  const [placesView, setPlacesView] = useState<'places' | 'lists' | 'home'>('places')
+  useLayoutEffect(() => {
+    let saved = 'Places'
+    try {
+      saved = sessionStorage.getItem('crumbs-tab') ?? 'Places'
+    } catch {}
+    const next =
+      OLD_TABS[saved] ?? (tabs.some((item) => item.id === saved) ? (saved as Tab) : 'Places')
+    if (next !== 'Places') setTabState(next)
+    if (saved === 'Lists') setPlacesView('lists')
+  }, [])
+  const [hub, setHub] = useState<HubPage[]>([])
+  const [switching, setSwitching] = useState(false)
+  // Each tab keeps its own scroll spot; tapping the tab you're on goes back to the top.
+  const scrolls = useRef<Partial<Record<Tab, number>>>({})
+  const restore = useRef<number | null>(null)
+  function setTab(next: Tab) {
+    if (next === tab) {
+      haptic('tap')
+      window.scrollTo({ top: 0, behavior: motionAllowed() ? 'smooth' : 'auto' })
+      return
+    }
+    haptic('tap')
+    scrolls.current[tab] = window.scrollY
+    restore.current = scrolls.current[next] ?? 0
+    setDirection(tabIndex(next) > tabIndex(tab) ? 'right' : 'left')
     setTabState(next)
-    sessionStorage.setItem('crumbs-tab', next)
-    window.scrollTo({ top: 0 })
+    track('tab', { tab: next })
+    try {
+      sessionStorage.setItem('crumbs-tab', next)
+    } catch {}
+  }
+  useLayoutEffect(() => {
+    if (restore.current === null) return
+    const top = restore.current
+    restore.current = null
+    window.scrollTo({ top })
+    // Lazy screens can arrive a frame later; try again once they've laid out.
+    if (top) requestAnimationFrame(() => window.scrollTo({ top }))
+  }, [tab])
+  // Places ⇄ Lists ⇄ Home slide the way you tapped.
+  const [subDirection, setSubDirection] = useState<'left' | 'right'>('right')
+  useEffect(() => {
+    const prefetch = () => Object.values(load).forEach((get) => get().catch(() => {}))
+    const w = window as any
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(prefetch, { timeout: 5000 })
+      return () => w.cancelIdleCallback(id)
+    }
+    const id = setTimeout(prefetch, 3000)
+    return () => clearTimeout(id)
+  }, [])
+  function signOut() {
+    resetAnalytics()
+    setHub([])
+    if (data.demo) {
+      data.setUser(null)
+      toast.success('Signed out')
+    } else data.supabase.auth.signOut()
   }
 
   // Hide the tab bar while the keyboard is up so it can't float over the form you're typing in.
@@ -73,7 +252,10 @@ function CrumbsShell() {
   const blind = !!me?.blind_ratings
   // With blind ratings on, everything you look at is a copy with your partner's scores hidden
   // for places and dishes you haven't rated. The real ratings stay in data.places.
-  const view = useMemo(() => (blind ? maskRatings(data.places, userId) : data.places), [blind, data.places, userId])
+  const view = useMemo(
+    () => (blind ? maskRatings(data.places, userId) : data.places),
+    [blind, data.places, userId],
+  )
   const selected = view.find((place) => place.id === selectedId) ?? null
   const [home, setHomeState] = useState<{ lat: number; lng: number } | null>(null)
   useEffect(() => {
@@ -85,23 +267,81 @@ function CrumbsShell() {
   function setHome(next: { lat: number; lng: number } | null) {
     setHomeState(next)
     try {
-      next ? localStorage.setItem('crumbs-home', JSON.stringify(next)) : localStorage.removeItem('crumbs-home')
+      next
+        ? localStorage.setItem('crumbs-home', JSON.stringify(next))
+        : localStorage.removeItem('crumbs-home')
     } catch {}
   }
   const [tripMapId, setTripMapId] = useState<string | null>(null)
   const tripList = data.lists.find((list) => list.id === tripMapId) ?? null
+  // #193 All my groups on one read-only map
+  const [allGroups, setAllGroups] = useState(false)
+  const [otherPlaces, setOtherPlaces] = useState<Place[]>([])
+  useEffect(() => {
+    if (!allGroups || !data.group || data.demo) return
+    const others = data.groups.filter((g) => g.id !== data.group!.id)
+    if (!others.length) return
+    let cancelled = false
+    data.supabase
+      .from('places')
+      .select('*,place_ratings(*)')
+      .in(
+        'group_id',
+        others.map((g) => g.id),
+      )
+      .then(({ data: rows }: any) => {
+        if (cancelled) return
+        setOtherPlaces(
+          (rows ?? []).map((p: Place) => {
+            const g = others.find((x) => x.id === p.group_id)
+            return { ...p, name: `${g?.emoji ?? '👥'} ${p.name}` }
+          }),
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allGroups, data.group?.id, data.groups.length])
   const mapPlaces = useMemo(() => {
-    if (!tripList) return view
+    if (!tripList) {
+      if (!allGroups) return view
+      const here = new Set(view.map((p) => p.google_place_id))
+      return [...view, ...otherPlaces.filter((p) => !here.has(p.google_place_id))]
+    }
     const ids = new Set((tripList.list_places ?? []).map((item) => item.place_id))
     return view.filter((place) => ids.has(place.id))
-  }, [view, tripList])
-  const setSelected = (place: Place | null) => setSelectedId(place?.id ?? null)
-  const [sort, setSort] = useState<'Newest' | 'Top rated' | 'A–Z'>('Newest')
+  }, [view, tripList, allGroups, otherPlaces])
+  // #26 A crawl shown on the map gets a walking line through its stops, in order.
+  const crawl = useMemo(() => {
+    if (tripList?.kind !== 'crawl') return { route: [], labels: {} }
+    const stops = [...(tripList.list_places ?? [])]
+      .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9))
+      .map((item) => data.places.find((p) => p.id === item.place_id))
+      .filter((p): p is Place => !!p)
+    return {
+      route: stops
+        .filter((p) => p.latitude !== null && p.longitude !== null)
+        .map((p) => ({ lat: p.latitude!, lng: p.longitude! })),
+      labels: Object.fromEntries(stops.map((p, i) => [p.id, `${i + 1}`])) as Record<string, string>,
+    }
+  }, [tripList, data.places])
+  const setSelected = useCallback((place: Place | null) => setSelectedId(place?.id ?? null), [])
+  const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
+  const [quickLog, setQuickLog] = useState(false)
+  // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
+  const here = useUserLocation(sort === 'Nearest', { ask: true })
+  const origin = here ?? home
   const [adding, setAdding] = useState(false)
+  // #163/#164 Home-screen shortcuts (?do=log, ?do=add) and things shared to Crumbs (?title=&text=&url=).
+  const [shared, setShared] = useState<{ link: string | null; name: string | null } | null>(null)
+  const launched = useRef(false)
   const [surprising, setSurprising] = useState(false)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [query, setQuery] = useState('')
+  // Typing stays snappy on big groups; the list catches up a beat later.
+  const deferredQuery = useDeferredValue(query)
   const [filter, setFilter] = useState('All')
   const [groupName, setGroupName] = useState('')
   const [joinCode, setJoinCode] = useState('')
@@ -110,19 +350,119 @@ function CrumbsShell() {
     () => Object.fromEntries(data.members.map((m) => [m.id, m.display_name])),
     [data.members],
   )
+  // #168 the welcome tour, once per phone (skippable; replay from Settings → Guidebook)
+  const [touring, setTouring] = useState(false)
+  useEffect(() => {
+    if (!data.group || data.demo || data.loading || tourDone()) return
+    const timer = setTimeout(() => setTouring(true), 600)
+    return () => clearTimeout(timer)
+  }, [data.group, data.demo, data.loading])
+  // #190 catch-up card for someone who just joined (dismissed per group on this phone)
+  const [catchUpSeenNow, setCatchUpSeen] = useState(false)
+  const catchUp =
+    !!data.group &&
+    !catchUpSeenNow &&
+    isNewMember(me) &&
+    data.places.length >= 3 &&
+    !catchUpSeen(data.group.id)
+  // #225 search everything
+  const found = useMemo(
+    () =>
+      searchAll(deferredQuery, {
+        places: data.places,
+        lists: data.lists,
+        meals: data.homeMeals,
+        plans: decide?.plans ?? [],
+      }),
+    [deferredQuery, data.places, data.lists, data.homeMeals, decide?.plans],
+  )
+  // #128 a saved area to filter the list by
+  const [areaName, setAreaName] = useState<string | null>(null)
+  const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
+  // #82: search also looks inside dishes and everyone's notes. Built once per data change,
+  // not on every keystroke.
+  const haystacks = useMemo(() => {
+    const text = new Map<string, string>()
+    for (const place of view)
+      text.set(
+        place.id,
+        [
+        place.name,
+        place.formatted_address,
+        place.cuisine,
+        cuisineWords(place.cuisine),
+        ...(place.tags ?? []),
+        ...place.place_ratings.map((rating) => rating.notes),
+        ...(place.dishes ?? []).flatMap((dish) => [
+          dish.name,
+          ...(dish.tags ?? []),
+          ...dish.dish_ratings.map((rating) => rating.notes),
+        ]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase(),
+      )
+    return text
+  }, [view])
+  const inFilter = useCallback(
+    (place: Place, which: string) =>
+      which === 'All' ? true : which === 'Pinned' ? !!place.pinned : place.status === which,
+    [],
+  )
+  // How many each filter chip would show (with the current search and area).
+  const counts = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase()
+    const base = view.filter(
+      (place) =>
+        (!area || inArea(place, area)) &&
+        (!needle || (haystacks.get(place.id) ?? '').includes(needle)),
+    )
+    return Object.fromEntries(
+      ['All', 'Been', 'Want to try', 'Pinned'].map((f) => [f, base.filter((p) => inFilter(p, f)).length]),
+    ) as Record<string, number>
+  }, [view, area, deferredQuery, haystacks, inFilter])
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const list = view.filter((place) => {
-      const inFilter =
-        filter === 'All' ? true : filter === 'Pinned' ? place.pinned : place.status === filter
-      const haystack =
-        `${place.name} ${place.formatted_address ?? ''} ${place.cuisine ?? ''} ${(place.tags ?? []).join(' ')}`.toLowerCase()
-      return inFilter && haystack.includes(needle)
-    })
-    if (sort === 'Top rated') return [...list].sort((a, b) => placeAverage(b) - placeAverage(a))
+    const needle = deferredQuery.trim().toLowerCase()
+    const list = view.filter(
+      (place) =>
+        (!area || inArea(place, area)) &&
+        inFilter(place, filter) &&
+        (!needle || (haystacks.get(place.id) ?? '').includes(needle)),
+    )
+    if (sort === 'Top rated') {
+      const score = new Map(list.map((place) => [place.id, placeAverage(place)]))
+      return [...list].sort((a, b) => score.get(b.id)! - score.get(a.id)!)
+    }
     if (sort === 'A–Z') return [...list].sort((a, b) => a.name.localeCompare(b.name))
+    if (sort === 'Nearest' && origin) {
+      const km = (place: Place) =>
+        place.latitude !== null && place.longitude !== null
+          ? distanceKm(origin, { lat: place.latitude, lng: place.longitude })
+          : Infinity
+      return [...list].sort((a, b) => km(a) - km(b))
+    }
     return list
-  }, [view, filter, query, sort])
+  }, [view, filter, deferredQuery, sort, origin, area, haystacks, inFilter])
+  // Blind ratings: which cards hide the group score (looked up once, not per card).
+  const hiddenIds = useMemo(() => {
+    if (!blind) return null
+    const ids = new Set<string>()
+    for (const real of data.places)
+      if (
+        !real.place_ratings.some((rating) => rating.user_id === userId) &&
+        real.place_ratings.some((rating) => rating.user_id !== userId)
+      )
+        ids.add(real.id)
+    return ids
+  }, [blind, data.places, userId])
+  const filtersOn = filter !== 'All' || !!areaName || query.trim() !== ''
+  function clearFilters() {
+    haptic('tap')
+    setQuery('')
+    setFilter('All')
+    setAreaName(null)
+  }
   async function magic() {
     setBusy(true)
     const { error } = await data.supabase.auth.signInWithOtp({
@@ -149,19 +489,105 @@ function CrumbsShell() {
     setGroupName('')
     toast.success('Group created')
   }
-  async function joinGroup() {
+  async function joinGroup(code = joinCode) {
     if (!data.user) return
     setBusy(true)
-    const { data: group, error } = await data.supabase.rpc('join_group', { code: joinCode })
+    const { data: group, error } = await data.supabase.rpc('join_group', { code })
     setBusy(false)
     if (error) return toast.error(error.message)
-    data.setGroups(
-      data.groups.some((item) => item.id === group.id) ? data.groups : [...data.groups, group],
+    data.setGroups((current) =>
+      current.some((item) => item.id === group.id) ? current : [...current, group],
     )
     data.setGroup(group)
     setJoinCode('')
-    toast.success('Joined group')
+    haptic('success')
+    toast.success(`Joined ${group.name}`)
   }
+  // #44 Invite links (…/?join=CODE): remember the code through sign-in, then join automatically.
+  const [invite] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    captureJoinCode()
+    return pendingJoinCode()
+  })
+  const joining = useRef(false)
+  useEffect(() => {
+    // Next's router writes the URL once on start-up, so tidy ?join= just after that.
+    const timer = setTimeout(stripJoinParam, 0)
+    return () => clearTimeout(timer)
+  }, [])
+  useEffect(() => {
+    if (!data.user || !data.groupsLoaded || joining.current) return
+    const code = pendingJoinCode()
+    if (!code) return
+    joining.current = true
+    clearJoinCode()
+    const existing = data.groups.find((group) => group.join_code === code)
+    if (existing) data.setGroup(existing)
+    else if (!data.demo) joinGroup(code)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user, data.groupsLoaded])
+  useEffect(() => {
+    if (!data.user || !data.group || data.loading || launched.current || typeof window === 'undefined')
+      return
+    launched.current = true
+    const params = new URLSearchParams(window.location.search)
+    const action = params.get('do')
+    const incoming = fromShare(params)
+    // #212 scanned a restaurant's "Find us on Crumbs" poster: add it (or open it if it's saved)
+    const addId = params.get('add')
+    if (addId && /^[0-9a-f-]{36}$/i.test(addId)) {
+      params.delete('add')
+      const rest = params.toString()
+      window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+      const saved = data.places.find((p) => p.restaurant_id === addId)
+      if (saved) {
+        setSelected(saved)
+        return
+      }
+      if (data.demo) return
+      ;(async () => {
+        const { data: r } = await data.supabase
+          .from('restaurants')
+          .select('id,source_key,name,formatted_address,latitude,longitude,cuisine,website,google_maps_url')
+          .eq('id', addId)
+          .maybeSingle()
+        if (!r || r.latitude === null) return toast.error('Couldn’t find that restaurant')
+        try {
+          const place = await addFoundPlace({
+            supabase: data.supabase,
+            demo: data.demo,
+            groupId: data.group!.id,
+            userId: data.user!.id,
+            found: {
+              google_place_id: r.source_key,
+              name: r.name,
+              formatted_address: r.formatted_address,
+              latitude: r.latitude,
+              longitude: r.longitude,
+              cuisine: r.cuisine,
+              website: r.website,
+              google_maps_url: r.google_maps_url,
+            },
+          })
+          data.setPlaces((current) => [place, ...current])
+          toast.success(`${r.name} is on your Want to try list`)
+          setSelected(place)
+        } catch (error: any) {
+          toast.error(error?.message || 'Could not add it')
+        }
+      })()
+      return
+    }
+    if (action === 'log') setQuickLog(true)
+    else if (action === 'add' || incoming.link || incoming.name) {
+      setShared(incoming.link || incoming.name ? incoming : null)
+      setAdding(true)
+    } else return
+    for (const key of ['do', 'title', 'text', 'url']) params.delete(key)
+    const rest = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.user, data.group, data.loading])
   if (!data.user && data.loading)
     return (
       <main className="grid min-h-screen place-items-center bg-background">
@@ -172,15 +598,20 @@ function CrumbsShell() {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-5">
         <div className="surface w-full max-w-sm">
-          <div className="flex items-center gap-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <Utensils />
-            </div>
-            <span className="font-serif text-2xl font-bold">crumbs</span>
-          </div>
+          <Wordmark height={38} />
+          {invite && (
+            <p className="tag preview-pop mt-6 w-fit">
+              🎉 You’re invited — sign in to join the group
+            </p>
+          )}
           <h1 className="mt-8 font-serif text-4xl font-bold">Your shared food map</h1>
           <p className="mt-3 leading-6 text-muted-foreground">
-            Collect the places and dishes you love together.
+            Collect the places and dishes you love together.{' '}
+            {!invite && (
+              <a href="/welcome" className="font-semibold text-primary underline">
+                What is Crumbs?
+              </a>
+            )}
           </p>
           {sent ? (
             <div className="mt-7 rounded-2xl bg-muted p-4 text-sm">
@@ -269,7 +700,7 @@ function CrumbsShell() {
             <button
               className="secondary mt-3 w-full"
               disabled={busy || joinCode.length !== 6}
-              onClick={joinGroup}
+              onClick={() => joinGroup()}
             >
               Join group
             </button>
@@ -277,223 +708,616 @@ function CrumbsShell() {
         </div>
       </main>
     )
+  // Food crawls (#26) live in Decide & Plan, not in the Lists view.
+  const plainLists = data.lists.filter((list) => list.kind !== 'crawl')
+  const setPlainLists = (next: typeof data.lists) =>
+    data.setLists([...next, ...data.lists.filter((list) => list.kind === 'crawl')])
+  // #77 Home cooking sits next to Places and Lists (a group can switch it off).
+  const views = (
+    settingsOf(data.group).home ? ['places', 'lists', 'home'] : ['places', 'lists']
+  ) as ('places' | 'lists' | 'home')[]
   return (
+    <SocialContext.Provider value={social}>
+    <ScaleContext.Provider value={data.v4 ? settingsOf(data.group).scale : '5'}>
     <main className="min-h-screen bg-background pb-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <header className="flex items-center justify-between py-5">
-          <div className="flex items-center gap-2">
-            <div className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <Utensils />
-            </div>
-            <span className="font-serif text-2xl font-bold">crumbs</span>
-          </div>
-          <button
-            className="secondary !min-h-10 !px-3 text-xs"
-            onClick={() =>
-              data.demo
-                ? (data.setUser(null), toast.success('Signed out'))
-                : data.supabase.auth.signOut()
-            }
-          >
-            Sign out
-          </button>
+          <Wordmark height={38} />
+          <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
-        <div className="mb-5 flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">Your shared food map</p>
-            <h1 className="truncate font-serif text-3xl font-bold">{data.group.name}</h1>
-          </div>
-          {data.groups.length > 1 && (
-            <select
-              aria-label="Switch group"
-              className="field shrink-0 !w-auto !max-w-[45%] !py-2"
-              value={data.group.id}
-              onChange={(event) =>
-                data.setGroup(
-                  data.groups.find((group) => group.id === event.target.value) || data.group,
-                )
-              }
-            >
-              {data.groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        {tab === 'Places' && (
-          <section className="flex flex-col gap-4">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  size={18}
-                />
-                <input
-                  aria-label="Search places"
-                  className="field field-icon"
-                  placeholder="Search places"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-              <button
-                className="primary size-12 shrink-0"
-                aria-label="Add a place"
-                onClick={() => setAdding(true)}
+        {/* The group name is the group switcher: switch, start a new group, join, find one. */}
+        <div className="mb-5 flex items-center gap-2">
+        <button
+          type="button"
+          className="group-title min-w-0 flex-1"
+          aria-label={`${data.group.name} — switch, create or join a group`}
+          onClick={() => {
+            haptic('tap')
+            setSwitching(true)
+          }}
+        >
+          <span className="text-sm text-muted-foreground">Your shared food map</span>
+          <span className="group-name-row font-serif font-bold">
+            {oneEmoji(data.group.emoji) && (
+              <span
+                className="group-badge"
+                style={{ background: data.group.color ?? undefined }}
+                aria-hidden="true"
               >
-                <Plus />
-              </button>
-            </div>
-            <div className="chip-row">
-              {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
-                <button
-                  key={item}
-                  aria-pressed={filter === item}
-                  className={`chip ${filter === item ? 'chip-active' : ''}`}
-                  onClick={() => setFilter(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {!data.loading && <TonightCard places={view} members={data.members} onOpen={setSelected} />}
-            <div className="flex items-center justify-between gap-2">
-              <div className="chip-row min-w-0">
-                {(['Newest', 'Top rated', 'A–Z'] as const).map((item) => (
+                {oneEmoji(data.group.emoji)}
+              </span>
+            )}
+            {/* Long names drop a size and wrap onto a second line instead of running under the buttons. */}
+            <span
+              className={`group-name ${
+                data.group.name.length > 22
+                  ? 'text-xl'
+                  : data.group.name.length > 14
+                    ? 'text-2xl'
+                    : 'text-3xl'
+              }`}
+            >
+              {data.group.name}
+            </span>
+            <ChevronDown size={22} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+          </span>
+        </button>
+        <GroupActions
+          group={data.group}
+          members={data.members}
+          userId={userId}
+          supabase={data.supabase}
+          demo={data.demo}
+          v4={data.v4}
+          onGroup={(group) => {
+            data.setGroup(group)
+            data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+          }}
+          onReload={() => {
+            data.load().catch(() => {})
+          }}
+        />
+        </div>
+        {switching && (
+          <GroupSwitcher
+            group={data.group}
+            groups={data.groups}
+            supabase={data.supabase}
+            demo={data.demo}
+            onClose={() => setSwitching(false)}
+            onSwitch={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroup(g)
+            }}
+            onCreated={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroups((current) => [...current, g])
+              data.setGroup(g)
+              setTab('Group')
+            }}
+            onJoined={(g) => {
+              setSwitching(false)
+              setHub([])
+              data.setGroups((current) =>
+                current.some((item) => item.id === g.id) ? current : [...current, g],
+              )
+              data.setGroup(g)
+            }}
+          />
+        )}
+        {touring && <Walkthrough onDone={() => setTouring(false)} />}
+        {data.offlineCopy && (
+          <p className="next-time-note mb-4 text-sm">
+            📴 No signal — showing the copy saved on this phone (
+            {new Date(data.offlineCopy).toLocaleString(undefined, {
+              weekday: 'short',
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+            ). Changes you make are kept as drafts to review when you’re back.
+          </p>
+        )}
+        {!data.demo && <DraftsReview supabase={data.supabase} onApplied={() => data.load().catch(() => {})} />}
+        {me?.role === 'guest' && (
+          <p className="next-time-note mb-4 text-sm">
+            👀 You’re a guest in {data.group.name} — look around as much as you like. To add or
+            rate places, ask them to make you a member.
+          </p>
+        )}
+        {catchUp && (
+          <CatchUpCard
+            group={data.group}
+            places={data.places}
+            lists={data.lists}
+            onSelect={setSelected}
+            onDone={() => setCatchUpSeen(true)}
+          />
+        )}
+        <div key={tab} className={`tab-pane tab-from-${direction}`}>
+          {tab === 'Places' && (
+            <section className="flex flex-col gap-4">
+              <div
+                className={`segmented ${views.length === 3 ? 'segmented-3' : ''}`}
+                role="tablist"
+                aria-label="Places, lists or home cooking"
+              >
+                <span
+                  className="segmented-thumb"
+                  aria-hidden="true"
+                  style={{ transform: `translateX(${Math.max(0, views.indexOf(placesView)) * 100}%)` }}
+                />
+                {views.map((view) => (
                   <button
-                    key={item}
-                    aria-pressed={sort === item}
-                    className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-                    onClick={() => setSort(item)}
+                    key={view}
+                    role="tab"
+                    aria-selected={placesView === view}
+                    className={placesView === view ? 'segmented-active' : ''}
+                    onClick={() => {
+                      if (view === placesView) return
+                      haptic('tap')
+                      setSubDirection(views.indexOf(view) > views.indexOf(placesView) ? 'right' : 'left')
+                      setPlacesView(view)
+                    }}
                   >
-                    {item}
+                    {view === 'places' ? 'Places' : view === 'lists' ? 'Lists' : 'Home'}
                   </button>
                 ))}
               </div>
-              <button
-                className="secondary !min-h-10 shrink-0 !px-3 text-sm"
-                onClick={() => setSurprising(true)}
-              >
-                🎲 Surprise us
-              </button>
-            </div>
-            <CravingButton groupId={data.group.id} />
-            {data.loading ? (
-              <div
-                className="flex flex-col gap-4"
-                aria-busy="true"
-                aria-label="Loading your places"
-              >
-                <div className="skeleton h-28" />
-                <div className="skeleton h-28" />
-                <div className="skeleton h-28" />
-              </div>
-            ) : filtered.length ? (
-              filtered.map((place) => (
-                <PlaceCard
-                  key={place.id}
-                  place={place}
-                  names={names}
-                  members={data.members}
-                  home={home}
-                  hidden={blind && !place.place_ratings.some((rating) => rating.user_id === userId) && data.places.find((real) => real.id === place.id)!.place_ratings.some((rating) => rating.user_id !== userId)}
-                  onSelect={setSelected}
-                />
-              ))
-            ) : (
-              <WelcomeCard
-                group={data.group}
-                hasPlaces={data.places.length > 0}
-                onAdd={() => setAdding(true)}
+              {placesView === 'home' && views.includes('home') ? (
+                <div key="home" className={`tab-pane tab-from-${subDirection}`}>
+                  <HomeTab
+                    meals={data.homeMeals}
+                    setMeals={data.setHomeMeals}
+                    groupId={data.group.id}
+                    userId={userId}
+                    names={names}
+                    members={data.members}
+                    supabase={data.supabase}
+                    demo={data.demo}
+                    v4={data.v4}
+                    places={data.places}
+                  />
+                </div>
+              ) : placesView === 'lists' ? (
+                <div key="lists" className={`tab-pane tab-from-${subDirection}`}>
+                  <ListsTab
+                    lists={plainLists}
+                    places={view}
+                    userId={data.user?.id}
+                    groupId={data.group.id}
+                    demo={data.demo}
+                    supabase={data.supabase}
+                    onLists={setPlainLists}
+                    onShowOnMap={(id) => {
+                      setTripMapId(id)
+                      setTab('Map')
+                    }}
+                    onSelect={setSelected}
+                    trips={settingsOf(data.group).trips}
+                    groups={data.groups}
+                    onPlaceAdded={(p) => data.setPlaces((current) => [p, ...current])}
+                  />
+                </div>
+              ) : (
+                <div key="places" className={`tab-pane tab-from-${subDirection} flex flex-col gap-4`}>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        size={18}
+                      />
+                      <input
+                        aria-label="Search places"
+                        className="field field-icon search-field"
+                        placeholder="Search places, dishes, notes"
+                        type="search"
+                        enterKeyHint="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Escape' && query && setQuery('')}
+                      />
+                      {query && (
+                        <button
+                          type="button"
+                          className="search-clear"
+                          aria-label="Clear search"
+                          onClick={() => {
+                            haptic('tap')
+                            setQuery('')
+                          }}
+                        >
+                          <X size={16} strokeWidth={2.5} />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      className="secondary !min-h-12 shrink-0 !px-3"
+                      aria-label="Quick log a visit"
+                      onClick={() => setQuickLog(true)}
+                    >
+                      <CheckCheck size={20} /> Log
+                    </button>
+                    <button
+                      className="primary size-12 shrink-0"
+                      aria-label="Add a place"
+                      onClick={() => setAdding(true)}
+                    >
+                      <Plus />
+                    </button>
+                  </div>
+                  {deferredQuery.trim().length >= 2 && (found || filtered.length > 0) && (
+                    // #225 everything that matches, grouped: places first, then food, lists…
+                    <div className="surface-soft rise-panel flex flex-col gap-2 text-sm">
+                      {filtered.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Places
+                          </p>
+                          {filtered.slice(0, 5).map((place) => (
+                            <button key={place.id} className="text-left" onClick={() => setSelected(place)}>
+                              📍 <strong>{place.name}</strong>
+                              {place.cuisine && <span className="text-muted-foreground"> · {place.cuisine}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found && found.dishes.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Dishes
+                          </p>
+                          {found.dishes.map(({ dish, place }) => (
+                            <button key={dish.id} className="text-left" onClick={() => setSelected(place)}>
+                              <strong>{dish.name}</strong>{' '}
+                              <span className="text-muted-foreground">at {place.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found && found.lists.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Lists
+                          </p>
+                          {found.lists.map((l) => (
+                            <button key={l.id} className="text-left" onClick={() => (setSubDirection('right'), setPlacesView('lists'))}>
+                              {l.emoji} <strong>{l.name}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found && found.plans.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Plans
+                          </p>
+                          {found.plans.map((p) => (
+                            <button key={p.id} className="text-left" onClick={() => setTab('Decide')}>
+                              📅 <strong>{p.title}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {found && found.meals.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            Home cooking
+                          </p>
+                          {found.meals.map((m) => (
+                            <button key={m.id} className="text-left" onClick={() => (setSubDirection('right'), setPlacesView('home'))}>
+                              🍳 <strong>{m.name}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <StatusFilter
+                    value={filter}
+                    counts={!data.loading && data.places.length > 0 ? counts : null}
+                    onChange={(item) => {
+                      if (item !== filter) haptic('select')
+                      setFilter(item)
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="pick-pill">
+                      <ArrowUpDown size={15} aria-hidden="true" />
+                      <span aria-hidden="true">{sort}</span>
+                      <select
+                        aria-label="Sort by"
+                        value={sort}
+                        onChange={(event) => {
+                          haptic('select')
+                          setSort(event.target.value as typeof sort)
+                        }}
+                      >
+                        {(['Newest', 'Top rated', 'Nearest', 'A–Z'] as const).map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={15} aria-hidden="true" />
+                    </label>
+                    {(me?.areas?.length ?? 0) > 0 && (
+                      <label className={`pick-pill ${areaName ? 'pick-pill-on' : ''}`}>
+                        <MapPin size={15} aria-hidden="true" />
+                        <span aria-hidden="true">{areaName ? `Near ${areaName}` : 'Anywhere'}</span>
+                        <select
+                          aria-label="Area"
+                          value={areaName ?? ''}
+                          onChange={(event) => {
+                            haptic('select')
+                            setAreaName(event.target.value || null)
+                          }}
+                        >
+                          <option value="">Anywhere</option>
+                          {me!.areas!.map((a) => (
+                            <option key={a.name} value={a.name}>
+                              Near {a.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={15} aria-hidden="true" />
+                      </label>
+                    )}
+                    {filtersOn && (
+                      <button type="button" className="text-sm font-semibold text-primary" onClick={clearFilters}>
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  {sort === 'Nearest' && !origin && (
+                    <p className="text-xs text-muted-foreground">
+                      Finding you… If location is blocked, set Home in Settings to sort by distance.
+                    </p>
+                  )}
+                  {data.loading ? (
+                    <div
+                      className="flex flex-col gap-4"
+                      aria-busy="true"
+                      aria-label="Loading your places"
+                    >
+                      <div className="skeleton h-28" />
+                      <div className="skeleton h-28" />
+                      <div className="skeleton h-28" />
+                    </div>
+                  ) : filtered.length ? (
+                    <div className="stagger place-list flex flex-col gap-4">
+                      {filtered.map((place) => (
+                        <PlaceCard
+                          key={place.id}
+                          place={place}
+                          names={names}
+                          members={data.members}
+                          home={home}
+                          hidden={!!hiddenIds?.has(place.id)}
+                          onSelect={setSelected}
+                        />
+                      ))}
+                    </div>
+                  ) : data.places.length > 0 && filtersOn ? (
+                    <div className="empty pop-in">
+                      <p className="text-4xl" aria-hidden="true">🔍</p>
+                      <p className="mt-2 font-serif text-xl font-bold">Nothing matches</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {query.trim()
+                          ? `No places with “${query.trim()}”${filter !== 'All' ? ` in ${filter}` : ''}${areaName ? ` around ${areaName}` : ''}.`
+                          : `No places in ${filter !== 'All' ? filter : 'this view'}${areaName ? ` around ${areaName}` : ''} yet.`}
+                      </p>
+                      <button className="secondary mx-auto mt-4" onClick={clearFilters}>
+                        Show everything
+                      </button>
+                    </div>
+                  ) : (
+                    <WelcomeCard
+                      group={data.group}
+                      hasPlaces={data.places.length > 0}
+                      onAdd={() => setAdding(true)}
+                    />
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+          {tab === 'Map' && (
+            <>
+              {tripList && (
+                <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    {tripList.kind === 'crawl' ? '🚶' : '✈️'} Showing <strong>{tripList.trip_city || tripList.name}</strong> only
+                  </span>
+                  <button className="text-primary underline" onClick={() => setTripMapId(null)}>
+                    Show everything
+                  </button>
+                </div>
+              )}
+              {data.groups.length > 1 && !tripList && (
+                <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">
+                    {allGroups ? 'Showing places from all your groups' : 'Showing this group'}
+                  </span>
+                  <button
+                    className={`chip chip-sm ${allGroups ? 'chip-active' : ''}`}
+                    aria-pressed={allGroups}
+                    onClick={() => setAllGroups(!allGroups)}
+                  >
+                    👥 All my groups
+                  </button>
+                </div>
+              )}
+              <MapTab
+                places={mapPlaces}
+                apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+                onSelect={(place) => {
+                  if (place.group_id === data.group?.id) return setSelected(place)
+                  const g = data.groups.find((x) => x.id === place.group_id)
+                  toast(`${place.name.replace(/^\S+\s/, '')} is in ${g?.name ?? 'another group'}`, {
+                    action: g ? { label: 'Switch', onClick: () => data.setGroup(g) } : undefined,
+                  })
+                }}
+                route={crawl.route}
+                labels={crawl.labels}
+                demo={data.demo}
+                onAddFound={async (spot) => {
+                  try {
+                    const place = await addFoundPlace({
+                      supabase: data.supabase,
+                      demo: data.demo,
+                      groupId: data.group!.id,
+                      userId: data.user!.id,
+                      found: spot,
+                    })
+                    data.setPlaces((current) => [place, ...current])
+                    haptic('success')
+                    track('explore_added')
+                    toast.success(`${spot.name} added to Want to try`)
+                    return true
+                  } catch (error: any) {
+                    toast.error(error?.message || 'Could not add that place')
+                    return false
+                  }
+                }}
               />
-            )}
-          </section>
-        )}
-        {tab === 'Map' && (
-          <>
-            {tripList && (
-              <div className="surface-soft mb-3 flex items-center justify-between gap-3 text-sm">
-                <span>
-                  ✈️ Showing <strong>{tripList.trip_city || tripList.name}</strong> only
-                </span>
-                <button className="text-primary underline" onClick={() => setTripMapId(null)}>
-                  Show everything
-                </button>
-              </div>
-            )}
-          <MapTab
-            places={mapPlaces}
-            apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-            onSelect={setSelected}
-          />
-          </>
-        )}
-        {tab === 'Lists' && (
-          <ListsTab
-            lists={data.lists}
-            places={data.places}
-            userId={data.user?.id}
-            groupId={data.group.id}
-            demo={data.demo}
-            supabase={data.supabase}
-            onLists={data.setLists}
-            onShowOnMap={(id) => {
-              setTripMapId(id)
-              setTab('Map')
-            }}
-          />
-        )}
-        {tab === 'Goals' && <GoalsTab places={data.places} />}
-        {tab === 'For you' && (
-          <ForYouTab
-            places={view}
-            members={data.members}
-            userId={data.user?.id}
-            names={names}
-            onSelect={setSelected}
-          />
-        )}
-        {tab === 'Group' && (
-          <GroupTab
-            group={data.group}
-            groups={data.groups}
-            places={data.places}
-            members={data.members}
-            profile={data.members.find((m) => m.id === data.user?.id) ?? null}
-            userId={data.user?.id}
-            supabase={data.supabase}
-            demo={data.demo}
-            home={home}
-            onHome={setHome}
-            onProfile={(changes) =>
-              data.setMembers((current) =>
-                current.map((member) => (member.id === userId ? { ...member, ...changes } : member)),
-              )
-            }
-            onGroup={data.setGroup}
-            onLeft={(id) => {
-              const rest = data.groups.filter((g) => g.id !== id)
-              data.setGroups(rest)
-              data.setGroup(rest[0] ?? null)
-            }}
-            onSignOut={() => (data.demo ? data.setUser(null) : data.supabase.auth.signOut())}
-          />
-        )}
+            </>
+          )}
+          {tab === 'Decide' && (
+            <DecideTab
+              places={view}
+              allPlaces={data.places}
+              members={data.members}
+              names={names}
+              groupId={data.group.id}
+              loading={data.loading}
+              onSelect={setSelected}
+              onSurprise={() => setSurprising(true)}
+              onWrapped={() => setHub(['menu', 'wrapped'])}
+              home={home}
+              meals={data.homeMeals}
+              userId={userId}
+              turns={data.v4 && settingsOf(data.group).turns}
+              weather={settingsOf(data.group).weather}
+              aiIdeas={flag('ai_ideas')}
+              decide={decide}
+              lists={data.lists}
+              onLists={data.setLists}
+              group={data.group}
+              supabase={data.supabase}
+              demo={data.demo}
+              onShowOnMap={(id) => {
+                setTripMapId(id)
+                setTab('Map')
+              }}
+              onPlaceAdded={(place) => data.setPlaces((current) => [place, ...current])}
+              onPlaceUpdated={(place) =>
+                data.setPlaces((current) => current.map((p) => (p.id === place.id ? place : p)))
+              }
+            />
+          )}
+          {tab === 'Group' && (
+            <GroupTab
+              group={data.group}
+              groups={data.groups}
+              places={data.places}
+              members={data.members}
+              userId={data.user?.id}
+              supabase={data.supabase}
+              demo={data.demo}
+              onGroup={(group) => {
+                data.setGroup(group)
+                data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+              }}
+              v4={data.v4}
+              onReload={() => {
+                data.load().catch(() => {})
+              }}
+              view={view}
+              meals={data.homeMeals}
+              names={names}
+              onSelect={setSelected}
+              onLeft={(id) => {
+                const rest = data.groups.filter((g) => g.id !== id)
+                data.setGroups(rest)
+                data.setGroup(rest[0] ?? null)
+              }}
+            />
+          )}
+        </div>
       </div>
       <nav className={`tab-bar ${typing ? 'tab-bar-hidden' : ''}`} aria-label="Main">
-        {tabs.map((item) => (
+        <span
+          className="tab-indicator"
+          aria-hidden="true"
+          style={{ transform: `translateX(${tabIndex(tab) * 100}%)` }}
+        />
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
-            className={tab === item ? 'tab-active' : ''}
-            aria-current={tab === item ? 'page' : undefined}
-            key={item}
-            onClick={() => setTab(item)}
+            className={tab === id ? 'tab-active' : ''}
+            aria-current={tab === id ? 'page' : undefined}
+            key={id}
+            onClick={() => setTab(id)}
           >
-            {item}
+            <Icon size={21} strokeWidth={tab === id ? 2.4 : 2} aria-hidden="true" />
+            <span>{label}</span>
           </button>
         ))}
       </nav>
+      {hub.length > 0 && (
+        <ProfileHub
+          pages={hub}
+          onPages={setHub}
+          profile={me}
+          group={data.group}
+          places={view}
+          allPlaces={data.places}
+          members={data.members}
+          userId={userId}
+          names={names}
+          meals={data.homeMeals}
+          onSelect={(place) => {
+            setHub([])
+            setSelected(place)
+          }}
+          onGroups={() => {
+            setHub([])
+            setSwitching(true)
+          }}
+          settings={{
+            userId,
+            supabase: data.supabase,
+            demo: data.demo,
+            home,
+            onHome: setHome,
+            onProfile: (changes) =>
+              data.setMembers((current) =>
+                current.map((member) =>
+                  member.id === userId ? { ...member, ...changes } : member,
+                ),
+              ),
+            onGroup: (group) => {
+              data.setGroup(group)
+              data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+            },
+            onSignOut: signOut,
+            members: data.members,
+            v4: data.v4,
+            onReload: () => {
+              data.load().catch(() => {})
+            },
+            places: data.places,
+            lists: plainLists,
+            onImported: (added, newLists) => {
+              if (data.demo) {
+                data.setPlaces((current) => [...added, ...current])
+                if (newLists.length) setPlainLists([...plainLists, ...newLists])
+              } else data.load().catch(() => {})
+            },
+          }}
+        />
+      )}
       {surprising && (
         <SurpriseSheet
           places={view}
@@ -505,14 +1329,49 @@ function CrumbsShell() {
           }}
         />
       )}
+      {quickLog && (
+        <QuickLogSheet
+          places={data.places}
+          userId={data.user.id}
+          demo={data.demo}
+          supabase={data.supabase}
+          onClose={() => setQuickLog(false)}
+          v4={data.v4}
+          scale={data.v4 ? settingsOf(data.group).scale : '5'}
+          members={data.members}
+          turns={data.v4 && settingsOf(data.group).turns}
+          onCookedAtHome={
+            views.includes('home')
+              ? () => {
+                  setQuickLog(false)
+                  setPlacesView('home')
+                }
+              : undefined
+          }
+          onAddNew={() => {
+            setQuickLog(false)
+            setAdding(true)
+          }}
+          onUpdate={(place) =>
+            data.setPlaces((current) =>
+              current.map((item) => (item.id === place.id ? place : item)),
+            )
+          }
+        />
+      )}
       {adding && (
         <AddPlaceSheet
           userId={data.user.id}
           groupId={data.group.id}
           demo={data.demo}
           supabase={data.supabase}
-          onClose={() => setAdding(false)}
+          shared={shared}
+          onClose={() => {
+            setAdding(false)
+            setShared(null)
+          }}
           onSaved={(place) => {
+            track('place_added', { status: place.status, source: place.google_place_id.split(':')[0] })
             data.setPlaces([place, ...data.places])
             notifyMates({ type: 'place_added', placeId: place.id })
           }}
@@ -524,14 +1383,26 @@ function CrumbsShell() {
           userId={data.user.id}
           names={names}
           members={data.members}
-          lists={data.lists}
-          onLists={data.setLists}
+          lists={plainLists}
+          onLists={setPlainLists}
           demo={data.demo}
           supabase={data.supabase}
+          group={data.group}
+          groups={data.groups}
+          v4={data.v4}
+          allPlaces={data.places}
+          menuImport={flag('menu_import')}
+          menuAi={(data.v4 || data.demo) && flag('menu_ai', isAdmin || data.demo)}
+          claims={data.v4 && flag('restaurant_claims')}
+          onMealAdded={(meal) => data.setHomeMeals([meal, ...data.homeMeals])}
+          onOpenPlace={(p) => setSelected(p)}
+          onPlaceAdded={(p) => data.setPlaces((current) => [p, ...current])}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(
-              data.places.map((item) => (item.id === place.id ? (blind ? mergeMasked(item, place, userId) : place) : item)),
+              data.places.map((item) =>
+                item.id === place.id ? (blind ? mergeMasked(item, place, userId) : place) : item,
+              ),
             )
           }}
           onDelete={() => {
@@ -551,10 +1422,63 @@ function CrumbsShell() {
           supabase={data.supabase}
           demo={data.demo}
           onPlace={(id, changes) =>
-            data.setPlaces((current) => current.map((item) => (item.id === id ? { ...item, ...changes } : item)))
+            data.setPlaces((current) =>
+              current.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+            )
           }
         />
       )}
     </main>
+    </ScaleContext.Provider>
+    </SocialContext.Provider>
+  )
+}
+
+/** All · Been · Want to try · Pinned as one track with a sliding highlight. */
+const STATUSES = ['All', 'Been', 'Want to try', 'Pinned'] as const
+function StatusFilter({
+  value,
+  counts,
+  onChange,
+}: {
+  value: string
+  counts: Record<string, number> | null
+  onChange: (value: string) => void
+}) {
+  const track = useRef<HTMLDivElement>(null)
+  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const measure = () => {
+      const active = track.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+      if (active) setThumb({ left: active.offsetLeft, width: active.offsetWidth })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    if (track.current) observer.observe(track.current)
+    return () => observer.disconnect()
+  }, [value, counts])
+  return (
+    <div ref={track} className="status-track" role="tablist" aria-label="Show">
+      {thumb && (
+        <span
+          className="status-thumb"
+          aria-hidden="true"
+          style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
+        />
+      )}
+      {STATUSES.map((item) => (
+        <button
+          key={item}
+          type="button"
+          role="tab"
+          aria-selected={value === item}
+          className={value === item ? 'status-on' : ''}
+          onClick={() => onChange(item)}
+        >
+          {item === 'Pinned' ? '📌 Pinned' : item}
+          {counts && <span className="status-count">{counts[item] ?? 0}</span>}
+        </button>
+      ))}
+    </div>
   )
 }

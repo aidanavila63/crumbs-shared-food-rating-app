@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
+import { PhotoCropper } from './photo-cropper'
 
 /** One photo: add, replace, remove. The caller saves the returned path on its own row. */
 export function PhotoButton({
@@ -11,8 +12,11 @@ export function PhotoButton({
   demo,
   label,
   compact,
+  aspect = 2,
   onChange,
 }: {
+  /** shape of where the photo is shown (width ÷ height); you crop to it before it's saved */
+  aspect?: number
   path?: string | null
   groupId: string
   supabase: any
@@ -23,9 +27,10 @@ export function PhotoButton({
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  const [cropping, setCropping] = useState<File | null>(null)
   const url = photoUrl(path)
 
-  async function pick(file?: File) {
+  async function pick(file?: File | Blob) {
     if (!file) return
     if (demo) return toast('Photos need the real database, not demo mode')
     setBusy(true)
@@ -60,8 +65,23 @@ export function PhotoButton({
         accept="image/*"
         className="hidden"
         aria-label={`${label} photo`}
-        onChange={(event) => pick(event.target.files?.[0])}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) setCropping(file)
+          if (input.current) input.current.value = ''
+        }}
       />
+      {cropping && (
+        <PhotoCropper
+          file={cropping}
+          aspect={aspect}
+          onCancel={() => setCropping(null)}
+          onDone={(blob) => {
+            setCropping(null)
+            pick(blob)
+          }}
+        />
+      )}
       {url && (
         <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${label} photo`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -69,7 +89,8 @@ export function PhotoButton({
             src={url}
             alt={label}
             loading="lazy"
-            className={`${compact ? 'h-12 w-12' : 'h-40 w-full'} rounded-2xl object-cover`}
+            className={`${compact ? 'h-12 w-12' : 'w-full'} rounded-2xl object-cover`}
+            style={compact ? undefined : { aspectRatio: aspect }}
           />
         </a>
       )}

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useGoogleDown, markGoogleDown } from '@/lib/google-status'
@@ -7,11 +7,21 @@ import { isMapsHost } from '@/lib/maps-link'
 import { findOnGoogle, findOnOsm, type FoundPlace } from './place-search'
 
 /** Paste a Google Maps share link and get the place filled in (one search, no list import). */
-export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => void }) {
+export function MapsLinkImport({
+  onFound,
+  supabase,
+  initialLink,
+}: {
+  onFound: (place: FoundPlace) => void
+  supabase?: any
+  /** #164 a link shared to Crumbs from another app: read it straight away */
+  initialLink?: string | null
+}) {
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
-  const [link, setLink] = useState('')
+  const [link, setLink] = useState(initialLink ?? '')
   const [busy, setBusy] = useState(false)
+  const started = useRef(false)
 
   async function run(raw: string = link) {
     if (!raw.trim()) return
@@ -28,7 +38,7 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
       let found: FoundPlace | null = null
       if (places && !googleDown) {
         try {
-          found = await findOnGoogle(places, parsed.name, bias)
+          found = await findOnGoogle(places, parsed.name, bias, supabase)
         } catch {
           if (navigator.onLine) markGoogleDown()
         }
@@ -45,6 +55,13 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
     }
   }
 
+  useEffect(() => {
+    if (!initialLink || started.current) return
+    started.current = true
+    run(initialLink)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLink])
+
   /** iPhone asks before sharing the clipboard, so this is a button instead of reading it silently. */
   async function paste() {
     try {
@@ -54,7 +71,7 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
       setLink(url.href)
       await run(url.href)
     } catch {
-      toast.error('No Google Maps link on your clipboard. Copy one with Share → Copy link.')
+      toast.error('No map link on your clipboard. Copy one with Share → Copy link.')
     }
   }
 
@@ -63,28 +80,27 @@ export function MapsLinkImport({ onFound }: { onFound: (place: FoundPlace) => vo
       <button className="secondary w-full" disabled={busy} onClick={paste}>
         📋 {busy ? 'Reading…' : 'Paste copied Maps link'}
       </button>
-    <details className="text-sm">
-      <summary className="cursor-pointer font-semibold text-primary">
-        Paste a Google Maps link
-      </summary>
-      <div className="mt-2 flex gap-2">
-        <input
-          aria-label="Google Maps link"
-          className="field min-w-0 flex-1"
-          inputMode="url"
-          placeholder="https://maps.app.goo.gl/…"
-          value={link}
-          onChange={(event) => setLink(event.target.value)}
-          onKeyDown={(event) => event.key === 'Enter' && run()}
-        />
-        <button className="secondary !min-h-11 !px-3" disabled={busy} onClick={() => run()}>
-          {busy ? 'Reading…' : 'Import'}
-        </button>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        In Google Maps tap Share → Copy link on a place, then paste it here. One place at a time.
-      </p>
-    </details>
+      <details className="text-sm">
+        <summary className="cursor-pointer font-semibold text-primary">Paste a map link</summary>
+        <div className="mt-2 flex gap-2">
+          <input
+            aria-label="Map link"
+            className="field min-w-0 flex-1"
+            inputMode="url"
+            placeholder="https://maps.app.goo.gl/…"
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && run()}
+          />
+          <button className="secondary !min-h-11 !px-3" disabled={busy} onClick={() => run()}>
+            {busy ? 'Reading…' : 'Import'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          In your maps app tap Share → Copy link on a place, then paste it here. One place at a
+          time.
+        </p>
+      </details>
     </>
   )
 }

@@ -29,3 +29,24 @@ export function parseMapsUrl(raw: string): ParsedMapsLink | null {
   const pin = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/.exec(full) ?? /@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(full)
   return { name, lat: pin ? Number(pin[1]) : null, lng: pin ? Number(pin[2]) : null }
 }
+
+/** #164 Something shared to Crumbs from another app (title / text / url): a map link to read,
+ *  or else a name to search for. */
+export function fromShare(params: URLSearchParams): { link: string | null; name: string | null } {
+  const title = (params.get('title') ?? '').trim()
+  const text = (params.get('text') ?? '').trim()
+  const urls = [params.get('url') ?? '', ...text.split(/\s+/)].filter((part) =>
+    /^https?:\/\//i.test(part),
+  )
+  const link =
+    urls.find((raw) => {
+      try {
+        const u = new URL(raw)
+        return isMapsHost(u.hostname, u.pathname)
+      } catch {
+        return false
+      }
+    }) ?? null
+  const words = (title || text.replace(/https?:\/\/\S+/g, '').split(/\n/)[0]).trim()
+  return { link, name: link ? null : words.slice(0, 120) || null }
+}

@@ -2,9 +2,18 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Profile } from '@/hooks/use-crumbs-data'
-import { ALLERGENS, AVOID_OPTIONS } from '@/lib/place-info'
+import { ALLERGENS, AVOID_OPTIONS, DIETARY } from '@/lib/place-info'
+import { Switch } from './switch'
+import { rememberOn, setRememberOn } from '@/lib/remember'
 
 type Home = { lat: number; lng: number } | null
+
+// #47 Choose which groups see each rating.
+const SHARE: { id: NonNullable<Profile['share_ratings']>; label: string }[] = [
+  { id: 'group', label: 'Just there' },
+  { id: 'ask', label: 'Ask me' },
+  { id: 'all', label: 'All of them' },
+]
 
 /** What you avoid, blind ratings, and your home spot. Warnings use everyone's avoid list. */
 export function PreferencesCard({
@@ -26,10 +35,17 @@ export function PreferencesCard({
 }) {
   const avoid = profile?.avoid ?? []
   const [locating, setLocating] = useState(false)
+  const [remembering, setRemembering] = useState(() => rememberOn())
+  const [waiver, setWaiver] = useState(false)
+  const [areaName, setAreaName] = useState('')
+  const [areaKm, setAreaKm] = useState(2)
+  const [understood, setUnderstood] = useState(false)
 
   async function save(changes: Partial<Profile>) {
     if (!userId) return
-    const before = { avoid: profile?.avoid ?? [], blind_ratings: profile?.blind_ratings ?? false }
+    const before = Object.fromEntries(
+      Object.keys(changes).map((key) => [key, (profile as any)?.[key] ?? null]),
+    ) as Partial<Profile>
     onProfile(changes)
     if (demo) return
     const { error } = await supabase.from('profiles').update(changes).eq('id', userId)
@@ -63,43 +79,191 @@ export function PreferencesCard({
       <div>
         <h2 className="font-serif text-2xl font-bold">What you avoid</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Places that clash get a warning, and Surprise us and Tonight skip them. Allergies and dietary needs:
-          tag dishes with the same words.
+          Places that clash get a warning, and Surprise us and Tonight skip them. Allergies and
+          dietary needs: tag dishes with the same words.
         </p>
         <div className="chip-row mt-3">
           {AVOID_OPTIONS.map((option) => (
-            <button key={option.key} aria-pressed={avoid.includes(option.key)} className={chip(avoid.includes(option.key))} onClick={() => toggle(option.key)}>
+            <button
+              key={option.key}
+              aria-pressed={avoid.includes(option.key)}
+              className={chip(avoid.includes(option.key))}
+              onClick={() => toggle(option.key)}
+            >
               {option.label}
             </button>
           ))}
           {ALLERGENS.map((item) => {
             const key = `a:${item.toLowerCase()}`
             return (
-              <button key={key} aria-pressed={avoid.includes(key)} className={chip(avoid.includes(key))} onClick={() => toggle(key)}>
+              <button
+                key={key}
+                aria-pressed={avoid.includes(key)}
+                className={chip(avoid.includes(key))}
+                onClick={() => toggle(key)}
+              >
                 No {item.toLowerCase()}
               </button>
             )
           })}
         </div>
       </div>
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 size-5"
-          checked={!!profile?.blind_ratings}
-          onChange={(event) => save({ blind_ratings: event.target.checked })}
-        />
+      <div>
+        <h3 className="font-semibold">Spice you’re happy with</h3>
+        <p className="text-sm text-muted-foreground">
+          Dishes hotter than this get a heads-up for you (and your group sees it too).
+        </p>
+        <div className="chip-row mt-2" role="radiogroup" aria-label="Spice you’re happy with">
+          {[0, 1, 2, 3, null].map((level) => (
+            <button
+              key={String(level)}
+              role="radio"
+              aria-checked={(profile?.spice_max ?? null) === level}
+              className={chip((profile?.spice_max ?? null) === level)}
+              onClick={() => save({ spice_max: level })}
+            >
+              {level === null ? 'Anything' : level === 0 ? 'No spice' : '🌶️'.repeat(level)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="font-semibold">Your diet</h3>
+        <div className="chip-row mt-2">
+          {DIETARY.map((item) => {
+            const diet = profile?.diet ?? []
+            const on = diet.includes(item)
+            return (
+              <button
+                key={item}
+                aria-pressed={on}
+                className={chip(on)}
+                onClick={() =>
+                  save({ diet: on ? diet.filter((d) => d !== item) : [...diet, item] })
+                }
+              >
+                {item}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="settings-row">
+          <span>
+            <span className="font-semibold">Safe for me</span>
+            <span className="block text-sm text-muted-foreground">
+              Marks dishes that fit your diet and have none of your allergies reported, and lists
+              them across all your places.
+            </span>
+          </span>
+          <Switch
+            label="Safe for me"
+            checked={!!profile?.safe_for_me}
+            onChange={(on) => (on ? setWaiver(true) : save({ safe_for_me: false }))}
+          />
+        </div>
+        {waiver && !profile?.safe_for_me && (
+          <div className="rise-panel flex flex-col gap-2 rounded-2xl border border-destructive/40 p-3">
+            <p className="text-sm">
+              <strong>Please read:</strong> “Safe for me” only uses what people in your groups
+              reported about dishes. It can be wrong or out of date, and recipes change. Always tell
+              the restaurant about allergies and double-check with them before you order.
+            </p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={understood}
+                onChange={(event) => setUnderstood(event.target.checked)}
+              />
+              I understand — I’ll always confirm with the restaurant
+            </label>
+            <div className="flex gap-2">
+              <button className="secondary flex-1" onClick={() => setWaiver(false)}>
+                Cancel
+              </button>
+              <button
+                className="primary flex-1"
+                disabled={!understood}
+                onClick={() => {
+                  setWaiver(false)
+                  save({ safe_for_me: true })
+                }}
+              >
+                Turn on
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="settings-row">
         <span>
           <span className="font-semibold">Blind ratings</span>
           <span className="block text-sm text-muted-foreground">
             Hide your partner’s scores on anything you haven’t rated yet. This is your own setting.
           </span>
         </span>
-      </label>
+        <Switch
+          label="Blind ratings"
+          checked={!!profile?.blind_ratings}
+          onChange={(on) => save({ blind_ratings: on })}
+        />
+      </div>
+      <div className="settings-row">
+        <span>
+          <span className="font-semibold">Remember my last choices</span>
+          <span className="block text-sm text-muted-foreground">
+            Forms start with what you picked last time (dine-in or takeout, how many people, Want to
+            try or Been). Kept on this phone.
+          </span>
+        </span>
+        <Switch
+          label="Remember my last choices"
+          checked={remembering}
+          onChange={(on) => {
+            setRememberOn(on)
+            setRemembering(on)
+          }}
+        />
+      </div>
+      {profile?.share_ratings !== undefined && (
+        <div className="flex flex-col gap-2">
+          <span>
+            <span className="font-semibold">Your ratings in your other groups</span>
+            <span className="block text-sm text-muted-foreground">
+              When another group you’re in saved the same place. Only your scores go, never your
+              notes.
+            </span>
+          </span>
+          <div className="segmented segmented-3" role="radiogroup" aria-label="Share your ratings">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{
+                transform: `translateX(${SHARE.findIndex((x) => x.id === profile.share_ratings) * 100}%)`,
+              }}
+            />
+            {SHARE.map((option) => (
+              <button
+                key={option.id}
+                role="radio"
+                aria-checked={profile.share_ratings === option.id}
+                className={profile.share_ratings === option.id ? 'segmented-active' : ''}
+                onClick={() => save({ share_ratings: option.id })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <p className="font-semibold">Home</p>
         <p className="text-sm text-muted-foreground">
-          {home ? 'Cards show how far each place is from home.' : 'Save where you live to see distances on cards.'} Saved on this phone only.
+          {home
+            ? 'Cards show how far each place is from home.'
+            : 'Save where you live to see distances on cards.'}{' '}
+          Saved on this phone only.
         </p>
         <div className="mt-2 flex gap-2">
           <button className="secondary" disabled={locating} onClick={setHere}>
@@ -109,6 +273,88 @@ export function PreferencesCard({
             <button className="secondary" onClick={() => onHome(null)}>
               Clear
             </button>
+          )}
+        </div>
+      </div>
+      <div>
+        <p className="font-semibold">Saved areas</p>
+        <p className="text-sm text-muted-foreground">
+          Work, the cottage, your parents’ place… then filter your places to just that area.
+        </p>
+        <div className="mt-2 flex flex-col gap-2">
+          {(profile?.areas ?? []).map((a) => (
+            <div key={a.name} className="flex items-center justify-between gap-2 text-sm">
+              <span>
+                📍 <strong>{a.name}</strong> · within {a.km} km
+              </span>
+              <button
+                className="text-xs text-primary underline"
+                onClick={() =>
+                  save({ areas: (profile?.areas ?? []).filter((x) => x.name !== a.name) })
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {(profile?.areas?.length ?? 0) < 8 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  className="field min-w-0 flex-1"
+                  placeholder="Name (e.g. Work)"
+                  maxLength={20}
+                  value={areaName}
+                  onChange={(event) => setAreaName(event.target.value)}
+                />
+                <select
+                  className="field"
+                  style={{ width: 96 }}
+                  aria-label="Area size"
+                  value={areaKm}
+                  onChange={(event) => setAreaKm(Number(event.target.value))}
+                >
+                  {[1, 2, 5, 10, 25].map((km) => (
+                    <option key={km} value={km}>
+                      {km} km
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="secondary"
+                disabled={!areaName.trim() || locating}
+                onClick={() => {
+                  setLocating(true)
+                  navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                      setLocating(false)
+                      const name = areaName.trim().slice(0, 20)
+                      save({
+                        areas: [
+                          ...(profile?.areas ?? []).filter((x) => x.name !== name),
+                          {
+                            name,
+                            lat: Math.round(position.coords.latitude * 1e4) / 1e4,
+                            lng: Math.round(position.coords.longitude * 1e4) / 1e4,
+                            km: areaKm,
+                          },
+                        ],
+                      })
+                      setAreaName('')
+                      toast.success(`${name} saved — find it above your places`)
+                    },
+                    () => {
+                      setLocating(false)
+                      toast.error('Could not get your location. Allow location and try again.')
+                    },
+                    { enableHighAccuracy: false, timeout: 10000 },
+                  )
+                }}
+              >
+                📍 Save “{areaName.trim() || 'area'}” as where I am now
+              </button>
+            </div>
           )}
         </div>
       </div>

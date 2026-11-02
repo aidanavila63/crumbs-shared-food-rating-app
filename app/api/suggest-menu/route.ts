@@ -1,8 +1,10 @@
 import { generateObject } from 'ai'
+import { overDailyLimit } from '@/lib/tier-limits'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
-import { readMenuText } from '@/lib/menu-fetch'
+import { flagAllows } from '@/lib/flags-server'
+import { RobotsBlockedError, readMenuText } from '@/lib/menu-fetch'
 
 export const maxDuration = 30
 
@@ -27,6 +29,10 @@ export async function POST(request: Request) {
       { error: 'Slow down a little and try again in a few minutes' },
       { status: 429 },
     )
+  if (!(await flagAllows(supabase, 'menu_import', data.user.id)))
+    return Response.json({ error: 'Menu import is switched off for now' }, { status: 403 })
+  const capped = await overDailyLimit(supabase, data.user.id, 'menuImport')
+  if (capped) return Response.json({ error: capped }, { status: 429 })
 
   const { placeId } = await request.json()
   if (!placeId || typeof placeId !== 'string') {
@@ -61,6 +67,8 @@ export async function POST(request: Request) {
       reason: result.object.dishes.length ? 'ok' : 'no-menu',
     })
   } catch (error: any) {
+    // The site's robots.txt asks apps not to read it: respect that.
+    if (error instanceof RobotsBlockedError) return Response.json({ dishes: [], reason: 'blocked' })
     return Response.json({ error: error?.message || 'AI request failed' }, { status: 502 })
   }
 }

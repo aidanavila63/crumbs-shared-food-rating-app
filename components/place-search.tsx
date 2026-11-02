@@ -4,6 +4,10 @@ import { toast } from 'sonner'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useUserLocation } from '@/lib/use-user-location'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
+import { hoursFromGoogle, type Hours } from '@/lib/place-info'
+import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restaurants'
+import { allowanceMessage, takeAllowance } from '@/lib/allowance'
+import { isFoodPlace } from '@/lib/food-types'
 
 export type FoundPlace = {
   google_place_id: string
@@ -15,9 +19,16 @@ export type FoundPlace = {
   cuisine: string | null
   website: string | null
   google_maps_url: string | null
+  /** Filled when the place came from Google (same request, so no second lookup later). */
+  opening_hours?: Hours | null
+  business_status?: string | null
+  hours_checked_at?: string | null
 }
 
-// Only these fields are requested, to stay inside the cheap Places tiers.
+// One request gets everything. priceLevel + websiteURI already put this in Google's
+// "Enterprise" tier (1,000 free a month), and a request is billed once at its highest tier,
+// so adding the opening hours here is free — and saves the separate hours lookup that used
+// to happen the first time a place was opened.
 const FIELDS = [
   'id',
   'displayName',
@@ -27,6 +38,9 @@ const FIELDS = [
   'websiteURI',
   'googleMapsURI',
   'primaryType',
+  'regularOpeningHours',
+  'businessStatus',
+  'utcOffsetMinutes',
 ]
 
 const PRICE: Record<string, number> = {
@@ -62,6 +76,9 @@ export function toFoundPlace(place: any): FoundPlace {
     cuisine: cuisineFrom(place.primaryType),
     website: place.websiteURI ?? null,
     google_maps_url: place.googleMapsURI ?? null,
+    opening_hours: hoursFromGoogle(place),
+    business_status: (place.businessStatus as string | null) ?? null,
+    hours_checked_at: new Date().toISOString(),
   }
 }
 
@@ -71,7 +88,32 @@ type Suggestion = {
   secondary: string
   prediction?: any
   osm?: FoundPlace
+  /** Already on Crumbs (another group saved it): no Google lookup needed */
+  crumbs?: Restaurant
 }
+
+/** A shared Crumbs restaurant, in the shape the add-place form wants. */
+export function fromRestaurant(r: Restaurant): FoundPlace {
+  return {
+    google_place_id: r.source_key,
+    name: r.name,
+    formatted_address: r.formatted_address,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    price_level: r.price_level,
+    cuisine: r.cuisine,
+    website: r.website,
+    google_maps_url: r.google_maps_url,
+    opening_hours: r.opening_hours,
+    business_status: r.business_status,
+    hours_checked_at: r.hours_checked_at,
+  }
+}
+// Shared details younger than this are reused instead of asking Google again.
+const FRESH_DAYS = 60
+const fresh = (r: Restaurant | null) =>
+  !!r?.details_checked_at &&
+  Date.now() - new Date(r.details_checked_at).getTime() < FRESH_DAYS * 864e5
 
 async function searchOsm(
   query: string,
@@ -84,7 +126,7 @@ async function searchOsm(
     url.searchParams.set('lon', String(location.lng))
   }
   const response = await fetch(url)
-  if (!response.ok) throw new Error('OpenStreetMap search failed')
+  if (!response.ok) throw new Error('Search failed')
   return (await response.json()).results ?? []
 }
 
@@ -113,7 +155,10 @@ export function PlaceSearch({
   onPick,
   placeholder = 'Search restaurants',
   autoFocus,
+  supabase,
 }: {
+  /** When given, Crumbs' own shared restaurants are searched first (free). */
+  supabase?: any
   value: string
   onChange: (text: string) => void
   onPick: (place: FoundPlace) => void
@@ -125,6 +170,10 @@ export function PlaceSearch({
   const googleDown = useGoogleDown()
   const [waited, setWaited] = useState(false)
   const [results, setResults] = useState<Suggestion[]>([])
+  // Something matched but wasn't a place to eat (e.g. a hardware store of the same name).
+  const [hiddenCount, setHiddenCount] = useState(0)
+  const [searched, setSearched] = useState('')
+  const [crumbs, setCrumbs] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
   // Text we just filled in from a pick: don't search for it again.
@@ -141,15 +190,33 @@ export function PlaceSearch({
     skipValue.current = null
     if ((!places && !useOsm) || value.trim().length < 3) {
       setResults([])
+      setCrumbs([])
+      setHiddenCount(0)
+      setSearched('')
       return
     }
     let cancelled = false
+    // #27 Places other groups already saved come first and cost nothing to pick.
+    if (supabase)
+      searchRestaurants(supabase, value.trim(), location).then((found) => {
+        if (cancelled) return
+        setCrumbs(
+          found.map((r) => ({
+            id: `crumbs:${r.id}`,
+            main: r.name,
+            secondary: r.formatted_address ?? '',
+            crumbs: r,
+          })),
+        )
+      })
     const timer = setTimeout(
       async () => {
         if (useOsm) {
           try {
             const found = await searchOsm(value.trim(), location)
             if (cancelled) return
+            setHiddenCount(0)
+            setSearched(value.trim())
             setResults(
               found.map((item) => ({
                 id: item.google_place_id,
@@ -173,9 +240,12 @@ export function PlaceSearch({
           const { suggestions } =
             await places!.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
           if (cancelled) return
+          const predictions = suggestions.filter((item: any) => item.placePrediction)
+          const food = predictions.filter((item: any) => isFoodPlace(item.placePrediction.types))
+          setHiddenCount(predictions.length - food.length)
+          setSearched(value.trim())
           setResults(
-            suggestions
-              .filter((item: any) => item.placePrediction)
+            food
               .slice(0, 5)
               .map((item: any) => ({
                 id: item.placePrediction.placeId,
@@ -203,15 +273,46 @@ export function PlaceSearch({
     setLoading(true)
     try {
       let found: FoundPlace
-      if (item.osm) {
+      if (item.crumbs) {
+        found = fromRestaurant(item.crumbs)
+      } else if (item.osm) {
         found = await enrichOsm(item.osm)
       } else {
-        const place = item.prediction.toPlace()
-        await place.fetchFields({ fields: FIELDS })
-        token.current = null // a pick ends the billing session
-        found = toFoundPlace(place)
+        // Saved by another group recently? Use that copy (saves an Enterprise lookup).
+        const shared = supabase ? await findRestaurant(supabase, item.prediction.placeId) : null
+        if (shared && fresh(shared)) found = fromRestaurant(shared)
+        else if (supabase && !(await takeAllowance(supabase, 'google')).ok) {
+          // Over Crumbs' Google budget: keep the place ID (allowed forever) and take the
+          // location from OpenStreetMap instead of paying for a Google lookup.
+          toast(
+            allowanceMessage({ ok: false, reason: 'budget_day' }, 'Detailed lookups') +
+              ' Using basic place info.',
+          )
+          const osm = await findOnOsm(`${item.main} ${item.secondary}`, location).catch(() => null)
+          found = {
+            ...(osm ?? {
+              name: item.main,
+              formatted_address: item.secondary || null,
+              latitude: null,
+              longitude: null,
+              price_level: null,
+              cuisine: null,
+              website: null,
+              google_maps_url: null,
+            }),
+            name: item.main,
+            google_place_id: item.prediction.placeId,
+          }
+        } else {
+          const place = item.prediction.toPlace()
+          await place.fetchFields({ fields: FIELDS })
+          found = toFoundPlace(place)
+        }
+        token.current = null // a pick ends the session either way
       }
       setResults([])
+      setCrumbs([])
+      setSearched('')
       skipValue.current = found.name
       onChange(found.name)
       onPick(found)
@@ -236,16 +337,35 @@ export function PlaceSearch({
       />
       {useOsm && (
         <p className="text-xs text-muted-foreground">
-          Google search is unavailable right now, so this is using OpenStreetMap. It may be missing
-          prices and some details.
+          Full search is unavailable right now, so this is basic search. It may be missing prices
+          and some details.
         </p>
       )}
       {loading && <p className="text-xs text-muted-foreground">Getting details…</p>}
-      {results.length > 0 && (
+      {!loading && searched && searched === value.trim() && (
+        <p className="text-xs text-muted-foreground">
+          {results.length + crumbs.length === 0
+            ? hiddenCount
+              ? 'Only places to eat and drink show here. '
+              : 'No matches. '
+            : 'Not the one? '}
+          If it’s missing or listed wrong, paste its Google Maps link below.
+        </p>
+      )}
+      {results.length + crumbs.length > 0 && (
         <div className="suggestions" role="listbox">
-          {results.map((item) => (
+          {[
+            ...crumbs,
+            ...results.filter(
+              (item) =>
+                !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
+            ),
+          ].map((item) => (
             <button key={item.id} type="button" onClick={() => pick(item)}>
-              <span className="font-semibold">{item.main}</span>
+              <span className="font-semibold">
+                {item.main}
+                {item.crumbs && <span className="tag ml-2 align-middle">On Crumbs</span>}
+              </span>
               <span className="text-xs text-muted-foreground">{item.secondary}</span>
             </button>
           ))}
@@ -260,7 +380,10 @@ export async function findOnGoogle(
   places: any,
   query: string,
   bias?: { lat: number; lng: number } | null,
+  supabase?: any,
 ): Promise<FoundPlace | null> {
+  // Over Crumbs' Google budget → null, and callers use OpenStreetMap instead.
+  if (supabase && !(await takeAllowance(supabase, 'google')).ok) return null
   const request: any = { textQuery: query, fields: FIELDS, maxResultCount: 1 }
   if (bias) request.locationBias = { center: bias, radius: 500 }
   const { places: found } = await places.Place.searchByText(request)

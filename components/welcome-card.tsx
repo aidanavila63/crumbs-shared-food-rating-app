@@ -70,9 +70,9 @@ export function WelcomeCard({
           </button>
           {showTips && (
             <p className="mt-2 text-muted-foreground">
-              On iPhone, open this page in Safari, tap the Share button, then{' '}
-              <em>Add to Home Screen</em>. Tip: sign in with Google inside the installed app, since
-              email links open in Safari.
+              Open this page in your phone’s browser, tap Share (or the ⋮ menu), then{' '}
+              <em>Add to Home Screen</em>. Tip: sign in inside the installed app, since email links
+              open in the browser.
             </p>
           )}
         </li>
