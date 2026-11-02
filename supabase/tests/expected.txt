@@ -21,3 +21,4 @@ batch27_test 3
 batch31_test 6
 batch32_test 3
 owned_facts_test 2
+invites_test 4

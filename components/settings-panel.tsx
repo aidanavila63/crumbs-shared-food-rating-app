@@ -24,6 +24,7 @@ const NOTIFY_TYPES = [
   ['craving', 'Cravings', 'Maya is craving ramen'],
   ['mention', 'Mentions', 'Maya mentioned you in a comment'],
   ['plan', 'Plan reminders', 'Coming up: Friday dinner at Hana Ramen'],
+  ['join', 'Joining', 'Sam asked to join · Maya let you in'],
 ] as const
 
 type Home = { lat: number; lng: number } | null

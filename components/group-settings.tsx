@@ -9,6 +9,7 @@ import { Switch } from './switch'
 import { PhotoButton } from './photo-button'
 import { JOIN_MODES } from './group-switcher'
 import { askConfirm } from '@/lib/ask'
+import { inviteLink } from '@/lib/invite'
 
 // One emoji per group, picked from a list (free typing let two squeeze in and get cut off).
 export const GROUP_EMOJIS = [
@@ -168,6 +169,40 @@ export function GroupSettingsCard({
               />
             </>
           )}
+        </div>
+      )}
+
+      {v4 && (
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">People with your invite link</span>
+          <div className="segmented" role="radiogroup" aria-label="People with your invite link">
+            <span
+              className="segmented-thumb"
+              aria-hidden="true"
+              style={{ transform: `translateX(${group.invite_approval ? 100 : 0}%)` }}
+            />
+            {([false, true] as const).map((approval) => (
+              <button
+                key={String(approval)}
+                role="radio"
+                aria-checked={!!group.invite_approval === approval}
+                className={!!group.invite_approval === approval ? 'segmented-active' : ''}
+                onClick={() =>
+                  save(
+                    { invite_approval: approval },
+                    approval ? 'You’ll let each new person in' : 'Invite links let people straight in',
+                  )
+                }
+              >
+                {approval ? 'I let them in' : 'Join straight away'}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {group.invite_approval
+              ? 'Opening your link lets them ask to join. They wait on the invite page until you (or an admin) tap Let in on the Group tab.'
+              : 'Anyone who opens your invite link (or types the code) can join after signing in.'}
+          </p>
         </div>
       )}
 
@@ -448,7 +483,7 @@ export function GroupSettingsCard({
                   <button
                     className="font-semibold text-primary underline"
                     onClick={async () => {
-                      const link = `${window.location.origin}/?join=${group.guest_code}`
+                      const link = inviteLink(group.guest_code!)
                       try {
                         if (navigator.share)
                           await navigator.share({ text: `Have a look at ${group.name} on Crumbs: ${link}` })

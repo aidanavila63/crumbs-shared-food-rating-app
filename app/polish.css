@@ -185,8 +185,13 @@ button.chip:active {
   display: flex;
   gap: 2px;
   overflow-x: auto;
+  /* Sideways only: no dragging it up/down or rubber-banding it around (iPhone). */
+  overflow-y: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--border);
+  /* The underline is drawn inside the bar so nothing pokes out below it. */
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 .status-track::-webkit-scrollbar {
   display: none;
@@ -219,7 +224,7 @@ button.chip:active {
 .status-thumb {
   position: absolute;
   left: 0;
-  bottom: -1px;
+  bottom: 0;
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: var(--primary);
@@ -370,4 +375,62 @@ button.chip:active {
   color: var(--primary-foreground);
   font-weight: 700;
   font-size: 0.85rem;
+}
+
+/* Every sideways strip scrolls sideways only (no vertical wiggle, no pulling the page with it). */
+.chip-row,
+.smart-row,
+.reason-row,
+.dish-gallery {
+  overflow-y: hidden;
+  overscroll-behavior-x: none;
+}
+
+/* Invite landing page */
+.invite-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.invite-badge {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+  border-radius: 20px;
+  background: var(--muted);
+  font-size: 2rem;
+  box-shadow: var(--shadow);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .invite-card {
+    animation: invite-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.12) both;
+  }
+}
+@keyframes invite-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+}
+.invite-waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.invite-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--primary);
+  animation: invite-pulse 1.4s ease-in-out infinite;
+}
+@keyframes invite-pulse {
+  50% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
 }

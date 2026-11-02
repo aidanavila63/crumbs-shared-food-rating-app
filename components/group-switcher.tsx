@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import type { Group } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
 import { oneEmoji } from '@/lib/group-look'
+import { cleanCode, invitePath, isJoinCode } from '@/lib/invite'
 import { Overlay } from './overlay'
 
 export type PublicGroup = {
@@ -118,21 +119,13 @@ export function GroupSwitcher({
     }
   }
 
-  async function join() {
-    if (code.length !== 6) return
-    setBusy(true)
-    try {
-      if (demo) throw new Error('Joining needs the real database, not demo mode')
-      const { data, error } = await supabase.rpc('join_group', { code })
-      if (error) throw error
-      haptic('success')
-      toast.success(`Joined ${data.name}`)
-      onJoined(data)
-    } catch (error: any) {
-      toast.error(error?.message || 'Could not join')
-    } finally {
-      setBusy(false)
-    }
+  /** A code opens its invite page: the group, then Join (or Ask to join if the owner lets people in). */
+  function join() {
+    const clean = cleanCode(code)
+    if (!isJoinCode(clean)) return
+    if (demo) return toast('Joining needs the real database, not demo mode')
+    haptic('tap')
+    window.location.href = invitePath(clean)
   }
 
   async function search() {
@@ -310,13 +303,13 @@ export function GroupSwitcher({
             <input
               className="field uppercase tracking-widest"
               aria-label="Join code"
-              maxLength={6}
+              maxLength={8}
               placeholder="ABC123"
               value={code}
               onChange={(event) => setCode(event.target.value.toUpperCase())}
               onKeyDown={(event) => event.key === 'Enter' && join()}
             />
-            <button className="primary" disabled={busy || code.length !== 6} onClick={join}>
+            <button className="primary" disabled={busy || !isJoinCode(code)} onClick={join}>
               Join group
             </button>
           </div>

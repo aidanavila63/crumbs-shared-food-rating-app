@@ -35,7 +35,8 @@ import { maskRatings, mergeMasked } from '@/lib/place-info'
 import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
-import { captureJoinCode, clearJoinCode, pendingJoinCode, stripJoinParam } from '@/lib/invite'
+import { cleanCode, invitePath, isJoinCode, pendingInvite } from '@/lib/invite'
+import { SignInForm } from './sign-in-form'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
@@ -340,8 +341,6 @@ function CrumbsShell() {
   const [shared, setShared] = useState<{ link: string | null; name: string | null } | null>(null)
   const launched = useRef(false)
   const [surprising, setSurprising] = useState(false)
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
   const [query, setQuery] = useState('')
   // Typing stays snappy on big groups; the list catches up a beat later.
   const deferredQuery = useDeferredValue(query)
@@ -476,19 +475,6 @@ function CrumbsShell() {
     setFilter('All')
     setAreaName(null)
   }
-  async function magic() {
-    setBusy(true)
-    const { error } = await data.supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo:
-          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${location.origin}/auth/callback`,
-      },
-    })
-    setBusy(false)
-    if (error) toast.error(error.message)
-    else setSent(true)
-  }
   async function createGroup() {
     if (!groupName.trim() || !data.user) return
     setBusy(true)
@@ -502,43 +488,57 @@ function CrumbsShell() {
     setGroupName('')
     toast.success('Group created')
   }
-  async function joinGroup(code = joinCode) {
-    if (!data.user) return
-    setBusy(true)
-    const { data: group, error } = await data.supabase.rpc('join_group', { code })
-    setBusy(false)
-    if (error) return toast.error(error.message)
-    data.setGroups((current) =>
-      current.some((item) => item.id === group.id) ? current : [...current, group],
-    )
-    data.setGroup(group)
-    setJoinCode('')
-    haptic('success')
-    toast.success(`Joined ${group.name}`)
+  /** A code typed in: open its invite page (it explains the group, then joins or asks). */
+  function openInvite(code = joinCode) {
+    const clean = cleanCode(code)
+    if (!isJoinCode(clean)) return toast.error('That code doesn’t look right')
+    window.location.href = invitePath(clean)
   }
-  // #44 Invite links (…/?join=CODE): remember the code through sign-in, then join automatically.
-  const [invite] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    captureJoinCode()
-    return pendingJoinCode()
-  })
-  const joining = useRef(false)
+  // Invite links open their own page (/invite/CODE). Signing in from there can bring you back to
+  // the app instead, so send you on to the invite you opened (while you're in no group yet, or
+  // right after signing in from it).
+  const forwarded = useRef(false)
   useEffect(() => {
-    // Next's router writes the URL once on start-up, so tidy ?join= just after that.
-    const timer = setTimeout(stripJoinParam, 0)
-    return () => clearTimeout(timer)
-  }, [])
+    if (!data.user || !data.groupsLoaded || data.demo || forwarded.current) return
+    const pending = pendingInvite()
+    if (!pending) return
+    if (data.groups.length && Date.now() - pending.at > 15 * 60_000) return
+    forwarded.current = true
+    window.location.replace(invitePath(pending.code))
+  }, [data.user, data.groupsLoaded, data.groups.length, data.demo])
+  // Invite-only for now: can you start a group, and which groups are you waiting on?
+  const [gate, setGate] = useState<{ canStart: boolean; waiting: { group_id: string; name: string; emoji: string | null }[] } | null>(null)
   useEffect(() => {
-    if (!data.user || !data.groupsLoaded || joining.current) return
-    const code = pendingJoinCode()
-    if (!code) return
-    joining.current = true
-    clearJoinCode()
-    const existing = data.groups.find((group) => group.join_code === code)
-    if (existing) data.setGroup(existing)
-    else if (!data.demo) joinGroup(code)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.user, data.groupsLoaded])
+    if (!data.user || !data.groupsLoaded || data.group || data.demo) return
+    let live = true
+    Promise.all([
+      data.supabase.rpc('can_start_group'),
+      data.supabase.rpc('my_join_requests'),
+    ]).then(([start, waiting]: any[]) => {
+      if (!live) return
+      // Before the invites SQL has run, both calls fail: keep today's screen (anyone can start).
+      setGate({ canStart: start.error ? true : !!start.data, waiting: waiting.data ?? [] })
+    })
+    return () => {
+      live = false
+    }
+  }, [data.user, data.groupsLoaded, data.group, data.demo, data.supabase])
+  // Waiting to be let in: look every 15 s (while the screen is showing) and open the app once in.
+  const waitingOn = gate?.waiting.length ?? 0
+  useEffect(() => {
+    if (!waitingOn || !data.user || data.group) return
+    const uid = data.user.id
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      const { data: rows } = await data.supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', uid)
+        .limit(1)
+      if (rows?.length) window.location.reload()
+    }, 15_000)
+    return () => clearInterval(timer)
+  }, [waitingOn, data.user, data.group, data.supabase])
   useEffect(() => {
     if (!data.user || !data.group || data.loading || launched.current || typeof window === 'undefined')
       return
@@ -612,57 +612,17 @@ function CrumbsShell() {
       <main className="grid min-h-screen place-items-center bg-background p-5">
         <div className="surface w-full max-w-sm">
           <Wordmark height={38} />
-          {invite && (
-            <p className="tag preview-pop mt-6 w-fit">
-              🎉 You’re invited — sign in to join the group
-            </p>
-          )}
           <h1 className="mt-8 font-serif text-4xl font-bold">Your shared food map</h1>
           <p className="mt-3 leading-6 text-muted-foreground">
             Collect the places and dishes you love together.{' '}
-            {!invite && (
-              <a href="/welcome" className="font-semibold text-primary underline">
-                What is Crumbs?
-              </a>
-            )}
+            <a href="/welcome" className="font-semibold text-primary underline">
+              What is Crumbs?
+            </a>
           </p>
-          {sent ? (
-            <div className="mt-7 rounded-2xl bg-muted p-4 text-sm">
-              <p>
-                Magic link sent to <strong>{email}</strong>. Check your inbox (and spam).
-              </p>
-              <button className="mt-2 underline" onClick={() => setSent(false)}>
-                Use a different email
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                aria-label="Email address"
-                onKeyDown={(event) => event.key === 'Enter' && email && !busy && magic()}
-                className="field mt-7"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-              <button className="primary mt-3 w-full" disabled={!email || busy} onClick={magic}>
-                {busy ? 'Sending…' : 'Send magic link'}
-              </button>
-              <button
-                className="secondary mt-3 w-full"
-                onClick={async () => {
-                  const { error } = await data.supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: { redirectTo: `${location.origin}/auth/callback` },
-                  })
-                  if (error) toast.error(error.message)
-                }}
-              >
-                Continue with Google
-              </button>
-            </>
-          )}
+          <SignInForm supabase={data.supabase} />
+          <p className="mt-5 text-center text-xs text-muted-foreground">
+            Crumbs is invite-only for now. Got an invite link? Open it to join your group.
+          </p>
         </div>
       </main>
     )
@@ -672,12 +632,39 @@ function CrumbsShell() {
         <p className="text-muted-foreground">Loading Crumbs…</p>
       </main>
     )
-  if (!data.group)
+  if (!data.group) {
+    const codeBox = (
+      <section className="surface">
+        <h2 className="font-serif text-2xl font-bold">Have a code?</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The 6-letter code from your invite, or just open the invite link.
+        </p>
+        <input
+          aria-label="Join code"
+          onKeyDown={(event) => event.key === 'Enter' && openInvite()}
+          className="field mt-4 uppercase tracking-widest"
+          maxLength={8}
+          placeholder="ABC123"
+          value={joinCode}
+          onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+        />
+        <button
+          className="secondary mt-3 w-full"
+          disabled={!isJoinCode(joinCode)}
+          onClick={() => openInvite()}
+        >
+          Open invite
+        </button>
+      </section>
+    )
+    const waiting = gate?.waiting ?? []
     return (
       <main className="min-h-screen bg-background p-5">
         <div className="mx-auto flex max-w-xl flex-col gap-4 pt-8">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-serif text-4xl font-bold">Start your food map</h1>
+            <h1 className="font-serif text-4xl font-bold">
+              {gate && !gate.canStart ? 'Almost there' : 'Start your food map'}
+            </h1>
             <button
               className="secondary !min-h-10 !px-3 text-xs"
               onClick={() => data.supabase.auth.signOut()}
@@ -685,42 +672,57 @@ function CrumbsShell() {
               Sign out
             </button>
           </div>
-          <section className="surface">
-            <h2 className="font-serif text-2xl font-bold">Create a group</h2>
-            <input
-              aria-label="Group name"
-              onKeyDown={(event) => event.key === 'Enter' && createGroup()}
-              className="field mt-4"
-              placeholder="Maya & Jordan"
-              value={groupName}
-              onChange={(event) => setGroupName(event.target.value)}
-            />
-            <button className="primary mt-3 w-full" disabled={busy} onClick={createGroup}>
-              {busy ? 'Creating…' : 'Create group'}
-            </button>
-          </section>
-          <section className="surface">
-            <h2 className="font-serif text-2xl font-bold">Join with a code</h2>
-            <input
-              aria-label="Join code"
-              onKeyDown={(event) => event.key === 'Enter' && joinGroup()}
-              className="field mt-4 uppercase tracking-widest"
-              maxLength={6}
-              placeholder="ABC123"
-              value={joinCode}
-              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-            />
-            <button
-              className="secondary mt-3 w-full"
-              disabled={busy || joinCode.length !== 6}
-              onClick={() => joinGroup()}
-            >
-              Join group
-            </button>
-          </section>
+          {waiting.map((w) => (
+            <section key={w.group_id} className="surface" role="status">
+              <p className="invite-waiting">
+                <span className="invite-dot" aria-hidden="true" />
+                Waiting to be let into {w.emoji ? `${w.emoji} ` : ''}
+                {w.name}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                You’ll get in as soon as the owner says yes — open Crumbs again, or your invite link.
+              </p>
+            </section>
+          ))}
+          {!gate ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : gate.canStart ? (
+            <>
+              <section className="surface">
+                <h2 className="font-serif text-2xl font-bold">Create a group</h2>
+                <input
+                  aria-label="Group name"
+                  onKeyDown={(event) => event.key === 'Enter' && createGroup()}
+                  className="field mt-4"
+                  placeholder="Maya & Jordan"
+                  value={groupName}
+                  onChange={(event) => setGroupName(event.target.value)}
+                />
+                <button className="primary mt-3 w-full" disabled={busy} onClick={createGroup}>
+                  {busy ? 'Creating…' : 'Create group'}
+                </button>
+              </section>
+              {codeBox}
+            </>
+          ) : (
+            <>
+              <section className="surface">
+                <h2 className="font-serif text-2xl font-bold">Crumbs is invite-only for now</h2>
+                <p className="mt-2 leading-6 text-muted-foreground">
+                  You’re signed in as {data.user.email}. To get in, open the invite link someone in
+                  a group sent you — it shows the group and lets you join from there.
+                </p>
+                <a href="/welcome#waitlist" className="primary mt-4 block w-full text-center">
+                  No invite? Join the waitlist
+                </a>
+              </section>
+              {codeBox}
+            </>
+          )}
         </div>
       </main>
     )
+  }
   // Food crawls (#26) live in Decide & Plan, not in the Lists view.
   const plainLists = data.lists.filter((list) => list.kind !== 'crawl')
   const setPlainLists = (next: typeof data.lists) =>

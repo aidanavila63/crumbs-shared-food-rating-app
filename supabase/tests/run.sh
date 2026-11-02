@@ -19,6 +19,8 @@ for f in "${FILES[@]}"; do
 done
 # The older tests make lots of groups per person: lift the owned-groups limit (batch32 sets it back).
 psql -q -d "$DB" -c "update public.point_rules set day_caps = day_caps || '{\"groups\": [null, null, null, null, null]}'" >/dev/null
+# …and let anyone start a group (invite-only is tested on its own in invites_test).
+psql -q -d "$DB" -c "update public.feature_flags set state = 'everyone' where key = 'start_groups'" >/dev/null
 fail=0
 while read -r name expected; do
   [ -z "$name" ] && continue

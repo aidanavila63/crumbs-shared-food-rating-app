@@ -118,6 +118,8 @@ export type Group = {
   /** how people get in: code/link only, ask the owner, or anyone */
   join_mode?: 'invite' | 'request' | 'open' | null
   description?: string | null
+  /** invite links: false = join straight away, true = the owner/admins let each person in */
+  invite_approval?: boolean | null
 }
 export type Ingredient = { qty: string; unit: string; item: string }
 export type HomeMealRating = { user_id: string; score: number; notes: string | null }
