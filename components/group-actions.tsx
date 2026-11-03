@@ -9,6 +9,7 @@ import { haptic } from '@/lib/motion'
 import { inviteLink } from '@/lib/invite'
 import { Overlay } from './overlay'
 import { GroupSettingsCard } from './group-settings'
+import { SharePosterCard } from './share-poster'
 
 export function GroupActions({
   group,
@@ -161,6 +162,7 @@ export function GroupActions({
                 </div>
               )}
             </div>
+            <SharePosterCard group={group} />
           </div>
         </Overlay>
       )}

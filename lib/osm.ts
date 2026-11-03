@@ -122,6 +122,10 @@ export async function overpass(query: string): Promise<any> {
       }),
     )
   } catch {
-    throw new Error(`Map data is busy right now (${errors[0] ?? 'error'}). Try again in a minute.`)
+    throw new Error(
+      errors.every((e) => e === 'timeout')
+        ? 'The free map data took too long to answer. Try again in a minute.'
+        : 'The free map data is busy right now. Try again in a minute.',
+    )
   }
 }

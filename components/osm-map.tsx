@@ -54,6 +54,7 @@ export function OsmMap({
 
   useEffect(() => {
     let cancelled = false
+    let resizer: ResizeObserver | null = null
     ;(async () => {
       const L = (await import('leaflet')).default
       if (cancelled || !box.current || state.current) return
@@ -69,6 +70,9 @@ export function OsmMap({
       }).addTo(map)
       map.on('click', () => callbacks.current.onBackgroundClick())
       state.current = { L, map, layer: L.layerGroup().addTo(map), fitted: '' }
+      // The map is sized to the room left on screen, which can change: redraw the tiles to fit.
+      resizer = new ResizeObserver(() => map.invalidateSize())
+      resizer.observe(box.current)
       onProbe?.(() => {
         const c = map.getCenter()
         return { lat: c.lat, lng: c.lng }
@@ -77,6 +81,7 @@ export function OsmMap({
     })()
     return () => {
       cancelled = true
+      resizer?.disconnect()
       state.current?.map.remove()
       state.current = null
     }

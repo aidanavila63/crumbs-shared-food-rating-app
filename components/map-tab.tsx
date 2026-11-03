@@ -1,11 +1,12 @@
 'use client'
 import { useShowScore } from './score-input'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LocateFixed, SlidersHorizontal, Telescope, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { notYetSaved, type FoundSpot } from '@/lib/add-found'
 import { distanceKm, mustTry } from '@/lib/stats'
-import { AdvancedMarker, Map, useMap } from '@vis.gl/react-google-maps'
+import { AdvancedMarker, Map, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { googleNearby } from './nearby-off-list'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { OsmMap } from './osm-map'
@@ -98,6 +99,35 @@ function Recenter({ target }: { target: { lat: number; lng: number } | null }) {
   return null
 }
 
+/**
+ * Sizes the map to the room that's really left: from where it starts on the page down to the tab
+ * bar, so every button on it is on screen without scrolling (the group name can wrap to two lines,
+ * rows above can come and go, phone toolbars slide away, so this measures instead of guessing).
+ */
+function useFitMapHeight(ref: React.RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      const main = el.closest('main')
+      const pad = (main && parseFloat(getComputedStyle(main).paddingBottom)) || 112
+      const top = el.getBoundingClientRect().top + window.scrollY
+      el.style.setProperty('--map-fit-h', `${Math.max(260, Math.floor(window.innerHeight - top - pad))}px`)
+    }
+    fit()
+    // Once the tab's opening animation has settled, and whenever the page above changes size.
+    const settle = setTimeout(fit, 400)
+    const observer = new ResizeObserver(fit)
+    observer.observe(document.body)
+    window.addEventListener('resize', fit)
+    return () => {
+      clearTimeout(settle)
+      observer.disconnect()
+      window.removeEventListener('resize', fit)
+    }
+  }, [ref])
+}
+
 export function MapTab({
   places,
   apiKey,
@@ -106,8 +136,11 @@ export function MapTab({
   labels = {},
   demo = false,
   onAddFound,
+  supabase,
 }: {
   demo?: boolean
+  /** for the Google backup's allowance check */
+  supabase?: any
   /** #36 Explore: save an OpenStreetMap spot to Want to try */
   onAddFound?: (spot: FoundSpot) => Promise<boolean>
   route?: { lat: number; lng: number }[]
@@ -117,6 +150,8 @@ export function MapTab({
   onSelect: (place: Place) => void
 }) {
   const show = useShowScore()
+  const frame = useRef<HTMLDivElement>(null)
+  useFitMapHeight(frame)
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'All' | Status | 'Pinned'>('All')
   // #22 extra filters + #21 pin colours (pin colours are remembered on this phone).
@@ -171,13 +206,26 @@ export function MapTab({
           google_maps_url: null,
         }))
       else {
-        const url = new URL('/api/osm/nearby', window.location.origin)
-        url.searchParams.set('lat', String(center.lat))
-        url.searchParams.set('lon', String(center.lng))
-        const response = await fetch(url, { signal: abort.signal })
-        const json = await response.json()
-        if (!response.ok) throw new Error(json.error)
-        found = json.results ?? []
+        // Free open map data first; when it's busy or empty, Google's nearby search once (it uses the
+        // Google allowance, like "Discover nearby" does).
+        found = []
+        let freeError: string | null = null
+        try {
+          const url = new URL('/api/osm/nearby', window.location.origin)
+          url.searchParams.set('lat', String(center.lat))
+          url.searchParams.set('lon', String(center.lng))
+          const response = await fetch(url, { signal: abort.signal })
+          const json = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(json.error || 'Could not explore right now')
+          found = json.results ?? []
+        } catch (error: any) {
+          if (abort.signal.aborted) throw error
+          freeError = error?.message || 'Could not explore right now'
+        }
+        if ((freeError || !found.length) && googlePlaces && !googleDown) {
+          found = await googleNearby(googlePlaces, center, supabase).catch(() => found)
+        }
+        if (freeError && !found.length) throw new Error(freeError)
       }
       if (abort.signal.aborted) return
       const fresh = notYetSaved(found, places)
@@ -235,6 +283,7 @@ export function MapTab({
   )
   const preview = filtered.find((place) => place.id === previewId) ?? null
   const googleDown = useGoogleDown()
+  const googlePlaces = useMapsLibrary('places')
   const [chooseOsm, setChooseOsm] = useState(false)
   const [googleReady, setGoogleReady] = useState(false)
   useEffect(() => {
@@ -271,7 +320,7 @@ export function MapTab({
           pin. Open one and tap <strong>Find on map</strong>.
         </p>
       )}
-      <div className="relative overflow-hidden rounded-[28px]">
+      <div ref={frame} className="relative overflow-hidden rounded-[28px]">
         <div className="chip-row absolute left-3 right-3 top-3 z-10">
           {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
             <button

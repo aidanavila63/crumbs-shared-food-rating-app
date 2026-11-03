@@ -37,6 +37,7 @@ import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { cleanCode, invitePath, isJoinCode, pendingInvite } from '@/lib/invite'
 import { SignInForm } from './sign-in-form'
+import { StatusFilter } from './status-filter'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
@@ -1164,6 +1165,8 @@ function CrumbsShell() {
                     </div>
                   )}
                   <StatusFilter
+                    items={STATUSES}
+                    display={(item) => (item === 'Pinned' ? '📌 Pinned' : item)}
                     value={filter}
                     counts={!data.loading && data.places.length > 0 ? counts : null}
                     onChange={(item) => {
@@ -1319,6 +1322,7 @@ function CrumbsShell() {
                 route={crawl.route}
                 labels={crawl.labels}
                 demo={data.demo}
+                supabase={data.supabase}
                 onAddFound={async (spot) => {
                   try {
                     const place = await addFoundPlace({
@@ -1593,51 +1597,5 @@ function CrumbsShell() {
   )
 }
 
-/** All · Been · Want to try · Pinned as one track with a sliding highlight. */
+/** All · Been · Want to try · Pinned (the bar itself lives in status-filter.tsx). */
 const STATUSES = ['All', 'Been', 'Want to try', 'Pinned'] as const
-function StatusFilter({
-  value,
-  counts,
-  onChange,
-}: {
-  value: string
-  counts: Record<string, number> | null
-  onChange: (value: string) => void
-}) {
-  const track = useRef<HTMLDivElement>(null)
-  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null)
-  useLayoutEffect(() => {
-    const measure = () => {
-      const active = track.current?.querySelector<HTMLElement>('[aria-selected="true"]')
-      if (active) setThumb({ left: active.offsetLeft, width: active.offsetWidth })
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    if (track.current) observer.observe(track.current)
-    return () => observer.disconnect()
-  }, [value, counts])
-  return (
-    <div ref={track} className="status-track" role="tablist" aria-label="Show">
-      {thumb && (
-        <span
-          className="status-thumb"
-          aria-hidden="true"
-          style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
-        />
-      )}
-      {STATUSES.map((item) => (
-        <button
-          key={item}
-          type="button"
-          role="tab"
-          aria-selected={value === item}
-          className={value === item ? 'status-on' : ''}
-          onClick={() => onChange(item)}
-        >
-          {item === 'Pinned' ? '📌 Pinned' : item}
-          {counts && <span className="status-count">{counts[item] ?? 0}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}

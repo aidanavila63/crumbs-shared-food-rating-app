@@ -39,7 +39,7 @@ const FOOD_TYPES = [
 ]
 
 /** Backup when the free map data is down: Google's nearby search (uses the Google allowance). */
-async function googleNearby(places: any, center: LatLng, supabase: any): Promise<FoundSpot[]> {
+export async function googleNearby(places: any, center: LatLng, supabase: any): Promise<FoundSpot[]> {
   if (!places?.Place?.searchNearby) return []
   if (supabase && !(await takeAllowance(supabase, 'google')).ok) return []
   const { places: found } = await places.Place.searchNearby({

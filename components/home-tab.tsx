@@ -2,7 +2,7 @@
 // #77 Home cooking: meals you make yourselves, kept apart from restaurants.
 import { track } from '@/lib/analytics'
 import { useEffect, useMemo, useState } from 'react'
-import { ChefHat, Dices, Plus } from 'lucide-react'
+import { ArrowUpDown, ChefHat, ChevronDown, Dices, Plus, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { lastCooked, mealAverage } from '@/lib/meals'
@@ -13,9 +13,12 @@ import { haptic } from '@/lib/motion'
 import { undoableDelete } from '@/lib/undoable'
 import { RatingStars } from './rating-stars'
 import { timeAgo } from './social'
+import { StatusFilter } from './status-filter'
 
 const today = () => new Date().toISOString().slice(0, 10)
 export { mealAverage } from '@/lib/meals'
+
+const HOME_FILTERS = ['All', 'Cooked', 'Want to cook', 'Shared'] as const
 
 export function HomeTab({
   meals,
@@ -77,6 +80,12 @@ export function HomeTab({
     }
   }, [sharedIds, demo, supabase])
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Cooked lately'>('Newest')
+  const homeCounts = {
+    All: meals.length,
+    Cooked: meals.filter((m) => m.status === 'Cooked').length,
+    'Want to cook': meals.filter((m) => m.status === 'Want to cook').length,
+    Shared: meals.filter((m) => m.recipe_public).length,
+  }
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [status, setStatus] = useState<HomeMeal['status']>('Cooked')
@@ -309,43 +318,72 @@ export function HomeTab({
               </div>
             </div>
           )}
-          <div className="chip-row">
-            {(['All', 'Cooked', 'Want to cook', 'Shared'] as const).map((item) => (
-              <button
-                key={item}
-                aria-pressed={filter === item}
-                className={`chip ${filter === item ? 'chip-active' : ''}`}
-                onClick={() => setFilter(item)}
+          <StatusFilter
+            label="Show meals"
+            items={HOME_FILTERS}
+            value={filter}
+            counts={meals.length ? homeCounts : null}
+            onChange={(item) => {
+              if (item !== filter) haptic('select')
+              setFilter(item as typeof filter)
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="pick-pill">
+              <ArrowUpDown size={15} aria-hidden="true" />
+              <span aria-hidden="true">{sort}</span>
+              <select
+                aria-label="Sort by"
+                value={sort}
+                onChange={(event) => {
+                  haptic('select')
+                  setSort(event.target.value as typeof sort)
+                }}
               >
-                {item}
-              </button>
-            ))}
-          </div>
-          {kinds.length > 0 && (
-            <div className="chip-row" aria-label="Kind of dish">
-              {kinds.map((k) => (
-                <button
-                  key={k}
-                  aria-pressed={kind === k}
-                  className={`chip chip-sm ${kind === k ? 'chip-active' : ''}`}
-                  onClick={() => setKind(kind === k ? null : k)}
+                {(['Newest', 'Top rated', 'Cooked lately'] as const).map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+            {kinds.length > 0 && (
+              <label className={`pick-pill ${kind ? 'pick-pill-on' : ''}`}>
+                <Utensils size={15} aria-hidden="true" />
+                <span aria-hidden="true">{kind ?? 'All kinds'}</span>
+                <select
+                  aria-label="Kind of dish"
+                  value={kind ?? ''}
+                  onChange={(event) => {
+                    haptic('select')
+                    setKind(event.target.value || null)
+                  }}
                 >
-                  {k}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="chip-row">
-            {(['Newest', 'Top rated', 'Cooked lately'] as const).map((item) => (
+                  <option value="">All kinds</option>
+                  {kinds.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={15} aria-hidden="true" />
+              </label>
+            )}
+            {(filter !== 'All' || kind || sort !== 'Newest') && (
               <button
-                key={item}
-                aria-pressed={sort === item}
-                className={`chip chip-sm ${sort === item ? 'chip-active' : ''}`}
-                onClick={() => setSort(item)}
+                type="button"
+                className="text-sm font-semibold text-primary"
+                onClick={() => {
+                  haptic('tap')
+                  setFilter('All')
+                  setKind(null)
+                  setSort('Newest')
+                }}
               >
-                {item}
+                Reset
               </button>
-            ))}
+            )}
           </div>
           {shown.length ? (
             <div className="stagger flex flex-col gap-3">

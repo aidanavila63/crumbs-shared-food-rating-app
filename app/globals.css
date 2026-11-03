@@ -2324,11 +2324,12 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
 .swipe-card-static:active {
   transform: scale(0.98);
 }
-/* The map fills the screen between the group name and the tab bar, no scrolling needed
-   (251px = header + group name + tab bar + a little gap; plus the phone's notch and home bar). */
+/* The map fills the screen between the rows above it and the tab bar, no scrolling needed. */
 .map-fit {
-  height: calc(100dvh - 251px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  min-height: 360px;
+  /* --map-fit-h is measured in map-tab.tsx (room left above the tab bar); the calc is the
+     fallback until it has run. */
+  height: var(--map-fit-h, calc(100dvh - 251px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  min-height: 260px;
 }
 /* Invite + settings: two small round buttons beside the group name. */
 .group-actions {
