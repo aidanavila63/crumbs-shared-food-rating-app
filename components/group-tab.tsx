@@ -10,6 +10,7 @@ import { photoUrl } from '@/lib/photos'
 import { tasteProfile } from '@/lib/catch-up'
 import { oneEmoji } from '@/lib/group-look'
 import { JoinRequestsCard } from './join-requests'
+import { AccessRequestsCard } from './access-requests'
 import { askConfirm } from '@/lib/ask'
 
 function Stat({ value, label }: { value: number; label: string }) {
@@ -72,6 +73,8 @@ export function GroupTab({
           </p>
         </div>
       )}
+      {/* New people waiting for the gatekeeper's OK to get into Crumbs (only they see it). */}
+      {v4 && <AccessRequestsCard supabase={supabase} demo={demo} onReload={onReload} />}
       {canManage && v4 && (
         <JoinRequestsCard group={group} supabase={supabase} demo={demo} onReload={onReload} />
       )}

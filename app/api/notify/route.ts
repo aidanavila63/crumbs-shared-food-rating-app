@@ -33,7 +33,74 @@ export async function POST(request: Request) {
   // Who to tell when it isn't "the rest of the group" (join requests go to the owner/admins).
   let fixed: string[] | null = null
   let db: any = supabase
-  if (body.type === 'join_request') {
+  if (body.type === 'access_request' || body.type === 'access_answered') {
+    // Getting into Crumbs itself: the asker isn't in any group yet, so reading the gatekeeper's
+    // (or the asker's) phones needs the service key (server only); without it, nobody is told.
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!serviceKey || !url) return Response.json({ sent: 0 })
+    const { data: access } = await supabase.rpc('my_access')
+    const service = createServiceClient(url, serviceKey, { auth: { persistSession: false } })
+    if (body.type === 'access_request') {
+      // Someone asked to be let in: tell the gatekeeper (Aidan), or the admins if nobody is.
+      if (!access?.asked || access.status !== 'pending') return Response.json({ sent: 0 })
+      let { data: keepers } = await service.from('profiles').select('id').eq('lets_people_in', true)
+      if (!keepers?.length)
+        ({ data: keepers } = await service.from('profiles').select('id').eq('is_admin', true))
+      const asker = (profile?.display_name || 'Someone').split(' ')[0].slice(0, 30)
+      const sent = await deliver(
+        service,
+        (keepers ?? []).map((row: any) => row.id),
+        'join',
+        `${asker} wants to join Crumbs${access.group ? ` (invited to ${access.group})` : ''} — tap Let in on the Group tab`,
+        'crumbs-access',
+      )
+      return Response.json({ sent })
+    }
+    // The gatekeeper said yes: tell the person, and if their group lets people in one by one,
+    // tell that group's owner/admins they're now waiting.
+    const person = String(body.userId ?? '')
+    if (!access?.is_gatekeeper || !/^[0-9a-f-]{36}$/i.test(person)) return Response.json({ sent: 0 })
+    const { data: them } = await service.from('profiles').select('access,display_name').eq('id', person).maybeSingle()
+    if (them?.access !== 'approved') return Response.json({ sent: 0 })
+    const group = String(body.group ?? '').slice(0, 60)
+    let sent = await deliver(
+      service,
+      [person],
+      'join',
+      body.status === 'joined' && group
+        ? `${who} let you into Crumbs — you’re in ${group} 🎉`
+        : body.status === 'requested' && group
+          ? `${who} let you into Crumbs 🎉 Now waiting for ${group}’s owner to let you in`
+          : `${who} let you into Crumbs 🎉`,
+      'crumbs-access',
+    )
+    if (body.status === 'requested' && body.groupId) {
+      const gid = String(body.groupId)
+      const { data: waiting } = await service
+        .from('group_join_requests')
+        .select('group_id,groups(name)')
+        .eq('group_id', gid)
+        .eq('user_id', person)
+        .maybeSingle()
+      if (waiting) {
+        const { data: admins } = await service
+          .from('group_members')
+          .select('user_id')
+          .eq('group_id', gid)
+          .in('role', ['owner', 'admin'])
+        const asker = (them.display_name || 'Someone').split(' ')[0].slice(0, 30)
+        sent += await deliver(
+          service,
+          (admins ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id),
+          'join',
+          `${asker} asked to join ${(waiting as any).groups?.name ?? 'your group'} — tap Let in on the Group tab`,
+          `crumbs-join-${gid}`,
+        )
+      }
+    }
+    return Response.json({ sent })
+  } else if (body.type === 'join_request') {
     // Someone asked to join from an invite link. They aren't in the group, so reading its
     // owner/admins needs the service key (server only); without it, nobody is told.
     const code = cleanCode(body.code)
@@ -141,12 +208,20 @@ export async function POST(request: Request) {
             : body.type === 'join_request' || body.type === 'join_accepted'
               ? 'join'
               : 'craving'
+  const sent = await deliver(db, others, kind, text, tag)
+  return Response.json({ sent })
+}
+
+/** Push `text` to these people's phones, skipping anyone who switched this kind off (#73). */
+async function deliver(db: any, ids: string[], kind: string, text: string, tag: string) {
+  let others = ids
+  if (!others.length) return 0
   const { data: prefs, error: prefsError } = await db.from('profiles').select('id,notify').in('id', others)
   if (!prefsError && prefs) {
     const off = new Set(prefs.filter((row: any) => row.notify?.[kind] === false).map((row: any) => row.id))
     others = others.filter((id: string) => !off.has(id))
   }
-  if (!others.length) return Response.json({ sent: 0 })
+  if (!others.length) return 0
   const { data: subs } = await db
     .from('push_subscriptions')
     .select('endpoint,p256dh,auth')
@@ -154,8 +229,8 @@ export async function POST(request: Request) {
 
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'mailto:crumbs@example.com',
-    publicKey,
-    privateKey,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!,
   )
   const payload = JSON.stringify({ title: 'Crumbs', body: text, tag })
   let sent = 0
@@ -174,5 +249,5 @@ export async function POST(request: Request) {
       }
     }),
   )
-  return Response.json({ sent })
+  return sent
 }

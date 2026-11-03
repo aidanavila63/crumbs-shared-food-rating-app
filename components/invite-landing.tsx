@@ -24,6 +24,15 @@ export type InvitePreview = {
   requested: boolean
   /** only once you're in */
   id: string | null
+  /** Crumbs itself: new people wait for the gatekeeper's OK (after the approval SQL) */
+  gate?: boolean
+  /** where you stand with Crumbs (null when signed out) */
+  access?: 'approved' | 'pending' | 'declined' | null
+  /** you've asked the gatekeeper */
+  asked?: boolean
+  /** Crumbs isn't taking new people */
+  closed?: boolean
+  gatekeeper?: string | null
 }
 
 const POLL = 10_000
@@ -90,10 +99,14 @@ export function InviteLanding({
     return () => clearTimeout(timer)
   }, [signed, preview?.member, preview?.id])
 
+  // Not let into Crumbs yet (everyone new waits for the gatekeeper's OK, then the group's rule).
+  const needsOk = signed && !!preview?.access && preview.access !== 'approved' && !preview.member
+  const waitingApp = needsOk && !!preview?.asked && preview?.access === 'pending'
   // Waiting to be let in: check every 10 s while the page is open (for up to 30 minutes).
   const waiting = signed && !!preview?.requested && !preview.member
+  const polling = waiting || waitingApp
   useEffect(() => {
-    if (!waiting) return
+    if (!polling) return
     const started = Date.now()
     const timer = setInterval(() => {
       if (Date.now() - started > POLL_FOR) return clearInterval(timer)
@@ -105,7 +118,7 @@ export function InviteLanding({
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onShow)
     }
-  }, [waiting, refresh])
+  }, [polling, refresh])
 
   async function join() {
     if (!preview) return
@@ -115,6 +128,15 @@ export function InviteLanding({
     setBusy(false)
     if (error) return toast.error(error.message)
     haptic('success')
+    if (data?.status === 'pending_app') {
+      setPreview({ ...preview, asked: true })
+      fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'access_request' }),
+      }).catch(() => {})
+      return
+    }
     if (data?.status === 'requested') {
       setPreview({ ...preview, requested: true })
       fetch('/api/notify', {
@@ -130,10 +152,12 @@ export function InviteLanding({
   async function cancel() {
     if (!preview) return
     setBusy(true)
-    const { error } = await supabase.rpc('cancel_join_by_invite', { code })
+    const { error } = waitingApp
+      ? await supabase.rpc('cancel_access_request')
+      : await supabase.rpc('cancel_join_by_invite', { code })
     setBusy(false)
     if (error) return toast.error(error.message)
-    setPreview({ ...preview, requested: false })
+    setPreview({ ...preview, requested: false, asked: false })
     clearJoinCode()
     toast('Request cancelled')
   }
@@ -160,7 +184,12 @@ export function InviteLanding({
     )
 
   const owner = preview.owner || 'The owner'
-  const action = preview.approval ? 'Ask to join' : `Join ${preview.name}`
+  const keeper = preview.gatekeeper || 'The Crumbs team'
+  const asks = preview.approval || needsOk
+  const action = asks ? 'Ask to join' : `Join ${preview.name}`
+  const after = preview.approval
+    ? `${owner} lets you into ${preview.name}`
+    : `you’ll go straight into ${preview.name}`
 
   return (
     <main className="grid min-h-screen place-items-center bg-background p-5">
@@ -197,6 +226,34 @@ export function InviteLanding({
               Open Crumbs
             </button>
           </div>
+        ) : waitingApp ? (
+          <div className="mt-6 flex flex-col gap-3" role="status">
+            <p className="invite-waiting">
+              <span className="invite-dot" aria-hidden="true" />
+              Waiting for {keeper} to let you into Crumbs
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Everyone new to Crumbs gets a quick OK first. Once {keeper} says yes, {after}. Keep
+              this page open, or come back to this link later.
+            </p>
+            <button className="secondary w-full" disabled={busy} onClick={cancel}>
+              Cancel request
+            </button>
+          </div>
+        ) : needsOk && preview.access === 'declined' ? (
+          <div className="mt-6 flex flex-col gap-3" role="status">
+            <p className="font-semibold">Crumbs isn’t open to this account right now</p>
+            <p className="text-sm text-muted-foreground">
+              If you think that’s a mistake, ask whoever sent the link to check with {keeper}.
+            </p>
+          </div>
+        ) : needsOk && preview.closed ? (
+          <div className="mt-6 flex flex-col gap-3" role="status">
+            <p className="font-semibold">Crumbs isn’t taking new people right now</p>
+            <Link href="/welcome#waitlist" className="primary text-center">
+              Join the waitlist
+            </Link>
+          </div>
         ) : waiting ? (
           <div className="mt-6 flex flex-col gap-3" role="status">
             <p className="invite-waiting">
@@ -213,10 +270,16 @@ export function InviteLanding({
           </div>
         ) : signed ? (
           <div className="mt-6 flex flex-col gap-3">
-            {preview.approval && (
+            {needsOk ? (
               <p className="text-sm text-muted-foreground">
-                {owner} lets people in one by one. Ask, and you’ll get in as soon as they say yes.
+                {keeper} lets each new person into Crumbs. Ask, and once they say yes, {after}.
               </p>
+            ) : (
+              preview.approval && (
+                <p className="text-sm text-muted-foreground">
+                  {owner} lets people in one by one. Ask, and you’ll get in as soon as they say yes.
+                </p>
+              )
             )}
             <button className="primary w-full" disabled={busy} onClick={join}>
               {busy ? 'One moment…' : action}
@@ -225,7 +288,7 @@ export function InviteLanding({
         ) : (
           <div className="mt-6">
             <p className="font-semibold">
-              Sign in to {preview.approval ? 'ask to join' : 'join'}
+              Sign in to {preview.approval || preview.gate ? 'ask to join' : 'join'}
             </p>
             <p className="text-sm text-muted-foreground">
               New to Crumbs? Use any email — it makes your account.

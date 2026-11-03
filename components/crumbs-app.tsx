@@ -105,6 +105,17 @@ type Tab = (typeof tabs)[number]['id']
 // Old tab names (before the Oct 2026 layout) map onto the new ones.
 const OLD_TABS: Record<string, Tab> = { Lists: 'Places', Goals: 'Decide', 'For you': 'Decide' }
 const tabIndex = (id: Tab) => tabs.findIndex((item) => item.id === id)
+/** Where you stand with Crumbs itself (everyone new waits for the gatekeeper's OK). */
+type Access = {
+  status: 'approved' | 'pending' | 'declined'
+  mode: 'admin' | 'everyone' | 'off'
+  asked: boolean
+  note: string | null
+  group: string | null
+  gatekeeper: string | null
+  is_gatekeeper: boolean
+}
+
 export function CrumbsApp() {
   return (
     <MapsProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
@@ -506,23 +517,66 @@ function CrumbsShell() {
     forwarded.current = true
     window.location.replace(invitePath(pending.code))
   }, [data.user, data.groupsLoaded, data.groups.length, data.demo])
-  // Invite-only for now: can you start a group, and which groups are you waiting on?
-  const [gate, setGate] = useState<{ canStart: boolean; waiting: { group_id: string; name: string; emoji: string | null }[] } | null>(null)
-  useEffect(() => {
-    if (!data.user || !data.groupsLoaded || data.group || data.demo) return
-    let live = true
-    Promise.all([
+  // Invite-only for now: are you let into Crumbs yet (everyone new waits for the gatekeeper's OK),
+  // can you start a group, and which groups are you waiting on?
+  const [gate, setGate] = useState<{
+    canStart: boolean
+    waiting: { group_id: string; name: string; emoji: string | null }[]
+    access: Access | null
+  } | null>(null)
+  const loadGate = useCallback(async () => {
+    const [start, waiting, access] = await Promise.all([
       data.supabase.rpc('can_start_group'),
       data.supabase.rpc('my_join_requests'),
-    ]).then(([start, waiting]: any[]) => {
-      if (!live) return
-      // Before the invites SQL has run, both calls fail: keep today's screen (anyone can start).
-      setGate({ canStart: start.error ? true : !!start.data, waiting: waiting.data ?? [] })
-    })
-    return () => {
-      live = false
+      data.supabase.rpc('my_access'),
+    ])
+    // Before the invites / approval SQL has run these fail: keep today's screen.
+    const next = {
+      canStart: start.error ? true : !!start.data,
+      waiting: waiting.data ?? [],
+      access: access.error ? null : ((access.data as Access | null) ?? null),
     }
-  }, [data.user, data.groupsLoaded, data.group, data.demo, data.supabase])
+    setGate(next)
+    return next
+  }, [data.supabase])
+  useEffect(() => {
+    if (!data.user || !data.groupsLoaded || data.group || data.demo) return
+    loadGate()
+  }, [data.user, data.groupsLoaded, data.group, data.demo, loadGate])
+  // Waiting for the gatekeeper: look every 15 s (while the screen is showing); once let in, reload
+  // (you may already be in the group you were invited to).
+  const askedIn = !!gate?.access?.asked && gate.access.status === 'pending'
+  useEffect(() => {
+    if (!askedIn || !data.user || data.group) return
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      const { data: access } = await data.supabase.rpc('my_access')
+      if (access?.status === 'approved') window.location.reload()
+    }, 15_000)
+    return () => clearInterval(timer)
+  }, [askedIn, data.user, data.group, data.supabase])
+  const [note, setNote] = useState('')
+  async function askIn() {
+    setBusy(true)
+    const { error } = await data.supabase.rpc('request_access', { code: null, note: note.trim() || null })
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    haptic('success')
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'access_request' }),
+    }).catch(() => {})
+    loadGate()
+  }
+  async function cancelAsk() {
+    setBusy(true)
+    const { error } = await data.supabase.rpc('cancel_access_request')
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    toast('Request cancelled')
+    loadGate()
+  }
   // Waiting to be let in: look every 15 s (while the screen is showing) and open the app once in.
   const waitingOn = gate?.waiting.length ?? 0
   useEffect(() => {
@@ -658,6 +712,85 @@ function CrumbsShell() {
       </section>
     )
     const waiting = gate?.waiting ?? []
+    const access = gate?.access
+    if (access && access.status !== 'approved') {
+      const keeper = access.gatekeeper || 'The Crumbs team'
+      return (
+        <main className="min-h-screen bg-background p-5">
+          <div className="mx-auto flex max-w-xl flex-col gap-4 pt-8">
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="font-serif text-4xl font-bold">Almost there</h1>
+              <button
+                className="secondary !min-h-10 !px-3 text-xs"
+                onClick={() => data.supabase.auth.signOut()}
+              >
+                Sign out
+              </button>
+            </div>
+            {access.status === 'declined' ? (
+              <section className="surface">
+                <h2 className="font-serif text-2xl font-bold">Crumbs isn’t open to you right now</h2>
+                <p className="mt-2 leading-6 text-muted-foreground">
+                  You’re signed in as {data.user.email}. If you think that’s a mistake, ask whoever
+                  invited you to check with {keeper}.
+                </p>
+                <a href="/welcome#waitlist" className="secondary mt-4 block w-full text-center">
+                  Join the waitlist
+                </a>
+              </section>
+            ) : access.asked ? (
+              <section className="surface flex flex-col gap-3" role="status">
+                <p className="invite-waiting">
+                  <span className="invite-dot" aria-hidden="true" />
+                  Waiting for {keeper} to let you into Crumbs
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {access.group
+                    ? `Once they say yes you’ll head to ${access.group}. `
+                    : 'Once they say yes you can start or join a group. '}
+                  Keep this open, or come back later.
+                </p>
+                <button className="secondary w-full" disabled={busy} onClick={cancelAsk}>
+                  Cancel request
+                </button>
+              </section>
+            ) : access.mode === 'off' ? (
+              <section className="surface">
+                <h2 className="font-serif text-2xl font-bold">Crumbs isn’t taking new people right now</h2>
+                <p className="mt-2 leading-6 text-muted-foreground">
+                  Join the waitlist and you’ll hear when it opens up.
+                </p>
+                <a href="/welcome#waitlist" className="primary mt-4 block w-full text-center">
+                  Join the waitlist
+                </a>
+              </section>
+            ) : (
+              <>
+                <section className="surface">
+                  <h2 className="font-serif text-2xl font-bold">Crumbs lets people in one by one</h2>
+                  <p className="mt-2 leading-6 text-muted-foreground">
+                    {keeper} checks everyone who joins. Got an invite link? Open it and ask from there
+                    — you’ll head to that group once you’re in. No link? Ask here.
+                  </p>
+                  <textarea
+                    aria-label="Who are you? (optional)"
+                    className="field mt-4 min-h-20"
+                    maxLength={300}
+                    placeholder="Who are you, or who sent you? (optional)"
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                  <button className="primary mt-3 w-full" disabled={busy} onClick={askIn}>
+                    {busy ? 'One moment…' : 'Ask to join Crumbs'}
+                  </button>
+                </section>
+                {codeBox}
+              </>
+            )}
+          </div>
+        </main>
+      )
+    }
     return (
       <main className="min-h-screen bg-background p-5">
         <div className="mx-auto flex max-w-xl flex-col gap-4 pt-8">

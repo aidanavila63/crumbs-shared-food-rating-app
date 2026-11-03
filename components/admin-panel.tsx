@@ -12,6 +12,7 @@ import { BACKUP_BUCKET } from '@/lib/backup'
 import { monthPace } from '@/lib/limits'
 import { Switch } from './switch'
 import { askConfirm } from '@/lib/ask'
+import { AccessRequestsCard } from './access-requests'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
@@ -365,6 +366,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         </p>
       </section>
 
+      <AccessRequestsCard supabase={supabase} demo={demo} full />
       <BudgetsCard supabase={supabase} demo={demo} />
       <PointsCard supabase={supabase} demo={demo} />
       <BuildersCard supabase={supabase} demo={demo} />
