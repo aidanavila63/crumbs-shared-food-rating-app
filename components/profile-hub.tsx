@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { BarChart3, Gift, Globe2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
+import { BarChart3, Gift, Globe2, Link2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
 import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { badges } from '@/lib/badges'
 import { haptic } from '@/lib/motion'
@@ -14,6 +14,7 @@ import { AdminPanel } from './admin-panel'
 import { ContributionsCard } from './contributions-card'
 import { OwnerPanel } from './owner-panel'
 import { WrappedStory } from './wrapped'
+import { PublicProfileSettings } from './public-profile-settings'
 import { OwnerTag } from './restaurant-profile'
 import { PhotoCropper } from './photo-cropper'
 import { PHOTO_BUCKET, photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
@@ -29,6 +30,7 @@ export type HubPage =
   | 'admin'
   | 'restaurants'
   | 'wrapped'
+  | 'public'
 
 const initial = (name?: string | null) => (name?.trim()?.[0] ?? '?').toUpperCase()
 
@@ -142,6 +144,7 @@ export function ProfileHub({
       icon: <Gift />,
       note: season.open ? (season.half ? 'First half' : 'Open now') : `Opens ${season.opens}`,
     },
+    { page: 'public', label: 'Public profile', icon: <Link2 /> },
     // #100 Verified restaurant owners get their own area.
     ...(profile?.restaurant_owner
       ? [{ page: 'restaurants' as const, label: 'Your restaurants', icon: <Store /> }]
@@ -273,6 +276,18 @@ export function ProfileHub({
               ))}
             </div>
           </div>
+        </Overlay>
+      )}
+
+      {pages.at(-1) === 'public' && (
+        <Overlay label="Public profile" title="Public profile" onClose={closeTop}>
+          <PublicProfileSettings
+            supabase={settings.supabase}
+            demo={settings.demo}
+            userId={userId}
+            profile={profile}
+            places={allPlaces}
+          />
         </Overlay>
       )}
 

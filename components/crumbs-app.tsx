@@ -30,6 +30,7 @@ import { PlaceCard, placeAverage } from './place-card'
 import { WelcomeCard } from './welcome-card'
 import { MapsProvider } from './maps-provider'
 import { notifyMates } from '@/lib/push'
+import { takePendingAdd } from '@/lib/pending-add'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
 import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
@@ -602,7 +603,9 @@ function CrumbsShell() {
     const action = params.get('do')
     const incoming = fromShare(params)
     // #212 scanned a restaurant's "Find us on Crumbs" poster: add it (or open it if it's saved)
-    const addId = params.get('add')
+    // (or "Save to try" on a public restaurant page, remembered across signing in)
+    const pendingAdd = takePendingAdd()
+    const addId = params.get('add') ?? pendingAdd
     if (addId && /^[0-9a-f-]{36}$/i.test(addId)) {
       params.delete('add')
       const rest = params.toString()

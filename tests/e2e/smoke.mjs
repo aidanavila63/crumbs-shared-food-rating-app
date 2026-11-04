@@ -29,8 +29,9 @@ await step('home loads', async () => {
 await step('open a place', async () => {
   await page.getByLabel('Search places').fill('Hana')
   await page.getByRole('button', { name: 'Open Hana Ramen' }).click()
+  await page.getByRole('tab', { name: 'Our group' }).click() // the place page opens on the shared Overview
   await page.getByText('Group average').waitFor({ timeout: 10000 })
-  await page.getByRole('button', { name: 'Close', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Close Hana Ramen' }).click()
   await page.waitForTimeout(600)
   await page.getByLabel('Search places').fill('')
   await page.getByLabel('Search places').blur() // the tab bar hides while typing
@@ -60,6 +61,28 @@ await step('settings and guidebook', async () => {
   await page.getByRole('button', { name: 'Settings', exact: true }).first().click()
   await page.getByText('Guidebook').first().click()
   await page.getByText('Tips & tricks').first().waitFor({ timeout: 5000 })
+})
+
+// Public pages: anyone with the link (no sign-in)
+await step('public restaurant page', async () => {
+  await page.goto(`${url}/r/etobicoke/lantern-pho`, { waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Lantern Pho' }).waitFor({ timeout: 10000 })
+  await page.getByRole('tab', { name: 'Menu' }).click()
+  await page.getByText('Beef pho').first().waitFor({ timeout: 5000 })
+  await page.getByRole('tab', { name: 'Info' }).click()
+  await page.getByText('Hours').first().waitFor({ timeout: 5000 })
+})
+await step('unknown restaurant link', async () => {
+  await page.goto(`${url}/r/etobicoke/nope`, { waitUntil: 'networkidle' })
+  await page.getByText('couldn\'t find that restaurant').waitFor({ timeout: 5000 })
+})
+await step('public profile page', async () => {
+  await page.goto(`${url}/u/mayaeats`, { waitUntil: 'networkidle' })
+  await page.getByText('@mayaeats').waitFor({ timeout: 10000 })
+})
+await step('private profile link', async () => {
+  await page.goto(`${url}/u/nobody`, { waitUntil: 'networkidle' })
+  await page.getByText('This profile is private').waitFor({ timeout: 5000 })
 })
 
 await browser.close()

@@ -39,6 +39,8 @@ import { QuickCheck } from './quick-check'
 import { Overlay } from './overlay'
 import type { Hours } from '@/lib/place-info'
 import { useRestaurant } from '@/hooks/use-restaurant'
+import { usePublicRestaurant } from '@/hooks/use-public-restaurant'
+import { RestaurantPage } from './restaurant-page'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
@@ -446,6 +448,13 @@ export function PlaceSheet({
     demo,
     v4,
     onLinked: (id) => onUpdate({ ...latest.current, restaurant_id: id }),
+  })
+  // Everyone-together page (Overview · Menu · Photos · Info); this group's own page is "Our group".
+  const shared = usePublicRestaurant({
+    restaurantId: place.restaurant_id,
+    name: place.name,
+    supabase,
+    demo,
   })
   const [editInfo, setEditInfo] = useState<boolean | 'hours'>(false)
   // Hours a member entered also update this group's copy, so "Open now" uses them straight away.
@@ -1003,12 +1012,14 @@ export function PlaceSheet({
         [null, sortedDishes.filter((dish) => !dish.course)] as [null, Dish[]],
       ].filter(([, list]) => list.length)
     : [[null, sortedDishes]]
-  return (
-    <Sheet label={place.name} onClose={onClose}>
+  const groupBody = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
-          {restaurant.restaurant?.owner_verified && <VerifiedBadge />}
+          {!shared && (
+            <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
+          )}
+          {!shared && restaurant.restaurant?.owner_verified && <VerifiedBadge />}
           <p className="mt-1 text-sm text-muted-foreground">
             {place.formatted_address || 'Address not added'}
           </p>
@@ -1053,9 +1064,11 @@ export function PlaceSheet({
             </p>
           )}
         </div>
-        <button className="icon-btn" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
+        {!shared && (
+          <button className="icon-btn" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        )}
       </div>
       <div className="mt-5 flex flex-col gap-5">
         {(privateNote.nextTime || privateNote.loyalty || dishes.some((d) => d.wishlist)) && (
@@ -1559,6 +1572,26 @@ export function PlaceSheet({
           </button>
         )}
       </div>
+    </>
+  )
+  return (
+    <Sheet label={place.name} onClose={onClose}>
+      {shared ? (
+        <RestaurantPage
+          data={shared}
+          saved
+          ourGroup={groupBody}
+          onReport={async (text) => {
+            if (demo) return
+            const { error } = await supabase
+              .from('feedback')
+              .insert({ user_id: userId, body: text, page: `report:${shared.city}/${shared.slug}` })
+            if (error) throw error
+          }}
+        />
+      ) : (
+        groupBody
+      )}
       {planBOpen && onOpenPlace && (
         <PlanB
           place={place}
