@@ -1,8 +1,9 @@
 // Fetching the public pages' data on the server. The anonymous key and no cookies, so the pages
 // can be cached (a stranger, a link preview and a signed-in member all get the same totals).
 import { createClient } from '@supabase/supabase-js'
-import type { PublicProfile, PublicRedirect, PublicRestaurant } from './public-page'
+import { readDishOfWeek, type PublicProfile, type PublicRedirect, type PublicRestaurant } from './public-page'
 import { DEMO_PROFILE, DEMO_RESTAURANT } from './public-demo'
+import { readMaybeClosed } from './maybe-closed'
 
 const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 
@@ -27,7 +28,19 @@ export async function loadRestaurant(
       rest_slug: clean(slug),
     })
     if (error) return null
-    return (data as PublicRestaurant | PublicRedirect | null) ?? null
+    const page = (data as PublicRestaurant | PublicRedirect | null) ?? null
+    // A booking link shows only once an admin has switched it on for this restaurant.
+    if (page && 'id' in page && page.id) {
+      const [{ data: link }, { data: closed }, { data: dish }] = await Promise.all([
+        anon().rpc('reservation_link', { target: page.id }),
+        anon().rpc('maybe_closed', { target: page.id }),
+        anon().rpc('dish_of_the_week'),
+      ])
+      if (typeof link === 'string' && /^https?:\/\//i.test(link)) (page as PublicRestaurant).reservation_url = link
+      ;(page as PublicRestaurant).maybe_closed = readMaybeClosed(closed)
+      ;(page as PublicRestaurant).dish_of_week = readDishOfWeek(dish)
+    }
+    return page
   } catch {
     return null
   }

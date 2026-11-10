@@ -19,6 +19,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     title: `${data.name} · Crumbs`,
     description,
     openGraph: { title: `${data.name} on Crumbs`, description },
+    twitter: { card: 'summary_large_image', title: `${data.name} on Crumbs`, description },
     robots: { index: false, follow: false },
   }
 }

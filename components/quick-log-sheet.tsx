@@ -24,6 +24,7 @@ import {
   mealTimeAt,
   ratingFromVisits,
   ratingRow,
+  usualSpend,
   type MealTime,
 } from '@/lib/visit-rating'
 
@@ -87,6 +88,8 @@ export function QuickLogSheet({
   // #147 meal from the clock (tap to change), #145 the wait for a table
   const [mealTime, setMealTime] = useState<MealTime>(() => mealTimeAt())
   const [wait, setWait] = useState<number | null>(null)
+
+  const usual = picked ? usualSpend(picked.place_visits, people ? Number(people) || null : null) : null
 
   const options = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -419,6 +422,15 @@ export function QuickLogSheet({
                 }}
               />
             </div>
+            {!spend.trim() && usual !== null && (
+              <button
+                type="button"
+                className="secondary self-start !min-h-9 !px-3 text-xs"
+                onClick={() => setSpend(String(usual))}
+              >
+                Usually about ${usual} here — tap to fill
+              </button>
+            )}
           </div>
           {v4 && (
             <div className="flex flex-col gap-3">

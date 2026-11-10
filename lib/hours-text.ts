@@ -1,6 +1,6 @@
 // Opening hours written by people (or OpenStreetMap's opening_hours tag) ⇄ Crumbs' Hours shape.
 // Lets Crumbs own its hours data: typed in, read off a photo of the door sign, or from open data.
-import type { Hours } from './place-info'
+import { currentHours, type Hours } from './place-info.ts'
 
 const DAY_WORDS: [RegExp, number][] = [
   [/^(su|sun|sunday|sundays)$/, 0],
@@ -135,8 +135,9 @@ const fmt = (h: number, m: number) =>
   `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`
 
 /** Hours → "Mon-Fri 11am-10pm; Sat-Sun 12pm-11pm; Tue closed" (also the edit box's starting text). */
-export function hoursToText(hours: Hours | null | undefined): string {
-  if (!hours?.periods?.length) return ''
+export function hoursToText(given: Hours | null | undefined, now = new Date()): string {
+  const hours = currentHours(given, now)
+  if (!hours?.periods?.length) return hours?.until ? 'Closed' : ''
   if (hours.periods.length === 1 && !hours.periods[0].c) return '24/7'
   const byDay = new Map<number, string>()
   for (const p of hours.periods) {

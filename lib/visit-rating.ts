@@ -86,3 +86,25 @@ export const waitText = (minutes: number | null | undefined) =>
     : minutes <= 2
       ? 'Usually no wait'
       : `Usual wait ~${minutes} min`
+
+/**
+ * What a visit here usually costs, from the group's earlier visits: the middle (median) amount
+ * per person, scaled to `people` when that's known, else the middle total. Needs at least two
+ * visits with an amount; returns null otherwise.
+ */
+export function usualSpend(
+  visits: { spend: number | null; people?: number | null }[] | undefined,
+  people: number | null,
+): number | null {
+  const paid = (visits ?? []).filter((v) => typeof v.spend === 'number' && v.spend > 0)
+  if (paid.length < 2) return null
+  const middle = (nums: number[]) => {
+    const sorted = [...nums].sort((a, b) => a - b)
+    const mid = sorted.length >> 1
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  const heads = paid.filter((v) => (v.people ?? 0) > 0)
+  if (people && people > 0 && heads.length >= 2)
+    return Math.round(middle(heads.map((v) => (v.spend as number) / (v.people as number))) * people)
+  return Math.round(middle(paid.map((v) => v.spend as number)))
+}

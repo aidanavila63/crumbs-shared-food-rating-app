@@ -91,24 +91,27 @@ const STEPS: Record<Device, Step[]> = {
       title: 'Let Safari use it',
       body: (
         <>
-          Same screen, scroll down to {b('Safari Websites')} → {b('While Using the App')}. Keep{' '}
+          Same screen, scroll down to {b('Safari Websites')} → {b('While Using the App')}. That’s
+          the best choice on this screen — there’s no Allow here, and that’s fine. Keep{' '}
           {b('Precise Location')} on so Nearest and Locate me are spot on. (Crumbs on your home
           screen uses Safari’s settings, even though it looks like its own app.)
         </>
       ),
     },
     {
-      title: 'Stop the popup every time Crumbs opens',
+      title: 'Keep location up to date without tapping',
       body: (
         <>
-          iPhone {b('Settings')} → {b('Apps')} → {b('Safari')} → scroll to{' '}
+          This is a different screen from step 2. Go back to the first page of iPhone{' '}
+          {b('Settings')} → {b('Apps')} → {b('Safari')} → scroll to{' '}
           {b('Settings for Websites')} → {b('Location')} → {b('Allow')}. On iOS 17 or older it’s{' '}
-          {b('Settings')} → {b('Safari')} → {b('Location')}. This is the step that matters most:
-          without it, home-screen apps forget your answer each time they close.
+          {b('Settings')} → {b('Safari')} → {b('Location')}. Home-screen apps forget your answer
+          when iOS closes them; with {b('Allow')}, Crumbs can quietly update where you are each time
+          it opens.
           <span className="mt-1 block">
             Heads up: this lets every website you visit in Safari see your location without asking.
-            Rather not? Leave it on {b('Ask')} — Crumbs still works, you’ll just tap Allow when it
-            opens.
+            Rather not? Leave it on {b('Ask')} — Crumbs won’t pop up when it opens; it uses your last
+            spot and asks only when you tap Locate me or Nearest.
           </span>
         </>
       ),
@@ -197,7 +200,7 @@ const PERMISSION_TEXT: Record<Permission, (device: Device) => [string, string]> 
   denied: () => ['⛔', 'Blocked — follow the steps below'],
   prompt: (device) =>
     device === 'iphone'
-      ? ['🟡', 'Asks each time — step 3 below stops that']
+      ? ['🟡', 'Asks when you tap Locate me or Nearest — step 3 makes it automatic']
       : ['🟡', 'Not decided yet — tap Test my location'],
   unknown: () => ['❔', 'Can’t tell from here — tap Test my location'],
 }
@@ -223,7 +226,7 @@ export function LocationSetup({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
           A few phone settings make location just work: nearby places first in search, the map
-          starting where you are, and no popup every time you open Crumbs. Takes about a minute.
+          starting where you are, without tapping Allow. Takes about a minute.
         </p>
 
         <section className="surface settings-card">

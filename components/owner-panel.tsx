@@ -33,7 +33,7 @@ import { track } from '@/lib/analytics'
 import { Overlay } from './overlay'
 import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
-import { OwnerInsights, OwnerPosts, OwnerPoster } from './owner-extras'
+import { OwnerBooking, OwnerInsights, OwnerPosts, OwnerPoster, OwnerSpecialHours } from './owner-extras'
 import { OwnerMenuPdf } from './menu-pdf'
 
 const FIELDS: FactField[] = ['address', 'hours', 'phone', 'website', 'cuisine', 'status']
@@ -435,6 +435,14 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         </div>
       </section>
 
+      <OwnerSpecialHours
+        restaurantId={r.id}
+        hours={r.opening_hours as Hours | null}
+        utc={utc}
+        supabase={supabase}
+        demo={demo}
+        onChanged={reload}
+      />
       <OwnerMenu
         restaurantId={id}
         menu={menu}
@@ -444,6 +452,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         onChanged={reload}
       />
       <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
+      <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
     </div>
   )

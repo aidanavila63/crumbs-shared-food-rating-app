@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import { BarChart3, Gift, Globe2, Link2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
 import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
@@ -10,7 +11,6 @@ import { PassportCard, StreakCard } from './goals-cards'
 import { BingoCard, StatsPanel } from './stats-panel'
 import { PhotoTimeline } from './photo-timeline'
 import { SettingsPanel } from './settings-panel'
-import { AdminPanel } from './admin-panel'
 import { ContributionsCard } from './contributions-card'
 import { OwnerPanel } from './owner-panel'
 import { WrappedStory } from './wrapped'
@@ -20,6 +20,12 @@ import { PhotoCropper } from './photo-cropper'
 import { PHOTO_BUCKET, photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
 import { wrappedSeason } from '@/lib/wrapped'
 import { ChevronDown } from 'lucide-react'
+
+// Only admins open this, and it's the biggest screen in the app: load it when asked for.
+const AdminPanel = dynamic(() => import('./admin-panel').then((m) => m.AdminPanel), {
+  ssr: false,
+  loading: () => <p className="p-4 text-sm text-muted-foreground">Loading…</p>,
+})
 
 export type HubPage =
   | 'menu'

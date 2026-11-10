@@ -3,8 +3,34 @@ import type { Dish, Place } from '../hooks/use-crumbs-data'
 import { dishAverage } from './stats.ts'
 
 // ---------- opening hours ----------
-export type Hours = { utc: number; periods: { o: [number, number, number]; c: [number, number, number] | null }[] }
+export type Hours = {
+  utc: number
+  periods: { o: [number, number, number]; c: [number, number, number] | null }[]
+  /** Part three: special (seasonal/holiday) hours apply through this day (YYYY-MM-DD, the restaurant's own day)… */
+  until?: string
+  /** …and these, the usual hours, apply after it. */
+  regular?: Hours | null
+}
+
+/** The hours that apply right now: special hours through their last day, then the usual ones. */
+export function currentHours(hours: Hours | null | undefined, now = new Date()): Hours | null {
+  if (!hours) return null
+  if (!hours.until) return hours
+  const day = new Date(now.getTime() + (Number(hours.utc) || 0) * 60000).toISOString().slice(0, 10)
+  return day <= hours.until ? hours : (hours.regular ?? null)
+}
+
+/** "Holiday hours until Dec 31" while special hours apply, otherwise null. */
+export function specialHoursNote(hours: Hours | null | undefined, now = new Date()): string | null {
+  if (!hours?.until || currentHours(hours, now) !== hours) return null
+  const [y, m, d] = hours.until.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const label = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return `Special hours until ${label}`
+}
 const WEEK = 7 * 1440
+/** Minutes before closing when "Open" turns into the amber "Closing soon". */
+export const CLOSING_SOON = 60
 const toMin = (p: [number, number, number]) => p[0] * 1440 + p[1] * 60 + p[2]
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -27,28 +53,36 @@ export function hoursFromGoogle(place: any): Hours | null {
   return out.length ? { utc: Number(place.utcOffsetMinutes ?? 0), periods: out } : null
 }
 
-export function openStatus(hours: Hours | null | undefined, now = new Date()) {
-  if (!hours?.periods?.length) return null
+export function openStatus(given: Hours | null | undefined, now = new Date()) {
+  const hours = currentHours(given, now)
+  if (!hours?.periods?.length)
+    return hours && hours === given && given?.until ? { open: false, soon: false, text: 'Closed for now' } : null
   const local = new Date(now.getTime() + hours.utc * 60000)
   const cur = local.getUTCDay() * 1440 + local.getUTCHours() * 60 + local.getUTCMinutes()
   if (hours.periods.length === 1 && !hours.periods[0].c && toMin(hours.periods[0].o) === 0)
-    return { open: true, text: 'Open 24 hours' }
+    return { open: true, soon: false, text: 'Open 24 hours' }
   let nextOpen: number | null = null
   for (const period of hours.periods) {
     const start = toMin(period.o)
-    if (!period.c) return { open: true, text: 'Open now' }
+    if (!period.c) return { open: true, soon: false, text: 'Open now' }
     let end = toMin(period.c)
     if (end <= start) end += WEEK
-    if ((cur >= start && cur < end) || (cur + WEEK >= start && cur + WEEK < end))
-      return { open: true, text: `Open · closes ${clock(end)}` }
+    if ((cur >= start && cur < end) || (cur + WEEK >= start && cur + WEEK < end)) {
+      // Minutes until it shuts: within the hour, say so (the amber "closing soon" line).
+      const left = end - (cur >= start && cur < end ? cur : cur + WEEK)
+      return left <= CLOSING_SOON
+        ? { open: true, soon: true, text: `Closing soon · ${clock(end)}` }
+        : { open: true, soon: false, text: `Open · closes ${clock(end)}` }
+    }
     const wait = (start - cur + WEEK) % WEEK
     if (nextOpen === null || wait < nextOpen) nextOpen = wait
   }
-  if (nextOpen === null) return { open: false, text: 'Closed now' }
+  if (nextOpen === null) return { open: false, soon: false, text: 'Closed now' }
   const at = cur + nextOpen
   const sameDay = Math.floor(at / 1440) === Math.floor(cur / 1440)
   return {
     open: false,
+    soon: false,
     text: `Closed · opens ${sameDay ? '' : `${DAYS[Math.floor((at % WEEK) / 1440)]} `}at ${clock(at)}`,
   }
 }

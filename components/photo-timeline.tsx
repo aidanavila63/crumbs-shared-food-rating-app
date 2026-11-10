@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
 import type { Place } from '@/hooks/use-crumbs-data'
-import { photoUrl } from '@/lib/photos'
+import { ThumbImg } from './thumb-img'
 import { allVisits } from '@/lib/stats'
 
 /** A scrapbook of every place and dish photo, newest month first. */
@@ -45,8 +45,7 @@ export function PhotoTimeline({ places, onSelect }: { places: Place[]; onSelect?
             <div className="grid grid-cols-3 gap-2">
               {items.map((item) => (
                 <button key={item.key} className="relative aspect-square overflow-hidden rounded-xl bg-muted" aria-label={`Open ${item.label}`} onClick={() => onSelect?.(item.place)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoUrl(item.path) ?? undefined} alt={item.label} loading="lazy" className="size-full object-cover" />
+                  <ThumbImg path={item.path} alt={item.label} className="size-full object-cover" />
                 </button>
               ))}
             </div>

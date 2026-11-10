@@ -11,6 +11,7 @@ import {
   hoursFromGoogle,
   isClosedForever,
   openStatus,
+  specialHoursNote,
   takeQuota,
 } from '@/lib/place-info'
 
@@ -108,10 +109,13 @@ export function PlaceHours({
     ) : null
   return (
     <p
-      className={`text-sm font-semibold ${status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}
+      className={`text-sm font-semibold ${status.soon ? 'text-[#b7791f]' : status.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}
     >
-      {status.open ? '● ' : '○ '}
+      {status.soon ? '◐ ' : status.open ? '● ' : '○ '}
       {status.text}
+      {specialHoursNote(place.opening_hours) && (
+        <span className="block text-xs font-normal text-[#b7791f]">🗓 {specialHoursNote(place.opening_hours)}</span>
+      )}
     </p>
   )
 }

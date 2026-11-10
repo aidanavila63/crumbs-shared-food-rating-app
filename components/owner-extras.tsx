@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { Download, Trash2 } from 'lucide-react'
 import { DAY_SHORT, datesText, daysText, type PostKind, type RestaurantPost } from '@/lib/posts'
 import { haptic } from '@/lib/motion'
+import { hoursToText, parseHoursText } from '@/lib/hours-text'
+import { specialHoursNote, type Hours } from '@/lib/place-info'
 
 const KINDS: { id: PostKind; label: string; hint: string }[] = [
   { id: 'special', label: '📅 Weekly special', hint: 'e.g. Half-price wings — Tue & Thu' },
@@ -392,6 +394,204 @@ export function OwnerPoster({ restaurantId, name }: { restaurantId: string; name
       >
         <Download size={16} /> {busy ? 'Making it…' : 'Download poster'}
       </button>
+    </section>
+  )
+}
+
+/** Part three: the owner decides whether a "Book a table" button shows (and where it goes). */
+export function OwnerBooking({ restaurantId, supabase, demo }: { restaurantId: string; supabase: any; demo: boolean }) {
+  const [state, setState] = useState<{ url: string | null; enabled: boolean } | null>(
+    demo ? { url: null, enabled: false } : null,
+  )
+  const [link, setLink] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (demo) return
+    let live = true
+    Promise.resolve(supabase.rpc('owner_reservation', { target: restaurantId }))
+      .then(({ data }: any) => {
+        if (!live) return
+        const url = typeof data?.url === 'string' ? data.url : null
+        setState({ url, enabled: !!data?.enabled })
+        setLink(url ?? '')
+      })
+      .catch(() => live && setState({ url: null, enabled: false }))
+    return () => {
+      live = false
+    }
+  }, [supabase, restaurantId, demo])
+
+  async function save(on: boolean) {
+    if (demo) return toast('Not available in demo mode')
+    setBusy(true)
+    try {
+      const clean = link.trim()
+      const { error } = await supabase.rpc('owner_set_reservation', { target: restaurantId, link: clean || null, on_: on })
+      if (error) throw error
+      setState({ url: clean || state?.url || null, enabled: on })
+      haptic('success')
+      toast.success(on ? 'Booking button is on' : 'Booking button is off')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!state) return null
+  return (
+    <section className="surface flex flex-col gap-2">
+      <h3 className="font-serif text-xl font-bold">Book a table</h3>
+      <p className="text-xs text-muted-foreground">
+        {state.enabled
+          ? 'A “Book a table” button shows on your Crumbs page.'
+          : 'No booking button shows on your Crumbs page. It only appears if you switch it on.'}
+      </p>
+      <input
+        type="url"
+        inputMode="url"
+        placeholder="https://… (OpenTable, Resy, Tock, your own page)"
+        maxLength={300}
+        value={link}
+        onChange={(event) => setLink(event.target.value)}
+      />
+      <div className="flex gap-2">
+        {state.enabled ? (
+          <>
+            <button className="secondary flex-1" disabled={busy} onClick={() => save(false)}>
+              Turn off
+            </button>
+            {link.trim() !== (state.url ?? '') && (
+              <button className="primary flex-1" disabled={busy} onClick={() => save(true)}>
+                Save link
+              </button>
+            )}
+          </>
+        ) : (
+          <button className="primary flex-1" disabled={busy || !link.trim()} onClick={() => save(true)}>
+            Show booking button
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/** Part three: special (seasonal / holiday) hours with a last day; the usual hours come back after it. */
+export function OwnerSpecialHours({
+  restaurantId,
+  hours,
+  utc,
+  supabase,
+  demo,
+  onChanged,
+}: {
+  restaurantId: string
+  hours: Hours | null
+  utc: number
+  supabase: any
+  demo: boolean
+  onChanged: () => void
+}) {
+  const note = specialHoursNote(hours)
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [closed, setClosed] = useState(false)
+  const [last, setLast] = useState('')
+  const [busy, setBusy] = useState(false)
+  const parsed = closed ? { utc, periods: [] } : parseHoursText(text, utc)
+  const today = new Date().toISOString().slice(0, 10)
+
+  async function save() {
+    if (demo) return toast('Not available in demo mode')
+    if (!parsed) return toast('Type the hours, or tick “Closed the whole time”')
+    if (!last) return toast('Pick the last day')
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('set_seasonal_hours', { target: restaurantId, hours: parsed, last_day: last })
+      if (error) throw error
+      haptic('success')
+      toast.success('Special hours are on')
+      setOpen(false)
+      onChanged()
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function end() {
+    if (demo) return toast('Not available in demo mode')
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('end_seasonal_hours', { target: restaurantId })
+      if (error) throw error
+      toast.success('Back to your usual hours')
+      onChanged()
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="surface flex flex-col gap-2">
+      <h3 className="font-serif text-xl font-bold">Special hours</h3>
+      {note ? (
+        <>
+          <p className="text-sm">
+            <strong>{note}:</strong> {hoursToText(hours) || 'Closed'}
+          </p>
+          <p className="text-xs text-muted-foreground">Your usual hours come back by themselves the day after.</p>
+          <button className="secondary" disabled={busy} onClick={end}>
+            End now
+          </button>
+        </>
+      ) : !open ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Holidays, summer, renovations… Set different hours until a date. Your usual hours come back by themselves
+            the day after.
+          </p>
+          <button className="secondary" onClick={() => setOpen(true)}>
+            Set special hours
+          </button>
+        </>
+      ) : (
+        <>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={closed} onChange={(event) => setClosed(event.target.checked)} />
+            Closed the whole time
+          </label>
+          {!closed && (
+            <textarea
+              rows={2}
+              placeholder="e.g. Mon–Fri 11am–3pm; Sat 10am–2pm"
+              aria-label="Special hours"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          )}
+          {!closed && text.trim() && (
+            <p className="text-xs text-muted-foreground">
+              {parsed ? `Reads as: ${hoursToText(parsed)}` : 'Couldn’t read those hours yet'}
+            </p>
+          )}
+          <label className="flex flex-col gap-1 text-sm">
+            Last day
+            <input type="date" min={today} value={last} onChange={(event) => setLast(event.target.value)} />
+          </label>
+          <div className="flex gap-2">
+            <button className="secondary flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary flex-1" disabled={busy || !parsed || !last} onClick={save}>
+              Save
+            </button>
+          </div>
+        </>
+      )}
     </section>
   )
 }

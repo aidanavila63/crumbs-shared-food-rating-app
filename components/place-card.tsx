@@ -62,7 +62,7 @@ export const PlaceCard = memo(function PlaceCard({
               {isClosedForever(place) ? (
                 <span className="text-destructive">⚠ Permanently closed</span>
               ) : (
-                hours && <span className={hours.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}>{hours.open ? '●' : '○'} {hours.text}</span>
+                hours && <span className={hours.soon ? 'text-[#b7791f]' : hours.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}>{hours.soon ? '◐' : hours.open ? '●' : '○'} {hours.text}</span>
               )}
               {away !== null && (
                 <span className="font-normal text-muted-foreground">

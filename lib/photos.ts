@@ -14,6 +14,16 @@ export function photoUrl(path?: string | null, r2Base = process.env.NEXT_PUBLIC_
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PHOTO_BUCKET}/${path}`
 }
 
+/** Part three: small copy for lists and grids (Supabase storage only — R2 has no download fees).
+ * "<group>/<uuid>.jpg" → "<group>/<uuid>.t.jpg"; anything else → null. */
+export function thumbPath(path?: string | null) {
+  if (!path || usesR2(path)) return null
+  const m = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\.jpg$/.exec(path)
+  return m ? `${m[1]}/${m[2]}.t.jpg` : null
+}
+
+export const THUMB_SIZE = 400
+
 /** "r2/<group>/<uuid>.jpg" → its key in the R2 bucket and the group it belongs to (or null). */
 export function r2Key(path: string) {
   const m = /^r2\/([0-9a-f-]{36})\/([0-9a-f-]{36})\.jpg$/.exec(path)
@@ -21,7 +31,7 @@ export function r2Key(path: string) {
 }
 
 /** Shrinks a phone photo to at most `max` pixels on the long side (and fixes its rotation). */
-export async function shrinkImage(file: File | Blob, max = 1280): Promise<Blob> {
+export async function shrinkImage(file: File | Blob, max = 1280, quality = 0.82): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height))
   const canvas = document.createElement('canvas')
@@ -33,7 +43,7 @@ export async function shrinkImage(file: File | Blob, max = 1280): Promise<Blob> 
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Could not read that photo'))),
       'image/jpeg',
-      0.82,
+      quality,
     ),
   )
 }
@@ -66,11 +76,24 @@ export async function uploadPhoto(supabase: any, groupId: string, file: File | B
     .from(PHOTO_BUCKET)
     .upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' })
   if (error) throw error
+  // The small copy is a bonus: if it fails, lists just use the full photo.
+  const small = thumbPath(path)
+  if (small) {
+    try {
+      const thumb = await shrinkImage(blob, THUMB_SIZE, 0.72)
+      await supabase.storage
+        .from(PHOTO_BUCKET)
+        .upload(small, thumb, { contentType: 'image/jpeg', cacheControl: '31536000' })
+    } catch {}
+  }
   return path
 }
 
 export async function removePhoto(supabase: any, path?: string | null) {
   if (!path) return
   if (usesR2(path)) await photoApi({ op: 'delete', path }).catch(() => {})
-  else await supabase.storage.from(PHOTO_BUCKET).remove([path])
+  else {
+    const small = thumbPath(path)
+    await supabase.storage.from(PHOTO_BUCKET).remove(small ? [path, small] : [path])
+  }
 }

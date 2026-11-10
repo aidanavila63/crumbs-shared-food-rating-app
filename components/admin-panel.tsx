@@ -1,6 +1,7 @@
 'use client'
 // #21 Admin page (only for accounts with profiles.is_admin): usage counts (#111), feedback inbox
 // (#108), feature flags (#109), error log (#110) and the waitlist (#94).
+import { FACT_LABEL, filledPct, sourceSplit, type HealthRow } from '@/lib/data-health'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { RefreshCw, Trash2 } from 'lucide-react'
@@ -193,6 +194,146 @@ function ForgetGoogle({
   )
 }
 
+/**
+ * Places that still hold only Google's facts, or were last read a while ago, get their
+ * "last checked" stamps cleared. Nothing is fetched here: each place re-reads OpenStreetMap and its
+ * own website the next time someone opens it, inside the spending-guard budgets. Check, then confirm.
+ */
+function RecheckPlaces({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [count, setCount] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function run(apply: boolean) {
+    if (demo) {
+      setCount(4)
+      if (apply) toast('Demo: nothing was changed')
+      return
+    }
+    setBusy(true)
+    const { data, error } = await supabase.rpc('admin_recheck_open_data', { apply })
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    setCount(data.restaurants)
+    if (apply) toast.success(`${data.restaurants} places will refresh as they’re opened`)
+  }
+
+  return (
+    <div className="mt-2 rounded-xl bg-[var(--card)] px-3 py-2 text-xs">
+      <p className="text-muted-foreground">
+        Re-pull stale places: refresh places that only have Google’s details or were last read a
+        while ago. They update as people open them, at the pace the “website” and “explore”
+        budgets allow.
+      </p>
+      {count !== null && (
+        <p className="mt-1">{count ? `${count} places would refresh.` : 'Nothing is stale right now.'}</p>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button className="secondary text-xs" disabled={busy} onClick={() => run(false)}>
+          Check how many
+        </button>
+        {!!count && (
+          <button className="secondary text-xs" disabled={busy} onClick={() => run(true)}>
+            Refresh {count} places
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+type HeldLink = {
+  restaurant_id: string
+  name: string
+  city: string | null
+  url: string | null
+  found_at: string
+  enabled: boolean
+  partner: string | null
+}
+
+/**
+ * Booking links Crumbs found on restaurants' own websites. They are kept but hidden: nothing shows
+ * on the place page or public page until you switch a restaurant on (a deal, a perk, commission).
+ */
+function ReservationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [rows, setRows] = useState<HeldLink[] | null>(null)
+  const [partners, setPartners] = useState<Record<string, string>>({})
+
+  const load = useCallback(async () => {
+    if (demo) {
+      return setRows([
+        { restaurant_id: 'd1', name: 'Lantern Pho', city: 'toronto', url: 'https://book.example/lantern', found_at: new Date().toISOString(), enabled: false, partner: null },
+      ])
+    }
+    const { data, error } = await supabase.rpc('admin_reservations')
+    if (error) return toast.error(error.message)
+    setRows(data ?? [])
+  }, [supabase, demo])
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function set(row: HeldLink, on: boolean) {
+    if (demo) return toast('Demo: nothing was changed')
+    const { error } = await supabase.rpc('admin_set_reservations', {
+      target: row.restaurant_id,
+      on_: on,
+      partner_: partners[row.restaurant_id] ?? row.partner ?? null,
+    })
+    if (error) return toast.error(error.message)
+    toast.success(on ? `Book button is live for ${row.name}` : `Hidden again for ${row.name}`)
+    load()
+  }
+
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Held booking links</h3>
+      <p className="text-sm text-muted-foreground">
+        Found on restaurants’ own websites and kept here. Nobody sees them until you switch one on,
+        which adds a Book / Reserve button on that restaurant’s pages. Do that once you’ve agreed
+        something with them.
+      </p>
+      {rows === null ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None yet. They appear as websites are read.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {rows.map((row) => (
+            <li key={row.restaurant_id} className="rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="min-w-0 truncate">{row.name}</strong>
+                <span className={`text-xs font-semibold ${row.enabled ? 'text-[#2f7d4f]' : 'text-muted-foreground'}`}>
+                  {row.enabled ? 'Live' : 'Hidden'}
+                </span>
+              </div>
+              {row.url ? (
+                <a className="block truncate text-xs text-primary underline" href={row.url} target="_blank" rel="noopener noreferrer">
+                  {row.url}
+                </a>
+              ) : (
+                <p className="text-xs text-muted-foreground">No link — the owner turned booking off.</p>
+              )}
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 text-xs"
+                  placeholder="Agreed with (name or deal)"
+                  maxLength={80}
+                  value={partners[row.restaurant_id] ?? row.partner ?? ''}
+                  onChange={(event) => setPartners((p) => ({ ...p, [row.restaurant_id]: event.target.value }))}
+                />
+                <button className="secondary text-xs" onClick={() => set(row, !row.enabled)}>
+                  {row.enabled ? 'Hide' : 'Switch on'}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean }) {
   const [stats, setStats] = useState<Record<string, number> | null>(null)
   const [feedback, setFeedback] = useState<Feedback[]>([])
@@ -340,6 +481,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
                 borrowed={stats.borrowed_fields ?? 0}
                 stale={stats.borrowed_stale ?? 0}
               />
+              <RecheckPlaces supabase={supabase} demo={demo} />
             </div>
           </div>
         )}
@@ -366,14 +508,64 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         </p>
       </section>
 
-      <AccessRequestsCard supabase={supabase} demo={demo} full />
-      <BudgetsCard supabase={supabase} demo={demo} />
-      <PointsCard supabase={supabase} demo={demo} />
-      <BuildersCard supabase={supabase} demo={demo} />
-      <BackupsCard supabase={supabase} demo={demo} />
-      <QualityCard supabase={supabase} demo={demo} />
-      <MenuQueueCard supabase={supabase} demo={demo} />
-      <ClaimsCard supabase={supabase} demo={demo} />
+      {/* Jump to a section instead of scrolling the whole page */}
+      <nav aria-label="Admin sections" className="chip-row">
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-access')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Access requests
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-budgets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Spending guard
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-points')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Points
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-builders')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Builders
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-backups')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Backups
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-quality')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Data quality
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-menus')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Menu PDFs
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-claims')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Claims
+        </button>
+        <button type="button" className="chip" onClick={() => document.getElementById('admin-booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Booking links
+        </button>
+      </nav>
+      <div id="admin-access" className="scroll-mt-16">
+        <AccessRequestsCard supabase={supabase} demo={demo} full />
+      </div>
+      <div id="admin-budgets" className="scroll-mt-16">
+        <BudgetsCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-points" className="scroll-mt-16">
+        <PointsCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-builders" className="scroll-mt-16">
+        <BuildersCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-backups" className="scroll-mt-16">
+        <BackupsCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-quality" className="scroll-mt-16">
+        <QualityCard supabase={supabase} demo={demo} />
+        <DataHealthCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-menus" className="scroll-mt-16">
+        <MenuQueueCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-claims" className="scroll-mt-16">
+        <ClaimsCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-booking" className="scroll-mt-16">
+        <ReservationsCard supabase={supabase} demo={demo} />
+      </div>
       <section className="surface settings-card">
         <h3 className="settings-heading">Feature switches</h3>
         <p className="text-sm text-muted-foreground">
@@ -1196,6 +1388,43 @@ function QualityCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </p>
         </details>
       )}
+    </section>
+  )
+}
+
+/** How complete each fact is across saved restaurants, and where it came from. */
+function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [rows, setRows] = useState<HealthRow[]>([])
+  useEffect(() => {
+    if (demo) return
+    supabase.rpc('admin_data_health').then(({ data }: any) => setRows((data as HealthRow[]) ?? []))
+  }, [demo, supabase])
+  if (!rows.length || !rows[0].total) return null
+  return (
+    <section className="surface settings-card mt-3">
+      <h3 className="settings-heading">Data health</h3>
+      <p className="text-xs text-muted-foreground">
+        Across {rows[0].total} restaurant{rows[0].total === 1 ? '' : 's'} someone has saved. Weakest first.
+      </p>
+      {rows.map((r) => {
+        const pct = filledPct(r)
+        return (
+          <div key={r.fact} className="flex flex-col gap-1 text-sm">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-semibold">{FACT_LABEL[r.fact] ?? r.fact}</span>
+              <span className="text-xs text-muted-foreground">
+                {r.filled} of {r.total} · {pct}%
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${pct}% filled`}>
+              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {sourceSplit(r).map((x) => `${x.label} ${x.pct}%`).join(' · ') || 'Nothing yet'}
+            </span>
+          </div>
+        )
+      })}
     </section>
   )
 }

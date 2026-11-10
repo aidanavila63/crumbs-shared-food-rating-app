@@ -23,6 +23,8 @@ export type SiteInfo = {
   reservations: string | null
   image: string | null
   description: string | null
+  /** the page the facts were read from (after redirects), set by the caller that fetched it */
+  page_url?: string | null
 }
 
 const FOOD_TYPES =
@@ -241,6 +243,10 @@ export type SiteFacts = {
   address?: string
   location?: { lat: number; lng: number }
   website?: string
+  /** a booking link the site published: kept for later, never shown until an admin switches it on */
+  reservations?: string
+  /** the page they were read from, kept with each fact and shown on the public page */
+  source_url?: string
 }
 
 /**
@@ -274,5 +280,11 @@ export function siteFacts(
       out.website = r.website
     }
   }
+  // A booking link is held (not shown) for when Crumbs has agreed something with the restaurant.
+  if (info.name && info.reservations && /^https?:\/\/[^\s]+$/i.test(info.reservations) && info.reservations.length <= 300)
+    out.reservations = info.reservations
+  // Remember where this came from, but only when there is something to remember.
+  const page = info.page_url && /^https?:\/\//i.test(info.page_url) ? info.page_url.slice(0, 300) : null
+  if (page && Object.keys(out).length) out.source_url = page
   return out
 }

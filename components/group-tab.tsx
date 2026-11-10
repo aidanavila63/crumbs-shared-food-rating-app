@@ -1,4 +1,6 @@
 'use client'
+import { overlapText, tasteOverlap } from '@/lib/taste-overlap'
+import { settingsOf, type Scale } from '@/lib/ratings'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
@@ -79,6 +81,7 @@ export function GroupTab({
         <JoinRequestsCard group={group} supabase={supabase} demo={demo} onReload={onReload} />
       )}
       <MemoriesCard places={view ?? places} meals={meals} onSelect={onSelect} />
+      <TasteOverlapCard places={view ?? places} names={names} userId={userId} scale={settingsOf(group).scale} />
       <ActivityFeed
         places={view ?? places}
         meals={meals}
@@ -201,6 +204,32 @@ function TasteProfile({ places, member }: { places: Place[]; member: Profile }) 
           {t.signature.points}/100)
         </p>
       )}
+    </div>
+  )
+}
+
+/** Where the people in the group agree: cuisines two or more of you rate highly. */
+function TasteOverlapCard({
+  places,
+  names,
+  userId,
+  scale,
+}: {
+  places: Place[]
+  names: Record<string, string>
+  userId?: string
+  scale: Scale
+}) {
+  const overlaps = userId ? tasteOverlap(places, userId) : []
+  if (!userId || !overlaps.length) return null
+  return (
+    <div className="surface">
+      <h2 className="font-serif text-2xl font-bold">You agree on</h2>
+      <ul className="mt-2 flex flex-col gap-1 text-sm">
+        {overlaps.map((o) => (
+          <li key={o.cuisine}>{overlapText(o, names, userId, scale)}</li>
+        ))}
+      </ul>
     </div>
   )
 }

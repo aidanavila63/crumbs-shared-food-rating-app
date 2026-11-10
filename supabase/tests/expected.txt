@@ -24,3 +24,13 @@ owned_facts_test 2
 invites_test 4
 approval_test 8
 public_pages_test 10
+website_facts_test 2
+reservations_held_test 3
+read_cache_test 0
+data_health_test 1
+public_claims_test 3
+claims_safety_test 2
+maybe_closed_test 0
+dish_of_week_test 0
+owner_booking_test 3
+seasonal_hours_test 2

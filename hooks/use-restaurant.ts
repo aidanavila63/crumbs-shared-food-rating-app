@@ -143,20 +143,35 @@ export function useRestaurant({
             .eq('user_id', userId)
             .maybeSingle()
             .then(({ data }: any) => !cancelled && setManages(!!data))
-        // Fill gaps from OpenStreetMap (free data we can keep) — at most every ~3 months.
+        // Fill gaps from OpenStreetMap (free data we can keep) — at most every ~3 months — and from
+        // the restaurant's own website (its own published facts) — at most monthly. When the
+        // website is already known the two reads run side by side instead of one after the other.
         const stale =
           !r.osm_checked_at || Date.now() - new Date(r.osm_checked_at).getTime() > 90 * 864e5
+        const siteDue = (x: typeof r) =>
+          (!x.site_checked_at || Date.now() - new Date(x.site_checked_at).getTime() > 30 * 864e5) &&
+          !!x.website &&
+          !x.owner_verified
         let changed = false
-        if (stale && r.latitude !== null) {
-          const result = await matchOpenData(r.id, localUtcOffset()).catch(() => null)
-          changed = !!result?.matched
-        }
-        // …and from the restaurant's own website (its own published facts) — at most monthly.
-        const siteStale =
-          !r.site_checked_at || Date.now() - new Date(r.site_checked_at).getTime() > 30 * 864e5
-        if (siteStale && r.website && !r.owner_verified && !cancelled) {
-          const result = await matchSiteData(r.id, localUtcOffset()).catch(() => null)
-          changed = changed || !!result?.applied?.length
+        let current = r
+        const osmDue = stale && r.latitude !== null
+        if (osmDue && siteDue(r)) {
+          const [osm, site] = await Promise.all([
+            matchOpenData(r.id, localUtcOffset()).catch(() => null),
+            matchSiteData(r.id, localUtcOffset()).catch(() => null),
+          ])
+          changed = !!osm?.matched || !!site?.applied?.length
+        } else {
+          if (osmDue) {
+            const result = await matchOpenData(r.id, localUtcOffset()).catch(() => null)
+            changed = !!result?.matched
+            // OpenStreetMap may just have found the website: read it on this visit, not the next.
+            if (result?.matched && !cancelled) current = (await loadRestaurant(supabase, r.id)) ?? r
+          }
+          if (siteDue(current) && !cancelled) {
+            const result = await matchSiteData(r.id, localUtcOffset()).catch(() => null)
+            changed = changed || !!result?.applied?.length
+          }
         }
         if (changed && !cancelled) {
           const fresh = await loadRestaurant(supabase, r.id)

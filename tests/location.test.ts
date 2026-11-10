@@ -71,3 +71,55 @@ test('"update location when Crumbs opens" switch decides background use', async 
   assert.equal(await loc.locate({ ask: false }), null)
   assert.equal(calls, 2)
 })
+
+test('opening Crumbs never shows the popup: quiet updates only when already allowed', async () => {
+  const store = new Map<string, string>()
+  ;(globalThis as any).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  }
+  let state = 'prompt'
+  let calls = 0
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      permissions: { query: async () => ({ state }) },
+      geolocation: {
+        getCurrentPosition: (ok: any) => {
+          calls++
+          ok({ coords: { latitude: 43.6532, longitude: -79.3832 } })
+        },
+      },
+    },
+  })
+  // A fresh copy of the module, so the earlier test's "refused" doesn't carry over.
+  const path = '../lib/location.ts?quiet'
+  const loc: typeof import('../lib/location.ts') = await import(path)
+  store.set('crumbs-location', 'on')
+  ;(globalThis as any).document = {
+    visibilityState: 'visible',
+    addEventListener() {},
+    removeEventListener() {},
+  }
+
+  // iPhone after iOS closed the app: switch on, but the phone says "prompt" → no ask at all.
+  loc.startAutoLocation()()
+  await new Promise((r) => setTimeout(r, 25))
+  assert.equal(calls, 0)
+  assert.equal(await loc.locate({ ask: false, maxAge: 0 }), null)
+  assert.equal(calls, 0)
+
+  // Safari Location set to Allow → "granted" → updates quietly on open.
+  state = 'granted'
+  loc.startAutoLocation()()
+  await new Promise((r) => setTimeout(r, 25))
+  assert.equal(calls, 1)
+  assert.deepEqual(loc.lastFix(), { lat: 43.653, lng: -79.383 })
+
+  // Tapping Locate me still may ask, whatever the phone says.
+  state = 'prompt'
+  assert.ok(await loc.locate({ ask: true, maxAge: 0 }))
+  assert.equal(calls, 2)
+  delete (globalThis as any).document
+})

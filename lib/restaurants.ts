@@ -24,6 +24,8 @@ export type Restaurant = {
   sources?: Partial<Record<FactField, FactSource>>
   /** when each fact was last checked/changed (ISO) */
   source_at?: Partial<Record<FactField, string>>
+  /** the page a website-sourced fact was read from (Round 55) */
+  source_urls?: Partial<Record<FactField, string>>
   /** when the restaurant's own website was last read */
   site_checked_at?: string | null
   verified?: Partial<
@@ -71,6 +73,77 @@ export function factOrigin(r: Restaurant | null | undefined, f: FactField): stri
     ? new Date(at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     : null
   return when ? `${SOURCE_LABEL[src]} · ${when}` : SOURCE_LABEL[src]
+}
+/**
+ * Does what a member just entered differ from what the page currently shows? Only for facts where
+ * we can tell: hours (compared by their opening periods), phone (digits only), website, cuisine and
+ * price. Returns false when the page shows nothing yet — filling a gap isn't a disagreement.
+ */
+export function differsFromPage(r: Restaurant | null | undefined, f: FactField, val: unknown): boolean {
+  if (!r) return false
+  const digits = (x: unknown) => String(x ?? '').replace(/\D/g, '')
+  const text = (x: unknown) => String(x ?? '').trim().toLowerCase().replace(/\/+$/, '')
+  switch (f) {
+    case 'hours': {
+      const cur = r.opening_hours?.periods
+      const next = (val as Hours | null)?.periods
+      if (!cur?.length || !next?.length) return false
+      return JSON.stringify(cur) !== JSON.stringify(next)
+    }
+    case 'phone':
+      return !!r.phone && digits(r.phone) !== digits(val)
+    case 'website':
+      return !!r.website && text(r.website) !== text(val)
+    case 'cuisine':
+      return !!r.cuisine && text(r.cuisine) !== text(val)
+    case 'price_level':
+      return r.price_level != null && Number(r.price_level) !== Number(val)
+    default:
+      return false
+  }
+}
+
+/**
+ * How fresh a fact is, for the little dot beside it: green up to 60 days, amber up to 180, grey
+ * after that (or when nobody knows when it was last checked). `label` is "checked 3 weeks ago".
+ */
+export function factFreshness(
+  r: Restaurant | null | undefined,
+  f: FactField,
+  now = new Date(),
+): { level: 'fresh' | 'aging' | 'old'; label: string } | null {
+  if (!r?.sources?.[f]) return null
+  const at = r.verified?.[f]?.at ?? r.source_at?.[f] ?? (f === 'hours' ? r.hours_checked_at : null)
+  if (!at || Number.isNaN(new Date(at).getTime())) return { level: 'old', label: 'not checked in a while' }
+  const days = Math.max(0, Math.floor((now.getTime() - new Date(at).getTime()) / 864e5))
+  const label =
+    days < 2 ? 'checked today' : days < 14 ? `checked ${days} days ago` : days < 60 ? `checked ${Math.round(days / 7)} weeks ago` : `checked ${Math.round(days / 30)} months ago`
+  return { level: days <= 60 ? 'fresh' : days <= 180 ? 'aging' : 'old', label }
+}
+const SOURCE_WHY: Record<FactSource, string> = {
+  owner: 'The restaurant entered this itself.',
+  crumbs: 'Members who were there entered or confirmed this.',
+  site: 'Read from the restaurant’s own website.',
+  osm: 'Taken from OpenStreetMap, the free community map.',
+  google: 'Google’s value. Crumbs can’t keep it, so it may go away. Add what you see.',
+}
+
+/**
+ * The plain-words answer to "why am I seeing this?" for one fact: where it came from, when it
+ * was last checked, how many members confirmed it, and the page it was read from (if any).
+ */
+export function factWhy(r: Restaurant | null | undefined, f: FactField, now = new Date()): string[] {
+  const src = r?.sources?.[f]
+  if (!src || !SOURCE_WHY[src]) return []
+  const lines = [SOURCE_WHY[src]]
+  const fresh = factFreshness(r, f, now)
+  if (fresh) lines.push(fresh.level === 'fresh' ? `Fresh: ${fresh.label}.` : `Getting old: ${fresh.label}.`)
+  const n = r?.verified?.[f]?.n ?? 0
+  if (n > 1) lines.push(`${n} members have confirmed it.`)
+  else if (n === 1) lines.push('One member has confirmed it.')
+  const page = r?.source_urls?.[f]
+  if (page && /^https?:\/\//i.test(page)) lines.push(`Page: ${page.replace(/^https?:\/\/(www\.)?/i, '').slice(0, 80)}`)
+  return lines
 }
 export type Evidence = 'in_person' | 'photo' | 'website' | 'receipt' | 'phone_call'
 
@@ -321,7 +394,7 @@ export async function matchSiteData(restaurantId: string, utc: number) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ restaurantId, utc }),
   })
-  return response.ok ? ((await response.json()) as { applied: string[]; skipped?: boolean }) : null
+  return response.ok ? ((await response.json()) as { applied: string[]; skipped?: boolean; budget?: boolean }) : null
 }
 
 export type Insights = {
@@ -413,9 +486,20 @@ export async function claimRestaurant(
   supabase: any,
   restaurantId: string,
   form: { contact: string; job: string; mail: string; tel: string; evidence: string },
+  /** from the public page: claim without having saved it to a group (admins still check it) */
+  direct = false,
 ) {
-  const { error } = await supabase.rpc('claim_restaurant', { target: restaurantId, ...form })
+  const { error } = await supabase.rpc(direct ? 'claim_restaurant_direct' : 'claim_restaurant', {
+    target: restaurantId,
+    ...form,
+  })
   if (error) throw error
+}
+
+/** Can owners claim their page right now? Readable signed out (the public /r/… page asks). */
+export async function claimsOpen(supabase: any) {
+  const { data, error } = await supabase.rpc('claims_open')
+  return !error && data === true
 }
 
 export async function myContributions(supabase: any) {

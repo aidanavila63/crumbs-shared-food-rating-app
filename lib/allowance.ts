@@ -1,6 +1,6 @@
 // Allowances (#budgets): anything that costs money or uses a free quota is checked against the
 // person's daily allowance and Crumbs' overall budget before it runs. See usage_budgets in SQL.
-export type AllowanceKind = 'ai' | 'menu_import' | 'menu_photo_ai' | 'explore' | 'google'
+export type AllowanceKind = 'ai' | 'menu_import' | 'menu_photo_ai' | 'explore' | 'google' | 'website'
 export type Allowance = {
   ok: boolean
   reason?: 'personal' | 'budget_day' | 'budget_month' | 'signin'

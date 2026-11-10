@@ -50,9 +50,8 @@ export function bestMatch(json: any, name: string, utc: number): OpenFacts | nul
   if (street) data.address = address
   const phone = t.phone ?? t['contact:phone']
   if (phone) data.phone = String(phone).split(';')[0].trim().slice(0, 40)
-  const website = t.website ?? t['contact:website']
-  if (typeof website === 'string' && /^https?:\/\//i.test(website))
-    data.website = website.slice(0, 300)
+  const website = osmWebsite(t.website ?? t['contact:website'] ?? t.url)
+  if (website) data.website = website
   if (t.cuisine)
     data.cuisine = String(t.cuisine)
       .split(';')[0]
@@ -64,4 +63,25 @@ export function bestMatch(json: any, name: string, utc: number): OpenFacts | nul
   }
   const type = el.type === 'way' ? 'W' : el.type === 'relation' ? 'R' : 'N'
   return { osm: `${type}${el.id}`, data }
+}
+
+/**
+ * OpenStreetMap's website tag, made usable: mappers often leave off https:// ("www.pizza.ca") or
+ * list two sites ("a.ca;b.ca"). Takes the first, adds https:// when missing, and drops anything
+ * that isn't a plain web address.
+ */
+export function osmWebsite(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const first = raw.split(';')[0].trim()
+  if (!first || /\s/.test(first)) return null
+  const text = /^https?:\/\//i.test(first) ? first : `https://${first.replace(/^\/\//, '')}`
+  try {
+    const url = new URL(text)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    if (!url.hostname.includes('.') || url.username || url.password) return null
+    const out = url.toString()
+    return out.length <= 300 ? out : null
+  } catch {
+    return null
+  }
 }

@@ -536,3 +536,115 @@ Aidan's "go": two kinds of public page. **Run `supabase/migrations/20261103_publ
 - Not in this round: owner layer (owner view strip, tonight's board, deals, staff permissions, Insights tab), #309 sliding bar switcher across the app.
 - Smoke test now opens `/r/…` and `/u/…` and clicks "Our group" on a place.
 - Checks: typecheck, 160 unit tests (11 new), lint 0 errors (36 baseline warnings), 26/26 database test files (new `public_pages_test`, 10 expected refusals), smoke e2e.
+
+## Round 55 - Website facts: where they came from, a budget, re-pull stale places (Nov 4, Claude in Cowork)
+Aidan wanted Crumbs to find a restaurant's website and read facts off it. Most of that already existed (Round 46 read the site's own structured data and saved it as the `site` source; robots.txt, private-address blocking and a size/time cap are in `lib/menu-fetch.ts`; OpenStreetMap already supplies website tags). This round fills the gaps. **Run `supabase/migrations/20261104_website_facts.sql` after `20261103_public_pages.sql`** (safe to run twice).
+- **Ladder bug fixed:** a place with no website got one from OpenStreetMap but its site wasn't read until the *next* visit. `hooks/use-restaurant.ts` now reloads the profile after OpenStreetMap matches and reads the site in the same visit. Order stays: Crumbs' own shared table → OpenStreetMap tags → the website itself; a Google-only website is still read, and only becomes a Crumbs fact when the page names the restaurant, is one location and sits within 300 m (`siteFacts`).
+- **Each website fact remembers its page:** `restaurants.source_urls` (the date was already in `source_at`). `merge_site_data` stores the page address (web links only, 300 chars) for the facts it took. A member's answer replaces the fact and the page is no longer shown.
+- **Public page:** `restaurant_public_data` adds `source_urls` and `source_at` for website-sourced facts only. The Info tab shows "Hours, phone read from lanternpho.com · checked Nov 3" (`websiteSources` in `lib/public-page.ts`, grouped by page, web links only, dates in UTC). The #307 rules are unchanged.
+- **Spending guard:** new budget `website` (600/day overall, no monthly cap, 8-20 per person a day by tier; edit in Admin → Spending guard). A cached answer is free; a fresh read takes one use first (`app/api/site-info`). Out of budget → nothing is fetched, nothing is recorded as checked, so it retries later. Before the SQL runs the app behaves as before (allowance check fails open).
+- **Admin → "Re-pull stale places":** `admin_recheck_open_data(apply, days)` clears the "last checked" dates on places that only hold Google's facts or were last read over 90 days ago (never places an owner runs). Nothing is fetched there; each place refreshes when someone opens it, at the pace of the budgets. Check how many, then confirm.
+- **Not built (decided or waiting on Aidan):** a web-search step to find websites (needs a search service and a cost), Overture Maps, and an Admin screen to reorder the ladder. The "Is this their website?" question already exists (website facts from `site` are tier 4 in `next_question`).
+- Checks: typecheck, 163 unit tests (3 new), lint 0 errors (36 baseline warnings), all 27 database test files (new `website_facts_test`, 2 expected refusals; read on a clean database, not just counted). The production build and the browser click-through could not run on the build machine (no route to Google Fonts), so CI is the first full build.
+
+## Round 56 - Booking links held, closing soon, fact freshness, website check (Nov 4, Claude in Cowork)
+**SQL: `supabase/migrations/20261105_reservations_held.sql`** (run after `20261104_website_facts.sql`; safe twice). Before it runs the app works, but the **Book button disappears** (see below) and nothing is held.
+Aidan's calls: booking links are kept but must not be active until Crumbs has agreed something with the restaurant (a commission or perk); the closing-soon push nudge is dropped. A read of the code showed three of the planned items already existed, so this round only fills the gaps: the \"Open · closes 9 PM\" line already showed on place cards, the place page and the public page, and the decider (`lib/decide-more.ts`, surprise sheet) already skips closed places.
+- **Booking links held, hidden by default:** new table `restaurant_reservations` (no policies, nobody can read it directly). When a website is read and names this restaurant, `/api/site-info` POST keeps its booking link through `hold_reservation_link()` (web links only). `reservation_link(id)` hands the link out **only when an admin switched that restaurant on**; the place page (`PlaceLinks`) and the public page (`loadRestaurant`, a **Reserve** tile) ask it. **Admin → Held booking links** lists every held link with Switch on / Hide and a note for who it's agreed with (`admin_reservations`, `admin_set_reservations`). A re-read refreshes the link but never changes the switch.
+- **Fix:** the place page used to show a **Book** link straight off the site's data for everyone (`components/place-links.tsx`). That is gone; it now needs the switch.
+- **Closing soon:** `openStatus()` also returns `soon` (open, 60 minutes or less left, `CLOSING_SOON`). The line turns amber \"◐ Closing soon · 10 PM\" on place cards, the place page and the public page.
+- **Freshness dots:** each fact on the Info/profile list gets a dot (green up to 60 days, amber to 180, grey after) and \"checked 3 weeks ago\" (`factFreshness` in `lib/restaurants.ts`; a member's check counts as fresh). When a Crumbs-owned fact isn't fresh the existing button reads \"Hours look old — still right?\" (still one tap, still counts as a member check).
+- **\"Is this their website?\":** `components/website-check.tsx`, under the links, for websites Crumbs found itself (OpenStreetMap or the site's own page) that no member has checked. Yes = a member check; No hides it on that phone and points to Info → Website.
+- Checks: typecheck, 167 unit tests (4 new in `tests/closing-soon.test.ts`: closing-soon edges, past-midnight, freshness, booking-link guards), lint 0 errors (39 warnings; 36 before, the new ones are the same set-state-in-effect pattern the app already has), all 28 database test files (new `reservations_held_test`, 3 expected refusals: outsider holding a link, non-admin listing, non-admin switching on; read on a clean database). Not browser-tested; the production build fails here only because the build machine can't reach Google Fonts (CI builds it).
+
+## Round 57 - Shared read cache, parallel reads, menu change detection (Nov 4, Claude in Cowork)
+**SQL: `supabase/migrations/20261106_read_cache.sql`** (run after `20261105_reservations_held.sql`; safe twice). Needs `SUPABASE_SERVICE_ROLE_KEY` in Vercel (already used by the daily job and Menu PDFs); without it, or before the SQL runs, everything works as before.
+- **Shared site cache:** `site_read_cache` (server-only: row security on, no policies, no access for signed-in people or the public). `/api/site-info` checks the in-memory cache, then this table (2 days), then reads the site. A hit is free: no website-budget use, no fetch. Works across servers and across restaurants on the same site (`lib/read-cache.ts`, `siteKey` in `lib/menu-fingerprint.ts`).
+- **Parallel reads:** `hooks/use-restaurant.ts` runs the OpenStreetMap read and the website read side by side when the website is already known (the two merge functions only touch facts they outrank, so order doesn't matter). When OpenStreetMap has to find the website first, it's still one after the other.
+- **Menu change detection:** `menu_read_cache` keeps a fingerprint of the site's menu text (`menuFingerprint`: capitals, spacing and punctuation ignored; dish names and prices count) and the dishes the AI found. Same fingerprint = the saved dishes come back with no AI call, for anyone. A changed menu is read again and replaces the saved one. The place sheet says "Their menu looks the same as when we last read it" when nothing new comes out of an unchanged menu.
+- Checks: typecheck clean, 170 unit tests (3 new in `tests/menu-fingerprint.test.ts`), lint 0 errors (39 warnings, same as Round 56), all 29 database test files (new `read_cache_test`, 0 refusals expected: it checks both tables are closed to everyone but the server). Not browser-tested.
+
+## Round 58 - UX and efficiency pass (Nov 4, Claude in Cowork)
+No SQL. A check of the 37 ideas against the code found many already built (offline queue, haptics, remembered choices, undo for deletes, share target, lazy-loaded tabs and sheets, reduced-motion, dark mode, client-error log in Admin, a debounced search), so this round only does what was missing. The growth items (share cards, data-health view, owner invite, dish pages, taste overlap) move to Round 59.
+- **"Why?" on every fact** (Info list): tap it for the plain-words story: where the fact came from, how fresh it is, how many members confirmed it, the page it was read from (`factWhy` in `lib/restaurants.ts`; `Restaurant.source_urls` typed).
+- **Admin panel loads only when opened** (`components/profile-hub.tsx`, `next/dynamic`): it's the biggest screen (about 1,400 lines) and only admins use it, so every other phone no longer downloads it.
+- **Admin jump bar:** a row of chips at the top (Access requests, Spending guard, Points … Booking links) that scrolls to each section.
+- **Quick log: "Usually about $42 here — tap to fill"** when the group has two or more earlier visits there with an amount (`usualSpend` in `lib/visit-rating.ts`: the middle amount per person, scaled to the party size you typed, else the middle total).
+- **Photos decode off the main thread** (`decoding="async"` on lazy photo grids) so scrolling stays smooth.
+- **CI shows the app's JavaScript size** (gzipped total and the five biggest chunks) in each run's summary.
+- Not done on purpose: swapping in resized photos needs a decision (Cloudflare image resizing, or resizing when a photo is uploaded); batching the place page's separate calls into one needs a new database function. Both are candidates for Round 59.
+- Checks: typecheck clean, 172 unit tests (2 new), lint 0 errors (39 warnings, same as before). Not browser-tested; production build still can't fetch Google Fonts here, so CI builds it.
+
+## Round 59 - Share image for public pages, owner claim on the public page (Nov 5, Claude)
+No SQL. Shipped inside the Part one squash (`crumbs-rounds55-59-combined.patch`).
+- **Share card:** `app/r/[city]/[slug]/opengraph-image.tsx` draws a 1200×630 card (place name, cuisine, city, the Crumbs wordmark) from `shareCard()` in `lib/og-card.tsx`. The wordmark is inlined as a data URI (`lib/og-wordmark.ts`), so no font or file fetch at render time. The page adds `twitter: { card: 'summary_large_image' }`.
+- **Claim slot:** `RestaurantPage` takes a `claim` node so the public view can place the owner claim there (finished in Round 63).
+- Checks: short and long names rendered to PNG and compared against the brand guide colours.
+
+## Round 60 - Admin data-health view (Nov 7, Claude)
+**SQL: `supabase/migrations/20261107_data_health.sql`** (after `20261106_read_cache.sql`; safe twice).
+- `admin_data_health()` (admins only): for each fact (hours, phone, website, cuisine, price, address, location), how many places have it and where it came from (owner / Crumbs / site / OSM / Google).
+- Admin → **Data health** card (`DataHealthCard`, helpers in `lib/data-health.ts`: `filledPct`, `sourceSplit`, `FACT_LABEL`). Shows where Crumbs still leans on Google, which is what "Re-pull stale places" fixes.
+- Checks: `supabase/tests/data_health_test.sql` (counts checked against hand-made rows; non-admin refused), 2 unit tests.
+
+## Round 61 - Clearer message when a member's detail differs from the page (Nov 7, Claude)
+No SQL. When a member types hours or a phone that differs from what the page shows, the profile says what differs ("that's different from the 10 PM shown") instead of a generic thanks. `differsFromPage()` in `lib/restaurants.ts` ignores spacing, case, punctuation and phone formatting. 8 unit tests.
+
+## Round 62 - Group taste overlap ("You agree on…") (Nov 7, Claude)
+No SQL. Group tab → **Taste overlap** card: which pairs agree most and least, and on which places (`tasteOverlap()`, `overlapText()` in `lib/taste-overlap.ts`). Works with every group scale (stars, 10-point, emoji) by comparing on a 0–1 scale; needs 3+ places both people rated. Checked that it reads names from the group's member map and scores as stored. 4 unit tests.
+
+## Round 63 - Owners claim straight from the public page (Nov 7, Claude)
+**SQL: `supabase/migrations/20261108_public_claims.sql`** (after `20261107_data_health.sql`; safe twice).
+- The claim form moved to `components/claim-form.tsx` (shared by the in-app profile and the public page). On `/r/<city>/<name>` an owner can claim without being in any group (`claim_restaurant_direct()`), once **Admin → Switches → "Restaurants can claim their page"** is set to Everyone (`claims_open()`). Admins still approve each claim. At most 3 waiting claims per person.
+- Not signed in: "Sign in to claim" returns to the same `/r/…` page (passes the sign-in callback's safe-path check).
+- Checks: 179 unit tests, production build exit 0 (19 routes), database suite 14/14 including `public_claims_test` (3 expected refusals: switch off, too many waiting, not signed in).
+- Note: if **new_people** is on "admin", a brand-new owner also waits for the gatekeeper's OK before they can sign in. That's process, not a bug.
+
+## Round 64 - Opening Crumbs never shows the location popup (Nov 7, Claude)
+No SQL. Aidan still got "Would like to use your location" when opening Crumbs after a while, even with Safari Websites → While Using the App.
+- **Cause:** with **Update location when Crumbs opens** on, `startAutoLocation()` asked the phone on every open and after 5+ minutes away, and background screens (weather nudge, map centre) were allowed to ask too. iPhone home-screen apps forget "Allow" when iOS closes them, and on iPhone the phone only reports `granted` when Safari's Location is set to **Allow** (under "Ask" it says `prompt` even right after tapping Allow). So each of those asks showed the popup.
+- **Fix (`lib/location.ts`):** new `mayAskQuietly()`: anything not tapped by the person only asks the phone when the switch isn't off and the phone already says `granted`. Opening Crumbs now refreshes quietly (Android, computers, iPhone with Safari Location = Allow) or keeps the last remembered spot. The popup can only come from a tap: Locate me, Nearest, Discover, Test my location, turning the switch on.
+- Wording updated in Settings and Location setup: step 3 is now "Keep location up to date without tapping" and the 🟡 status says the popup only comes when you tap Locate me or Nearest.
+- Checks: new test (switch on + phone says `prompt` → zero asks on open; `granted` → one quiet ask; a tap still asks), 8/8 repeat runs stable, 180 unit tests, typecheck clean, production build exit 0.
+
+## Round 65 - Keep OpenStreetMap websites written without https:// (Nov 7, Claude)
+No SQL. Backup for a missing website (or if Google ever limits showing its website field): OpenStreetMap already fills it (`lib/osm-match.ts`, ranked above Google, credited "© OpenStreetMap contributors" on the profile). It threw away tags written as `www.pizza.ca` or `a.ca;b.ca`. New `osmWebsite()` takes the first site, adds https://, accepts `website`, `contact:website` or `url`, and still refuses non-web links, logins in the address and anything over 300 characters. 1 test with 11 cases; 181 unit tests.
+
+## Self-check, Nov 7 (what was verified without Aidan)
+Kept here so it doesn't have to be re-checked.
+- **Production build:** `next build --webpack` exit 0 on top of Round 65 (Google Fonts reachable this time).
+- **Database:** suite 14/14 including `data_health_test` and `public_claims_test`, on a clean database.
+- **Share card colours** match `crumbs-brand-guide.md`.
+- **Taste overlap** reads the member names map and the stored score scale correctly.
+- **Owner claim path** works end to end: public page → sign in → back to the page → claim waits for admin.
+- **GitHub `main`** is at `f28432e` (public pages, Nov 4). Part one and all Part two patches apply cleanly on top.
+- **Vercel environment variables** (checked through the Vercel connection, all three environments):
+  - Set: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (needed by Round 57's shared cache, the daily job and Menu PDFs; comes from the Supabase integration), `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`.
+  - Not set, on purpose: `NEXT_PUBLIC_DEMO_MODE` (demo off), `NEXT_PUBLIC_R2_PUBLIC_URL` (photos stay in Supabase storage until R2 keys are added), `NEXT_PUBLIC_POSTHOG_KEY` / `_HOST` (analytics off), `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` (local development only). Nothing blocking.
+- **Google website field (B1):** showing Google's `website` with the place is allowed today. If that changes, the fallback is already live: member answer → the restaurant's own site → OpenStreetMap → nothing shown (Round 65 widened the OpenStreetMap step). A paid web-search step isn't needed for now.
+- **Photo resizing:** already done on upload (`shrinkImage` in `lib/photos.ts`: longest side 1280 px, JPEG 0.82, rotation fixed). Still open: a small extra copy for list thumbnails.
+- **Could not check from here:** whether `20261102_invites_approval.sql` was run (invite links and join requests depend on it; errors are hidden on the invite page). Quick check: Admin → Switches shows a **new_people** row only if it ran.
+
+## Round 66 - Claims safety and clearer iPhone location steps (Nov 8, Claude)
+**SQL: `supabase/migrations/20261109_claims_safety.sql`.** A page's owner can't re-send a claim, and a rejected claim takes the page away from the claimant. Location wording in Settings and Location setup made clearer for iPhone.
+
+## Round 67 - "Might be closed" banner (Nov 8, Claude)
+**SQL: `supabase/migrations/20261110_maybe_closed.sql`.** When 2+ groups say a place looked closed, the page shows a "Might be closed" banner.
+
+## Round 68 - Small copies of photos for lists and grids (Nov 8, Claude)
+No SQL. New photos also save a 400 px copy (`<uuid>.t.jpg`, `thumbPath()` in `lib/photos.ts`). `components/thumb-img.tsx` uses it in the place sheet, photo timeline and public page, and falls back to the full photo if the small one is missing (older photos have none). Removing a photo removes both. Less data on lists.
+
+## Round 69 - Dish of the week on public pages (Nov 9, Claude)
+**SQL: `supabase/migrations/20261111_dish_of_week.sql`.** `dish_of_the_week()` picks once per week (Monday start). Needs 3+ groups; the last 4 winners sit out; ties go to most recent activity, then points, then picks. The winning restaurant's page shows a card; other public pages show a linked banner. Parsed safely in `lib/public-page.ts`. 2 unit tests, `dish_of_week_test.sql`.
+
+## Round 70 - Owners switch their own booking button (Nov 9, Claude)
+**SQL: `supabase/migrations/20261112_owner_booking.sql`.** New `owner_off` flag; owners set the link and turn the button on or off (`owner_set_reservation`). Admins can't turn on a button the owner turned off. `OwnerBooking` in `components/owner-extras.tsx`. `owner_booking_test.sql` (3 expected refusals).
+
+## Round 71 - Seasonal / holiday hours (Nov 9, Claude)
+**SQL: `supabase/migrations/20261113_seasonal_hours.sql`.** Owners (or admins) set special hours with a last day only (today up to 200 days out). Usual hours are kept inside the record and come back automatically: `currentHours()` switches by the restaurant's own day boundary, and the daily job calls `end_seasonal_hours()` to restore the stored copy. Pages show "Special hours until ..."; closed-all-day shows "Closed for now". `OwnerSpecialHours` in the owner panel, with "End now". 3 unit tests, `seasonal_hours_test.sql` (2 expected refusals).
+
+## Checks, Rounds 66-71
+189 unit tests pass (`npm test`), typecheck clean, database suite 189 pass / 0 fail. Production build not re-run for this batch.
+
+## Still open
+Batching a place page's database calls into one: on hold (fewer round trips and faster opening, but harder to debug and one migration error would block the whole page).

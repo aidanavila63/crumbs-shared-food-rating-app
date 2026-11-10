@@ -16,6 +16,7 @@ import {
   scoreLine,
   siteLabel,
   spendLine,
+  websiteSources,
 } from '../lib/public-page.ts'
 import { daysUntilHandleChange, handleShapeProblem, suggestHandle } from '../lib/handles.ts'
 
@@ -103,4 +104,32 @@ test('suggested handles and the 30-day wait', () => {
   assert.equal(daysUntilHandleChange(null, now), 0)
   assert.equal(daysUntilHandleChange('2026-10-24T12:00:00Z', now), 20)
   assert.equal(daysUntilHandleChange('2026-09-01T12:00:00Z', now), 0)
+})
+
+const siteFields = { phone: '(416) 555-0199', website: 'https://lanternpho.com', address: '1 King St', hours: null, cuisine: null, price_level: null }
+
+test('website sources group facts by page and keep the newest date', () => {
+  const out = websiteSources({
+    ...siteFields,
+    source_urls: { phone: 'https://lanternpho.com/contact', address: 'https://lanternpho.com/contact', website: 'https://lanternpho.com/' },
+    source_at: { phone: '2026-11-01T10:00:00Z', address: '2026-11-03T10:00:00Z', website: '2026-10-01T10:00:00Z' },
+  })
+  assert.equal(out.length, 2)
+  assert.deepEqual(out[0].facts, ['Phone', 'Address'])
+  assert.equal(out[0].host, 'lanternpho.com')
+  assert.equal(out[0].checked, '2026-11-03T10:00:00Z')
+  assert.deepEqual(out[1].facts, ['Website'])
+})
+
+test('website sources skip facts the page does not show, unsafe links and bad dates', () => {
+  // hours has a source but no value on the page; the second link is not a web link
+  const out = websiteSources({
+    ...siteFields,
+    source_urls: { hours: 'https://lanternpho.com/', phone: 'javascript:alert(1)', cuisine: 'https://lanternpho.com/' },
+    source_at: { hours: 'not a date' },
+  })
+  assert.deepEqual(out, [])
+  assert.deepEqual(websiteSources({ ...siteFields, source_urls: null, source_at: null }), [])
+  const noDate = websiteSources({ ...siteFields, source_urls: { phone: 'https://lanternpho.com/' }, source_at: { phone: 'nope' } })
+  assert.equal(noDate[0].checked, null)
 })

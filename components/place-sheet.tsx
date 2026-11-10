@@ -54,7 +54,9 @@ import {
   placeWarnings,
 } from '@/lib/place-info'
 import { PlaceHours } from './place-hours'
-import { PlaceLinks } from './place-links'
+import { PlaceLinks, useMaybeClosed } from './place-links'
+import { ThumbImg } from './thumb-img'
+import { maybeClosedText } from '@/lib/maybe-closed'
 import { basedOn } from '@/lib/based-on'
 import { busyText, ratingFromVisits, ratingRow, waitText } from '@/lib/visit-rating'
 import { FactsEditor } from './facts-editor'
@@ -71,7 +73,6 @@ import { RestaurantPosts } from './restaurant-posts'
 import { MenuPdfLink } from './menu-pdf'
 import { PlanB } from './plan-b'
 import { REASONS, MAX_REASONS, fitsMe, isReasonTag, knownFor, tooHotFor } from '@/lib/dish-helpers'
-import { photoUrl } from '@/lib/photos'
 function DishRow({
   dish,
   userId,
@@ -456,6 +457,7 @@ export function PlaceSheet({
     supabase,
     demo,
   })
+  const maybeClosed = useMaybeClosed(supabase, place.restaurant_id, demo)
   const [editInfo, setEditInfo] = useState<boolean | 'hours'>(false)
   // Hours a member entered also update this group's copy, so "Open now" uses them straight away.
   async function saveHours(hours: Hours) {
@@ -718,6 +720,8 @@ export function PlaceSheet({
           blocked: 'Their website asks apps not to read it. Snap the menu instead.',
           'no-menu': "Didn't find a menu on their website. Add dishes yourself as you try them.",
         }
+        if (result.unchanged && result.reason === 'ok')
+          return toast('Their menu looks the same as when we last read it, so there is nothing new')
         return toast(why[result.reason] ?? 'No new dishes to add')
       }
       if (demo)
@@ -1032,7 +1036,7 @@ export function PlaceSheet({
               restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
             }
           />
-          <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
+          <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} store={restaurant} />
           {onOpenPlace && allPlaces.length > 1 && (
             <button
               className="text-sm font-semibold text-primary underline"
@@ -1103,6 +1107,11 @@ export function PlaceSheet({
           demo={demo}
           onChange={setPlacePhoto}
         />
+        {maybeClosed && (
+          <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+            <strong>⚠ Might be closed.</strong> {maybeClosedText(maybeClosed)}
+          </p>
+        )}
         {warnings.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {warnings.map((warning) => (
@@ -1158,8 +1167,7 @@ export function PlaceSheet({
               .filter((d) => d.photo_path)
               .map((d) => (
                 <figure key={d.id}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoUrl(d.photo_path)!} alt={d.name} loading="lazy" />
+                  <ThumbImg path={d.photo_path} alt={d.name} />
                   <figcaption>{d.name}</figcaption>
                 </figure>
               ))}

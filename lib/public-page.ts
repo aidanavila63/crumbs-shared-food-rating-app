@@ -18,6 +18,15 @@ export type PublicRestaurant = {
   address: string | null
   phone: string | null
   website: string | null
+  /** where facts read off the restaurant's own website came from, and when (website facts only) */
+  /** a booking link, only present when an admin has agreed it with the restaurant */
+  reservation_url?: string | null
+  /** Part three: 2+ groups said lately it looked closed (banner only) */
+  maybe_closed?: { groups: number; last: string | null } | null
+  /** Part three: this week's dish, picked automatically across all public pages */
+  dish_of_week?: DishOfWeek | null
+  source_urls?: Record<string, string> | null
+  source_at?: Record<string, string> | null
   hours: Hours | null
   business_status: string | null
   lat: number | null
@@ -164,6 +173,47 @@ export const siteLabel = (url: string | null | undefined) => {
   return u ? new URL(u).hostname.replace(/^www\./, '') : null
 }
 
+const SITE_FACT_LABEL: Record<string, string> = {
+  hours: 'Hours',
+  phone: 'Phone',
+  address: 'Address',
+  website: 'Website',
+  cuisine: 'Cuisine',
+  price_level: 'Price',
+  location: 'Map pin',
+}
+
+/**
+ * The facts that came from the restaurant's own website, one entry per page: which facts, the
+ * page's address and the day it was last read. Only facts the page actually shows, and only
+ * web links. Used for the "From lanternpho.com · checked Nov 4" line on the Info tab.
+ */
+export function websiteSources(
+  r: Pick<PublicRestaurant, 'source_urls' | 'source_at' | 'phone' | 'website' | 'address' | 'hours' | 'cuisine' | 'price_level'>,
+) {
+  const shown: Record<string, unknown> = {
+    hours: r.hours,
+    phone: r.phone,
+    address: r.address,
+    website: r.website,
+    cuisine: r.cuisine,
+    price_level: r.price_level,
+    location: null,
+  }
+  const pages = new Map<string, { url: string; host: string; facts: string[]; checked: string | null }>()
+  for (const [fact, raw] of Object.entries(r.source_urls ?? {})) {
+    const label = SITE_FACT_LABEL[fact]
+    const url = safeUrl(raw)
+    if (!label || !url || !shown[fact]) continue
+    const page = pages.get(url) ?? { url, host: siteLabel(url) ?? url, facts: [], checked: null }
+    page.facts.push(label)
+    const at = r.source_at?.[fact]
+    if (at && !Number.isNaN(Date.parse(at)) && (!page.checked || at > page.checked)) page.checked = at
+    pages.set(url, page)
+  }
+  return [...pages.values()]
+}
+
 /** Directions open in Maps by name (+ Google's place id when we have it) — nothing is copied from Google. */
 export function directionsUrl(r: Pick<PublicRestaurant, 'name' | 'address' | 'google_place_id'>) {
   const query = encodeURIComponent([r.name, r.address].filter(Boolean).join(' '))
@@ -191,4 +241,17 @@ export function menuSections(menu: PublicRestaurant['menu']) {
 /** Page description for link previews, from public facts only. */
 export function pageDescription(r: PublicRestaurant) {
   return [metaLine(r), scoreLine(r) && `Rated ${scoreLine(r)} on Crumbs`].filter(Boolean).join(' — ')
+}
+
+/** Part three: Dish of the week — totals only (average score out of 100, how many groups). */
+export type DishOfWeek = { name: string; points: number; groups: number; restaurant_id: string; restaurant: string; city: string; slug: string }
+
+export function readDishOfWeek(data: unknown): DishOfWeek | null {
+  if (!data || typeof data !== 'object') return null
+  const d = data as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null)
+  const name = str(d.name), restaurant = str(d.restaurant), city = str(d.city), slug = str(d.slug), id = str(d.restaurant_id)
+  const points = Number(d.points), groups = Number(d.groups)
+  if (!name || !restaurant || !city || !slug || !id || !Number.isFinite(points) || !(groups >= 3)) return null
+  return { name, points: Math.max(0, Math.min(100, Math.round(points))), groups: Math.floor(groups), restaurant_id: id, restaurant, city, slug }
 }

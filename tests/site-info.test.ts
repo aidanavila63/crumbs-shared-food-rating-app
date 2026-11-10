@@ -94,3 +94,17 @@ test('ignores pages about someone else, chains and far-away head offices', () =>
   // A tel: link alone, with no restaurant described, isn't enough.
   assert.deepEqual(siteFacts(readSiteInfo('<a href="tel:4165550100">Call</a>', 'https://x.ca'), here), {})
 })
+
+test('remembers the page the facts came from, only when there are facts and it is a web page', () => {
+  const info = readSiteInfo(
+    page({ '@type': 'Restaurant', name: 'Bamiyan Kabob', telephone: '416 555 0199' }),
+    'https://bamiyan.ca',
+  )
+  assert.equal(siteFacts({ ...info, page_url: 'https://bamiyan.ca/contact' }, here).source_url, 'https://bamiyan.ca/contact')
+  // No page address, or not a web link: nothing is recorded.
+  assert.equal(siteFacts(info, here).source_url, undefined)
+  assert.equal(siteFacts({ ...info, page_url: 'javascript:alert(1)' }, here).source_url, undefined)
+  // Someone else's page gives no facts, so no source either.
+  const other = readSiteInfo(page({ '@type': 'Restaurant', name: 'Pizza Palace', telephone: '416 555 0100' }), 'https://x.ca')
+  assert.deepEqual(siteFacts({ ...other, page_url: 'https://x.ca/' }, here), {})
+})

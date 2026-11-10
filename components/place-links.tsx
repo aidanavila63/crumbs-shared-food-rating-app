@@ -3,9 +3,12 @@
 // website" backup: hours, cuisine and price the restaurant publishes fill any gaps Crumbs has
 // (Google still wins when it answers — site hours are saved as unchecked so Google refreshes them).
 import { useEffect, useRef, useState } from 'react'
+import { type MaybeClosed, readMaybeClosed } from '@/lib/maybe-closed'
 import { CalendarCheck, Globe, Phone, UtensilsCrossed } from 'lucide-react'
 import type { Place } from '@/hooks/use-crumbs-data'
 import type { SiteInfo } from '@/lib/site-info'
+import type { RestaurantStore } from '@/hooks/use-restaurant'
+import { WebsiteCheck } from './website-check'
 
 const DAY = 864e5
 
@@ -51,18 +54,59 @@ export function useSiteInfo(website: string | null, enabled = true) {
   return info
 }
 
+/** The booking link, but only when an admin has agreed it for this restaurant (else null). */
+export function useReservationLink(supabase: any, restaurantId: string | null | undefined, demo: boolean) {
+  const [link, setLink] = useState<string | null>(null)
+  useEffect(() => {
+    setLink(null)
+    if (demo || !restaurantId) return
+    let live = true
+    Promise.resolve(supabase.rpc('reservation_link', { target: restaurantId }))
+      .then(({ data }: any) => {
+        if (live && typeof data === 'string' && /^https?:\/\//i.test(data)) setLink(data)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [supabase, restaurantId, demo])
+  return link
+}
+
+/** Part three: people from 2+ groups said lately that it looked closed (null otherwise). */
+export function useMaybeClosed(supabase: any, restaurantId: string | null | undefined, demo: boolean) {
+  const [info, setInfo] = useState<MaybeClosed | null>(null)
+  useEffect(() => {
+    setInfo(null)
+    if (demo || !restaurantId) return
+    let live = true
+    Promise.resolve(supabase.rpc('maybe_closed', { target: restaurantId }))
+      .then(({ data }: any) => {
+        if (live) setInfo(readMaybeClosed(data))
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [supabase, restaurantId, demo])
+  return info
+}
+
 export function PlaceLinks({
   place,
   supabase,
   demo,
   onUpdate,
+  store,
 }: {
   place: Place
   supabase: any
   demo: boolean
   onUpdate: (place: Place) => void
+  store?: RestaurantStore
 }) {
   const info = useSiteInfo(place.website, !demo && navigator.onLine)
+  const reserve = useReservationLink(supabase, place.restaurant_id, demo)
   const latest = useRef(place)
   useEffect(() => {
     latest.current = place
@@ -91,8 +135,8 @@ export function PlaceLinks({
   if (info?.menu_url) links.push({ href: info.menu_url, label: 'Menu', icon: <UtensilsCrossed size={15} /> })
   if (info?.phone)
     links.push({ href: `tel:${info.phone.replace(/[^\d+]/g, '')}`, label: 'Call', icon: <Phone size={15} /> })
-  if (info?.reservations)
-    links.push({ href: info.reservations, label: 'Book', icon: <CalendarCheck size={15} /> })
+  // Booking links are held, not shown: only once an admin has switched this restaurant on.
+  if (reserve) links.push({ href: reserve, label: 'Book', icon: <CalendarCheck size={15} /> })
 
   return (
     <div className="place-links" aria-label="Links">
@@ -108,6 +152,7 @@ export function PlaceLinks({
           <span className="truncate">{link.label}</span>
         </a>
       ))}
+      {store && <WebsiteCheck place={place} store={store} demo={demo} />}
     </div>
   )
 }

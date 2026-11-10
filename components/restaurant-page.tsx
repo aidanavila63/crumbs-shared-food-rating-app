@@ -6,11 +6,13 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { BadgeCheck, Globe, MapPin, MoreHorizontal, Phone, Share2, Star } from 'lucide-react'
+import { BadgeCheck, CalendarCheck, Globe, MapPin, MoreHorizontal, Phone, Share2, Star } from 'lucide-react'
 import { StatusFilter } from './status-filter'
 import { Sheet } from './sheet'
-import { openStatus } from '@/lib/place-info'
+import { openStatus, specialHoursNote } from '@/lib/place-info'
+import { maybeClosedText } from '@/lib/maybe-closed'
 import { photoUrl } from '@/lib/photos'
+import { ThumbImg } from './thumb-img'
 import {
   busyLine,
   directionsUrl,
@@ -28,6 +30,7 @@ import {
   siteLabel,
   spendLine,
   waitLine,
+  websiteSources,
   type PublicRestaurant,
 } from '@/lib/public-page'
 
@@ -47,6 +50,7 @@ export function RestaurantPage({
   onSave,
   onLog,
   onReport,
+  claim,
   saved,
 }: {
   data: PublicRestaurant
@@ -57,6 +61,8 @@ export function RestaurantPage({
   onLog?: () => void
   /** "Report a problem" from the More sheet (signed-in people only) */
   onReport?: (text: string) => Promise<void> | void
+  /** public page only: the owner's claim box (shown only while claims are open) */
+  claim?: React.ReactNode
   /** already on this group's list */
   saved?: boolean
 }) {
@@ -68,6 +74,7 @@ export function RestaurantPage({
   const status = useMemo(() => openStatus(data.hours), [data.hours])
   const tel = phoneHref(data.phone)
   const site = safeUrl(data.website)
+  const reserve = safeUrl(data.reservation_url)
   const link = () =>
     data.city && data.slug && typeof location !== 'undefined'
       ? `${location.origin}${restaurantPath(data.city, data.slug)}`
@@ -126,8 +133,13 @@ export function RestaurantPage({
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">{metaLine(data) || 'On Crumbs'}</p>
         {closed && <p className="mt-2 text-sm font-semibold text-destructive">Permanently closed</p>}
+        {!closed && data.maybe_closed && (
+          <p className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+            <strong>⚠ Might be closed.</strong> {maybeClosedText(data.maybe_closed)}
+          </p>
+        )}
         {!closed && status && (
-          <p className={`mt-1 text-sm font-semibold ${status.open ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+          <p className={`mt-1 text-sm font-semibold ${status.soon ? 'text-amber-700 dark:text-amber-400' : status.open ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
             {status.text}
           </p>
         )}
@@ -161,8 +173,9 @@ export function RestaurantPage({
         </button>
       </div>
 
-      <nav className="grid grid-cols-5 gap-1.5" aria-label="Quick actions">
+      <nav className={`grid ${reserve ? 'grid-cols-6' : 'grid-cols-5'} gap-1.5`} aria-label="Quick actions">
         {tile(<Phone className="size-5" />, 'Call', tel ? { href: tel } : { onClick: () => toast('No phone number yet') })}
+        {reserve && tile(<CalendarCheck className="size-5" />, 'Reserve', { href: reserve })}
         {tile(<Globe className="size-5" />, 'Website', site ? { href: site } : { onClick: () => toast('No website yet') })}
         {tile(<MapPin className="size-5" />, 'Directions', { href: directionsUrl(data) })}
         {tile(<Share2 className="size-5" />, 'Share', { onClick: share })}
@@ -174,7 +187,7 @@ export function RestaurantPage({
       {tab === 'Overview' && <Overview data={data} />}
       {tab === 'Menu' && <MenuTab data={data} />}
       {tab === 'Photos' && <PhotosTab data={data} />}
-      {tab === 'Info' && <InfoTab data={data} onReport={onReport} />}
+      {tab === 'Info' && <InfoTab data={data} onReport={onReport} claim={claim} />}
       {tab === 'Our group' && ourGroup}
 
       {more && (
@@ -232,6 +245,26 @@ function Overview({ data }: { data: PublicRestaurant }) {
           </div>
         </Card>
       )}
+      {data.dish_of_week && data.dish_of_week.restaurant_id === data.id && (
+        <Card title="🏆 Dish of the week">
+          <p>
+            <span className="font-semibold">{data.dish_of_week.name}</span>{' '}
+            <span className="text-sm text-muted-foreground">
+              {(data.dish_of_week.points / 20).toFixed(1)} · {data.dish_of_week.groups} groups
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Crumbs&apos; top-rated dish this week, out of every public page.</p>
+        </Card>
+      )}
+      {data.dish_of_week && data.dish_of_week.restaurant_id !== data.id && (
+        <Link
+          href={restaurantPath(data.dish_of_week.city, data.dish_of_week.slug)}
+          className="block rounded-2xl border px-4 py-3 text-sm hover:bg-muted"
+        >
+          🏆 <span className="text-muted-foreground">Dish of the week:</span>{' '}
+          <span className="font-semibold">{data.dish_of_week.name}</span> at {data.dish_of_week.restaurant} →
+        </Link>
+      )}
       {data.top_dishes.length > 0 && (
         <Card title="Most-loved dishes">
           <ol className="flex flex-col gap-2">
@@ -286,8 +319,7 @@ function Overview({ data }: { data: PublicRestaurant }) {
       {photos.length > 0 && (
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {photos.slice(0, 6).map((p, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={photoUrl(p.photo_path)!} alt={p.body ?? 'Photo'} className="h-28 w-36 shrink-0 rounded-2xl object-cover" loading="lazy" />
+            <ThumbImg key={i} path={p.photo_path} alt={p.body ?? 'Photo'} className="h-28 w-36 shrink-0 rounded-2xl object-cover" />
           ))}
         </div>
       )}
@@ -346,8 +378,7 @@ function PhotosTab({ data }: { data: PublicRestaurant }) {
     <div className="grid grid-cols-2 gap-2">
       {photos.map((p, i) => (
         <figure key={i} className="overflow-hidden rounded-2xl">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photoUrl(p.photo_path)!} alt={p.body ?? 'Photo'} className="aspect-square w-full object-cover" loading="lazy" />
+          <ThumbImg path={p.photo_path} alt={p.body ?? 'Photo'} className="aspect-square w-full object-cover" />
           {p.body && <figcaption className="px-1 py-1 text-xs text-muted-foreground">{p.body}</figcaption>}
         </figure>
       ))}
@@ -355,7 +386,15 @@ function PhotosTab({ data }: { data: PublicRestaurant }) {
   )
 }
 
-function InfoTab({ data, onReport }: { data: PublicRestaurant; onReport?: (text: string) => Promise<void> | void }) {
+function InfoTab({
+  data,
+  onReport,
+  claim,
+}: {
+  data: PublicRestaurant
+  onReport?: (text: string) => Promise<void> | void
+  claim?: React.ReactNode
+}) {
   const lines = hoursLines(data.hours)
   const tel = phoneHref(data.phone)
   const site = safeUrl(data.website)
@@ -380,6 +419,9 @@ function InfoTab({ data, onReport }: { data: PublicRestaurant; onReport?: (text:
         </Card>
       )}
       <Card title="Hours">
+        {specialHoursNote(data.hours) && (
+          <p className="mb-1 text-xs font-semibold text-[#b7791f]">🗓 {specialHoursNote(data.hours)} (set by the owner)</p>
+        )}
         {lines.length ? (
           <ul className="text-sm">
             {lines.map((l) => (
@@ -396,16 +438,37 @@ function InfoTab({ data, onReport }: { data: PublicRestaurant; onReport?: (text:
           {site ? <li><a className="text-primary underline" href={site} target="_blank" rel="noopener noreferrer">{siteLabel(site)}</a></li> : <li className="text-muted-foreground">No website yet</li>}
         </ul>
       </Card>
-      {!data.claimed && (
+      <WebsiteSources data={data} />
+      {!data.claimed && claim && (
         <Card>
           <p className="text-sm">
             <strong>Do you own {data.name}?</strong> Claim this page to add your hours, menu and news — it&apos;s free.
           </p>
-          <Link className="secondary mt-3 w-full" href="/">Claim this page</Link>
+          {claim}
         </Card>
       )}
       {onReport && <ReportBox onReport={onReport} />}
     </div>
+  )
+}
+
+/** "Hours and phone · from lanternpho.com · checked Nov 4": what was read off their own site. */
+function WebsiteSources({ data }: { data: PublicRestaurant }) {
+  const pages = websiteSources(data)
+  if (!pages.length) return null
+  return (
+    <p className="px-1 text-xs text-muted-foreground">
+      {pages.map((p, i) => (
+        <span key={p.url}>
+          {i > 0 && ' · '}
+          {p.facts.join(', ')} read from{' '}
+          <a className="underline" href={p.url} target="_blank" rel="noopener noreferrer">
+            {p.host}
+          </a>
+          {p.checked ? ` · checked ${new Date(p.checked).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}` : ''}
+        </span>
+      ))}
+    </p>
   )
 }
 

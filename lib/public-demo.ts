@@ -13,6 +13,8 @@ export const DEMO_RESTAURANT: PublicRestaurant = {
   address: '1234 Sample Rd, Etobicoke, ON',
   phone: '(416) 555-0199',
   website: 'https://example.com',
+  source_urls: { hours: 'https://example.com/contact', phone: 'https://example.com/contact' },
+  source_at: { hours: '2026-11-03T15:00:00Z', phone: '2026-11-03T15:00:00Z' },
   hours: {
     utc: -300,
     periods: [1, 2, 3, 4, 5, 6, 0].map((d) => ({ o: [d, 11, 0], c: [d, 22, 0] })) as never,

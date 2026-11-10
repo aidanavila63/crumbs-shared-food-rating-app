@@ -7,12 +7,14 @@
 //   popup: they use the remembered fix, or ask the phone only if location is already allowed.
 // - Only things you tap for (Locate me, Nearest, Discover nearby, Set home) may show it.
 //
-// iPhone home-screen apps forget "Allow" each time they're closed unless Safari's Location
+// iPhone home-screen apps forget "Allow" each time iOS closes them unless Safari's Location
 // setting is "Allow", so remembering the last fix is what keeps the popup away there.
 //
-// "Update location when Crumbs opens" (Settings, on this phone): when on, Crumbs asks the phone
-// where you are each time it opens (or comes back after a while), and background uses may ask
-// too. That switch is your consent; off = only things you tap for ever use location.
+// "Update location when Crumbs opens" (Settings, on this phone): when on, Crumbs refreshes where
+// you are each time it opens (or comes back after a while) — but only when the phone says location
+// is already allowed, so it never pops up on its own. When the phone has forgotten (iPhone with
+// Safari Location on "Ask"), Crumbs keeps using the last spot until you tap something that needs
+// location. Off = only things you tap for ever use location.
 export type LatLng = { lat: number; lng: number }
 type Fix = LatLng & { at: number }
 
@@ -97,6 +99,15 @@ export function lastFix(maxAge = FRESH): LatLng | null {
   return fix && Date.now() - fix.at <= maxAge ? { lat: fix.lat, lng: fix.lng } : null
 }
 
+/**
+ * May Crumbs ask the phone without you tapping anything? Only if the switch isn't off, you haven't
+ * said no since opening, and the phone says location is already allowed — so no popup can show.
+ */
+export async function mayAskQuietly() {
+  if (autoLocation() === 'off' || deniedThisSession) return false
+  return locationAllowed()
+}
+
 /** Is location already allowed? (false when unknown, e.g. older iPhones) */
 export async function locationAllowed() {
   try {
@@ -109,8 +120,8 @@ export async function locationAllowed() {
 
 /**
  * Where the phone is. Uses the remembered fix when it's recent enough. With ask: false it never
- * shows the permission popup (returns null instead) — unless "update location when Crumbs opens"
- * is on, which counts as saying yes. Several callers at once share one request.
+ * shows the permission popup (returns null instead): it only asks the phone when location is
+ * already allowed, and never when the switch is off. Several callers at once share one request.
  */
 export async function locate({
   maxAge = FRESH,
@@ -120,11 +131,7 @@ export async function locate({
   if (typeof navigator === 'undefined' || !navigator.geolocation) return null
   const known = lastFix(maxAge)
   if (known) return known
-  if (!ask) {
-    const setting = autoLocation()
-    if (setting === 'off' || (setting === 'on' && deniedThisSession)) return null
-    if (setting !== 'on' && !(await locationAllowed())) return null
-  }
+  if (!ask && !(await mayAskQuietly())) return null
   pending ??= new Promise<LatLng | null>((resolve) =>
     navigator.geolocation.getCurrentPosition(
       (p) => {
@@ -197,13 +204,15 @@ const REOPEN = 5 * MIN
 
 /**
  * Call once when the app starts. With the switch on: gets a fresh fix now, and again whenever
- * Crumbs comes back to the screen after 5+ minutes away. Returns a cleanup.
+ * Crumbs comes back to the screen after 5+ minutes away — only when location is already allowed,
+ * so opening Crumbs never shows the phone's popup. Returns a cleanup.
  */
 export function startAutoLocation() {
   if (typeof document === 'undefined') return () => {}
+  // Quietly: if the phone has forgotten (no "allowed"), keep the last spot rather than pop up.
   const refresh = () => {
-    if (autoLocation() !== 'on' || deniedThisSession) return
-    locate({ ask: true, maxAge: MIN })
+    if (autoLocation() !== 'on') return
+    locate({ ask: false, maxAge: MIN })
   }
   refresh()
   let hiddenAt = 0

@@ -9,6 +9,9 @@ import type { RestaurantStore } from '@/hooks/use-restaurant'
 import {
   PROFILE_FIELDS,
   claimRestaurant,
+  differsFromPage,
+  factFreshness,
+  factWhy,
   factOrigin,
   isOwned,
   ownerLocked,
@@ -22,6 +25,7 @@ import { hoursToText, localUtcOffset, parseHoursText } from '@/lib/hours-text'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { track } from '@/lib/analytics'
+import { ClaimForm } from './claim-form'
 import { ReadPhotoButton } from './photo-reader'
 import { priceLevelFromSpend } from '@/lib/good-to-know'
 
@@ -37,12 +41,14 @@ const LABEL: Record<FactField, string> = {
   status: 'Open?',
 }
 /** Thank-you line after a contribution. Only new info earns points, so most say none. */
-export function thanks(fact: FactField, result: FactResult) {
+export function thanks(fact: FactField, result: FactResult, differs = false) {
   if (result.locked) return 'Sent to the restaurant — they keep this page up to date'
   const pts = result.points ? ` · +${result.points} points` : ''
   if (result.claimed && result.agree > 1)
     return `Thanks! That’s now checked by ${result.agree} people${pts}`
   if (result.applied) return `Thanks — ${LABEL[fact].toLowerCase()} saved for everyone${pts}`
+  if (differs)
+    return `Thanks — that’s different from what’s shown. It’ll switch once one more person agrees, so check it again next time you’re there${pts}`
   return `Thanks — saved. One more person agreeing will update it${pts}`
 }
 
@@ -123,17 +129,19 @@ export function RestaurantInfoEditor({
   onHours: (hours: Hours) => void
 }) {
   const [editing, setEditing] = useState<FactField | null>(startEditing ?? null)
+  const [why, setWhy] = useState<FactField | null>(null)
   const r = store.restaurant
   if (!store.enabled || !r) return null
 
   async function save(fact: FactField, val: unknown, how: Evidence) {
     try {
+      const differs = differsFromPage(r, fact, val)
       const result = await store.contribute(fact, val, how)
       if (!result) return
       haptic('success')
       track('fact_added', { fact, how, applied: result.applied })
       if (fact === 'hours' && !result.locked) onHours(val as Hours)
-      toast.success(thanks(fact, result))
+      toast.success(thanks(fact, result, differs))
       setEditing(null)
     } catch (error: any) {
       toast.error(error?.message || 'Could not save that')
@@ -180,6 +188,8 @@ export function RestaurantInfoEditor({
             const text = show(r, f)
             const owned = isOwned(r, f)
             const origin = text ? factOrigin(r, f) : null
+            const fresh = text && f !== 'status' ? factFreshness(r, f) : null
+            const stale = !!fresh && fresh.level !== 'fresh'
             const locked = !store.manages && ownerLocked(r, f)
             return (
               <div key={f} className="profile-row flex flex-col gap-1 py-2">
@@ -203,9 +213,36 @@ export function RestaurantInfoEditor({
                 </div>
                 {origin && editing !== f && (
                   <p className="pl-[72px] text-[0.6875rem] text-muted-foreground">
+                    {fresh && (
+                      <span
+                        className={`mr-1 inline-block size-2 rounded-full align-middle ${
+                          fresh.level === 'fresh' ? 'bg-[#2f7d4f]' : fresh.level === 'aging' ? 'bg-[#d69e2e]' : 'bg-muted-foreground/50'
+                        }`}
+                        title={fresh.label}
+                        aria-hidden="true"
+                      />
+                    )}
                     {origin}
+                    {fresh && ` · ${fresh.label}`}
                     {r.sources?.[f] === 'google' && ' · not kept, add what you see'}
+                    <button
+                      type="button"
+                      className="ml-1 font-semibold text-primary underline"
+                      aria-expanded={why === f}
+                      onClick={() => setWhy(why === f ? null : f)}
+                    >
+                      Why?
+                    </button>
                   </p>
+                )}
+                {why === f && editing !== f && (
+                  <ul className="ml-[72px] list-disc rounded-xl bg-[var(--card)] py-2 pl-6 pr-3 text-xs text-muted-foreground">
+                    {factWhy(r, f).map((line) => (
+                      <li key={line} className="break-words">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
                 )}
                 {editing !== f && locked && (
                   <div className="flex gap-3 pl-[72px] text-xs font-semibold">
@@ -221,7 +258,7 @@ export function RestaurantInfoEditor({
                         className="text-[#2f7d4f] underline"
                         onClick={() => save(f, valueOf(r, f), 'in_person')}
                       >
-                        Still right
+                        {stale ? `${LABEL[f]} look${f === 'hours' ? '' : 's'} old — still right?` : 'Still right'}
                       </button>
                     )}
                     <button className="text-primary underline" onClick={() => setEditing(f)}>
@@ -437,114 +474,6 @@ export function FactEditor({
           onClick={() => onSave(val, how)}
         >
           {saveLabel}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** #100 "Own or manage this place?" — a request an admin checks before the owner gets control. */
-function ClaimForm({
-  restaurantId,
-  name,
-  supabase,
-}: {
-  restaurantId: string
-  name: string
-  supabase: any
-}) {
-  const [open, setOpen] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [form, setForm] = useState({ contact: '', job: '', mail: '', tel: '', evidence: '' })
-  const set = (k: keyof typeof form) => (event: { target: { value: string } }) =>
-    setForm({ ...form, [k]: event.target.value })
-  if (sent)
-    return (
-      <p className="mt-3 rounded-xl bg-[var(--card)] px-3 py-2 text-sm">
-        Thanks — we’ll check your claim and let you know. Once confirmed, your changes go live
-        straight away.
-      </p>
-    )
-  if (!open)
-    return (
-      <button
-        className="mt-3 self-start text-sm font-semibold text-primary underline"
-        onClick={() => setOpen(true)}
-      >
-        Own or manage {name}? Claim this page
-      </button>
-    )
-  return (
-    <div className="rise-panel mt-3 flex flex-col gap-2 rounded-2xl bg-[var(--card)] p-3">
-      <p className="font-semibold">Claim {name}</p>
-      <p className="text-xs text-muted-foreground">
-        We check every claim (usually by emailing or calling the restaurant). Once confirmed you can
-        keep hours, menu and details right for everyone.
-      </p>
-      <input
-        className="field !min-h-10 text-sm"
-        aria-label="Your name"
-        placeholder="Your name"
-        maxLength={120}
-        value={form.contact}
-        onChange={set('contact')}
-      />
-      <input
-        className="field !min-h-10 text-sm"
-        aria-label="Your role"
-        placeholder="Role (owner, manager…)"
-        maxLength={60}
-        value={form.job}
-        onChange={set('job')}
-      />
-      <input
-        className="field !min-h-10 text-sm"
-        aria-label="Work email"
-        type="email"
-        placeholder="Work email (ideally at the restaurant’s website)"
-        maxLength={200}
-        value={form.mail}
-        onChange={set('mail')}
-      />
-      <input
-        className="field !min-h-10 text-sm"
-        aria-label="Restaurant phone"
-        inputMode="tel"
-        placeholder="Restaurant phone we can call"
-        maxLength={40}
-        value={form.tel}
-        onChange={set('tel')}
-      />
-      <textarea
-        className="field min-h-16 text-sm"
-        aria-label="Anything that shows it’s yours"
-        placeholder="Anything that shows it’s yours (optional)"
-        maxLength={1000}
-        value={form.evidence}
-        onChange={set('evidence')}
-      />
-      <div className="flex gap-2">
-        <button className="secondary !min-h-10 text-sm" onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-        <button
-          className="primary !min-h-10 flex-1 text-sm"
-          disabled={busy || !form.contact.trim() || (!form.mail.trim() && !form.tel.trim())}
-          onClick={async () => {
-            setBusy(true)
-            try {
-              await claimRestaurant(supabase, restaurantId, form)
-              track('claim_sent')
-              setSent(true)
-            } catch (error: any) {
-              toast.error(error?.message || 'Could not send that')
-            } finally {
-              setBusy(false)
-            }
-          }}
-        >
-          Send claim
         </button>
       </div>
     </div>

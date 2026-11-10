@@ -24,6 +24,16 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+      # Round 58: how big the app's JavaScript is, in the run summary, so a change that makes the
+      # phone download a lot more shows up. (Gzipped, all browser chunks together.)
+      - name: Bundle size
+        run: |
+          total=$(find .next/static/chunks -name '*.js' -print0 | xargs -0 -I{} sh -c 'gzip -c "{}" | wc -c' | awk '{s+=$1} END {print s}')
+          echo "### Browser JavaScript (gzipped)" >> "$GITHUB_STEP_SUMMARY"
+          echo "$((total / 1024)) KB across all chunks" >> "$GITHUB_STEP_SUMMARY"
+          find .next/static/chunks -name '*.js' -print0 | xargs -0 ls -S | head -5 | while read f; do
+            echo "- $(basename "$f"): $(( $(gzip -c "$f" | wc -c) / 1024 )) KB" >> "$GITHUB_STEP_SUMMARY"
+          done
 
   database:
     runs-on: ubuntu-latest

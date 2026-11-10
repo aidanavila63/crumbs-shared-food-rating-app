@@ -40,3 +40,18 @@ test('best match turns tags into facts', () => {
   assert.equal(m.data.hours!.utc, -420)
   assert.equal(bestMatch(json, 'Totally Different', 0), null)
 })
+
+test('osmWebsite keeps websites mappers wrote without https://', async () => {
+  const { osmWebsite } = await import('../lib/osm-match.ts')
+  assert.equal(osmWebsite('https://pizza.ca/menu'), 'https://pizza.ca/menu')
+  assert.equal(osmWebsite('www.pizza.ca'), 'https://www.pizza.ca/')
+  assert.equal(osmWebsite('pizza.ca;https://other.ca'), 'https://pizza.ca/')
+  assert.equal(osmWebsite('  http://pizza.ca  '), 'http://pizza.ca/')
+  assert.equal(osmWebsite('javascript:alert(1)'), null)
+  assert.equal(osmWebsite('ftp://pizza.ca'), null)
+  assert.equal(osmWebsite('not a site'), null)
+  assert.equal(osmWebsite('localhost'), null)
+  assert.equal(osmWebsite('https://user:pw@pizza.ca'), null)
+  assert.equal(osmWebsite(42), null)
+  assert.equal(osmWebsite('https://pizza.ca/' + 'a'.repeat(400)), null)
+})

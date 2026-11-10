@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { flagAllows } from '@/lib/flags-server'
 import { RobotsBlockedError, readMenuText } from '@/lib/menu-fetch'
+import { menuFingerprint, siteKey } from '@/lib/menu-fingerprint'
+import { cachedMenu, saveMenu } from '@/lib/read-cache'
 
 export const maxDuration = 30
 
@@ -50,6 +52,11 @@ export async function POST(request: Request) {
   try {
     const text = await readMenuText(place.website)
     if (text.length < 200) return Response.json({ dishes: [], reason: 'unreadable' })
+    // Same menu as last time (for anyone)? Reuse what the AI found instead of asking again.
+    const key = siteKey(place.website)
+    const fingerprint = menuFingerprint(text)
+    const known = await cachedMenu(key, fingerprint)
+    if (known) return Response.json({ dishes: known, reason: known.length ? 'ok' : 'no-menu', unchanged: true })
     const result = await generateObject({
       model: 'openai/gpt-4o-mini',
       schema,
@@ -62,10 +69,9 @@ export async function POST(request: Request) {
         text,
       ].join('\n'),
     })
-    return Response.json({
-      dishes: result.object.dishes.filter((dish) => dish.name.trim()),
-      reason: result.object.dishes.length ? 'ok' : 'no-menu',
-    })
+    const dishes = result.object.dishes.filter((dish) => dish.name.trim())
+    await saveMenu(key, fingerprint, dishes)
+    return Response.json({ dishes, reason: result.object.dishes.length ? 'ok' : 'no-menu' })
   } catch (error: any) {
     // The site's robots.txt asks apps not to read it: respect that.
     if (error instanceof RobotsBlockedError) return Response.json({ dishes: [], reason: 'blocked' })

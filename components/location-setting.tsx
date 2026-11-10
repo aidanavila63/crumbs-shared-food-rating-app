@@ -11,7 +11,7 @@ import {
 import { Switch } from './switch'
 
 const IPHONE_TIP =
-  'On iPhone the popup can come back each time you open Crumbs. To stop it: iPhone Settings → Apps → Safari → Location → Allow.'
+  'On iPhone, Crumbs updates quietly only when Safari’s website Location is set to Allow: iPhone Settings → Apps → Safari → Settings for Websites → Location → Allow. (Not the Privacy → Location Services screen, where While Using the App is right.) Otherwise it uses your last spot until you tap Locate me or Nearest — it won’t pop up when you open it.'
 
 function isIphone() {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -71,8 +71,8 @@ export function LocationPrompt({ onDone }: { onDone: () => void }) {
       aria-label="Location"
     >
       <p>
-        <span className="font-semibold">📍 Find food near you?</span> Crumbs can check where you are
-        each time it opens, so search, the map and distances start from where you are. It stays on
+        <span className="font-semibold">📍 Find food near you?</span> Crumbs can keep track of where
+        you are when it opens, so search, the map and distances start from where you are. It stays on
         this phone and is never shown to your group. You can turn it off in Settings.{' '}
         <button
           type="button"
