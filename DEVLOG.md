@@ -648,3 +648,51 @@ No SQL. New photos also save a 400 px copy (`<uuid>.t.jpg`, `thumbPath()` in `li
 
 ## Still open
 Batching a place page's database calls into one: on hold (fewer round trips and faster opening, but harder to debug and one migration error would block the whole page).
+
+## Round 72 - No flash of the old place page; claim box on the in-app Info tab (Nov 11, Claude)
+No SQL. Aidan: tapping a place showed the old page for a moment, then the new one. And he couldn't find where to claim a page.
+- **Cause of the flash:** `components/place-sheet.tsx` drew the group-only layout (`groupBody`) until `usePublicRestaurant` finished its `restaurant_public_by_id` call, then swapped to `RestaurantPage`. Nothing to do with the service worker or the 1-hour cache.
+- **Fix:** `hooks/use-public-restaurant.ts` now returns `undefined` while loading (`null` = nothing to show / lookup failed). The sheet shows a grey placeholder for `undefined` and only falls back to the group layout on `null`. A module-level `seen` map remembers the last answer per restaurant, so reopening a place shows the page straight away (a fresh read still runs underneath).
+- **Claim box (in the app):** it was only reachable through "Something wrong or missing? Suggest an edit". `place-sheet.tsx` now passes `claim` to `RestaurantPage`, so "Own or manage this place?" sits at the bottom of the **Info** tab (not on claimed places, not in demo, only while the `restaurant_claims` switch is on). The public page already had its own **Claim this page** button.
+
+## Round 73 - Polish from Aidan's phone (Nov 11, Claude)
+No SQL. Five things Aidan saw after the rollout:
+1. **Long websites** ran off the page and the whole sheet could be dragged sideways. Fix: `[overflow-wrap:anywhere]` + `min-w-0` on `Card` and on the Website row (`restaurant-profile.tsx`), and `min-w-0 max-w-full overflow-x-clip` on the `RestaurantPage` root.
+2. **From / Until** date boxes (owner posts: offers, news) were too wide and crossed over. Fix: they stack (`flex-col`, `min-w-0`). iOS date inputs have an intrinsic width, so side by side doesn't fit on a narrow phone.
+3. **Special hours** hours box and last-day date looked like bare text. Fix: `className="field"` (3 rows).
+4. **Book a table** link box: same, `className="field"`.
+5. **Amber "Special hours" note:** it only existed in the Info tab's Hours card. Added an amber pill under the open/closed line at the top of `RestaurantPage` ("🗓 Special hours until Dec 26 · set by the owner") and made the owner's own Special hours summary amber. Note: `specialHoursNote()` already returns "Special hours until …", so don't prefix it again.
+- Place pages read their details when opened and don't refresh live: after an owner saves special hours, close and reopen the place to see the pill.
+
+## Rollout record (Nov 10–11)
+- **Patches:** Part one squash (R55–59), Part two (5 patches, R60–65), Part three (7 patches, R66–71 + devlog) were first exported separately. To cut the number of pushes they were squashed into **`crumbs-all-rounds55-71.patch`** (one commit on `main` f28432e, ~278 KB; verified on a fresh clone: identical to the working repo). Aidan applied it (`git am`, clean; commit `d09fb71` on his machine) and pushed once. Rounds 72 and 73 followed as small patches (`crumbs-round72-fixes.patch`, `crumbs-round73-polish.patch`), also applied and pushed. Hashes differ between Claude's copy and his, the content is identical.
+- **Database:** Aidan ran all ten migrations in order (`20261104_website_facts` … `20261113_seasonal_hours`) in the Supabase SQL editor. All succeeded. He also said he'd confirmed the earlier check I asked about (read as `20261102_invites_approval`; not independently verified, Admin → Switches shows a `new_people` row if it ran).
+- **Admin switches:** "Restaurants can claim their page" = Everyone (done).
+- **Confirmed by Aidan on the live app:** Data health card shows; owner tools show Special hours and Book a table; setting special hours changes the hours.
+- **Not seen yet / not verified:** the Round 72 placeholder (no flash) on a phone; the claim box on the Info tab; the Round 73 layout on a phone; whether "Re-pull stale places" was run (he couldn't find it at first); Dish of the week (needs 3+ groups' ratings in a week, so nothing shows yet); small photo copies (only new uploads get them); a production `next build` since Round 65 (Nov 7). No SQL changed in Rounds 72–73, so the database suite (189 pass at Round 71) wasn't re-run.
+
+## What we learned (keep, so it isn't re-found)
+**Where things are in the app**
+- **Re-pull stale places:** Admin → **Usage** card, at the very bottom, a small grey box starting "Re-pull stale places…" with **Check how many** (then **Refresh N places** if any). It is not a big button; the RPC is `admin_recheck_open_data`. "Nothing is stale right now" is a normal answer.
+- **Claims:** `claims_open()` reads `feature_flags.restaurant_claims` (`everyone` = open, `admin` = admins only, else closed). Public page (`/r/<city>/<name>`) asks that RPC, so it works signed out → sign in → back. In the app the flag comes from `flag('restaurant_claims')` and needs `v4`; after changing the switch, close and reopen the app.
+- **Owner tools** (Special hours, Book a table, posts, insights, menu PDF) are on the owner's own screen and appear only for a place whose claim an admin approved. To test: claim a place, approve it in Admin, then open it.
+- **Public page cache:** `/r/…` is cached for an hour (`revalidate = 3600`); the in-app place sheet reads fresh each open.
+- **Service worker** (`public/sw.js`, `crumbs-v4`): pages network-first, `/_next/static` cache-first, `skipWaiting`. A home-screen app can keep the old build until it's fully closed and reopened.
+
+**UI conventions**
+- Inputs and textareas need `className="field"` (`app/globals.css`); without it they render as bare text. Tailwind utilities lose to that unlayered sheet, so add layout classes carefully.
+- Long strings: `[overflow-wrap:anywhere]` plus `min-w-0` on flex children; `overflow-x-clip` on a page root stops sideways dragging.
+- Two date inputs never fit side by side on a phone: stack them.
+- Amber: `#fdf3dc` background / `#8a5a12` text (dark: `#3a2a0c` / `#f0c36a`); the old inline status line uses `#b7791f`.
+
+**Working method**
+- Tests run with **`npm test`** (node's own runner with `--experimental-strip-types`). `npx vitest` reports every file as "No test suite", which looks like a failure but isn't.
+- **Check git, don't trust a summary.** At the start of this stretch Round 71 was described as committed but `git status` showed it uncommitted. And one export wrongly produced the devlog patch because the commit step in a chained command never ran. Always read `git log` and `git status`, and open the patch file's contents, before saying a patch is ready.
+- **Patch verification recipe:** fresh clone, check out `f28432e` as a branch, `git am` the whole chain in order, then `git diff` against the working repo's HEAD: empty means identical.
+- The shell tool is `sh`: no `<( … )` process substitution; write to a file and apply that.
+- **Aidan's setup:** Git Bash-style terminal at `~/Documents/crumbs-shared-food-rating-app`, patches in `~/Downloads`. The repo contains an untracked nested folder `crumbs-shared-food-rating-app/` (a stray second copy): never `git add .` or `git add -A` there. He prefers few pushes and numbered step-by-step instructions with what success looks like.
+
+## Still open
+- **Batching a place page's database calls into one:** on hold. Faster opening vs harder debugging, and one migration error would block the whole page. Aidan hasn't decided.
+- The stray nested `crumbs-shared-food-rating-app/` folder inside his repo (harmless, but easy to commit by accident).
+- Phone checks listed under "Not seen yet" above.
