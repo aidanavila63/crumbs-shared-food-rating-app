@@ -143,8 +143,8 @@ export function OwnerPosts({
             </div>
           )}
           {kind !== 'special' && (
-            <div className="flex gap-2">
-              <label className="flex flex-1 flex-col gap-1 text-xs">
+            <div className="flex flex-col gap-2">
+              <label className="flex min-w-0 flex-col gap-1 text-xs">
                 From
                 <input
                   className="field"
@@ -153,7 +153,7 @@ export function OwnerPosts({
                   onChange={(e) => setStart(e.target.value)}
                 />
               </label>
-              <label className="flex flex-1 flex-col gap-1 text-xs">
+              <label className="flex min-w-0 flex-col gap-1 text-xs">
                 {kind === 'news' ? 'Show until (optional)' : 'Until'}
                 <input
                   className="field"
@@ -448,6 +448,7 @@ export function OwnerBooking({ restaurantId, supabase, demo }: { restaurantId: s
           : 'No booking button shows on your Crumbs page. It only appears if you switch it on.'}
       </p>
       <input
+        className="field"
         type="url"
         inputMode="url"
         placeholder="https://… (OpenTable, Resy, Tock, your own page)"
@@ -540,8 +541,8 @@ export function OwnerSpecialHours({
       <h3 className="font-serif text-xl font-bold">Special hours</h3>
       {note ? (
         <>
-          <p className="text-sm">
-            <strong>{note}:</strong> {hoursToText(hours) || 'Closed'}
+          <p className="rounded-xl bg-[#fdf3dc] px-3 py-2 text-sm text-[#8a5a12] dark:bg-[#3a2a0c] dark:text-[#f0c36a]">
+            <strong>🗓 {note}:</strong> {hoursToText(hours) || 'Closed'}
           </p>
           <p className="text-xs text-muted-foreground">Your usual hours come back by themselves the day after.</p>
           <button className="secondary" disabled={busy} onClick={end}>
@@ -566,7 +567,8 @@ export function OwnerSpecialHours({
           </label>
           {!closed && (
             <textarea
-              rows={2}
+              className="field"
+              rows={3}
               placeholder="e.g. Mon–Fri 11am–3pm; Sat 10am–2pm"
               aria-label="Special hours"
               value={text}
@@ -580,7 +582,7 @@ export function OwnerSpecialHours({
           )}
           <label className="flex flex-col gap-1 text-sm">
             Last day
-            <input type="date" min={today} value={last} onChange={(event) => setLast(event.target.value)} />
+            <input className="field" type="date" min={today} value={last} onChange={(event) => setLast(event.target.value)} />
           </label>
           <div className="flex gap-2">
             <button className="secondary flex-1" onClick={() => setOpen(false)}>

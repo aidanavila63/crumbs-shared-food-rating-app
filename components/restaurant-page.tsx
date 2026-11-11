@@ -113,7 +113,7 @@ export function RestaurantPage({
   const score = scoreLine(data)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-x-clip">
       <div
         className="relative -mx-1 h-36 overflow-hidden rounded-3xl bg-gradient-to-br from-primary/25 via-muted to-card"
         style={heroUrl ? { backgroundImage: `url(${heroUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
@@ -141,6 +141,11 @@ export function RestaurantPage({
         {!closed && status && (
           <p className={`mt-1 text-sm font-semibold ${status.soon ? 'text-amber-700 dark:text-amber-400' : status.open ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
             {status.text}
+          </p>
+        )}
+        {!closed && specialHoursNote(data.hours) && (
+          <p className="mt-1 inline-block rounded-full bg-[#fdf3dc] px-3 py-1 text-xs font-semibold text-[#8a5a12] dark:bg-[#3a2a0c] dark:text-[#f0c36a]">
+            🗓 {specialHoursNote(data.hours)} · set by the owner
           </p>
         )}
         {score && (
@@ -205,7 +210,7 @@ export function RestaurantPage({
 
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <section className="surface">
+    <section className="surface min-w-0 [overflow-wrap:anywhere]">
       {title && <h2 className="mb-3 font-serif text-lg font-bold">{title}</h2>}
       {children}
     </section>

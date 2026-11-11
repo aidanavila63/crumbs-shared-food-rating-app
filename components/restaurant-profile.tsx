@@ -195,7 +195,7 @@ export function RestaurantInfoEditor({
               <div key={f} className="profile-row flex flex-col gap-1 py-2">
                 <div className="flex items-start gap-2">
                   <span className="w-16 shrink-0 text-sm font-semibold">{LABEL[f]}</span>
-                  <span className="min-w-0 flex-1 text-sm">
+                  <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
                     {text ?? <span className="text-muted-foreground">Not known yet</span>}
                   </span>
                   {r.sources?.[f] === 'owner' && text ? (
