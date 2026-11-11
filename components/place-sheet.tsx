@@ -41,6 +41,7 @@ import type { Hours } from '@/lib/place-info'
 import { useRestaurant } from '@/hooks/use-restaurant'
 import { usePublicRestaurant } from '@/hooks/use-public-restaurant'
 import { RestaurantPage } from './restaurant-page'
+import { ClaimForm } from './claim-form'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
 import { PhotoButton } from './photo-button'
@@ -1589,6 +1590,11 @@ export function PlaceSheet({
           data={shared}
           saved
           ourGroup={groupBody}
+          claim={
+            claims && !restaurant.manages && place.restaurant_id && !demo ? (
+              <ClaimForm restaurantId={place.restaurant_id} name={place.name} supabase={supabase} />
+            ) : undefined
+          }
           onReport={async (text) => {
             if (demo) return
             const { error } = await supabase
@@ -1597,6 +1603,12 @@ export function PlaceSheet({
             if (error) throw error
           }}
         />
+      ) : shared === undefined ? (
+        <div className="flex flex-col gap-3 p-4" aria-busy="true">
+          <div className="skeleton h-8 w-2/3" />
+          <div className="skeleton h-24" />
+          <div className="skeleton h-40" />
+        </div>
       ) : (
         groupBody
       )}
