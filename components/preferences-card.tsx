@@ -48,7 +48,20 @@ export function PreferencesCard({
     ) as Partial<Profile>
     onProfile(changes)
     if (demo) return
-    const { error } = await supabase.from('profiles').update(changes).eq('id', userId)
+    // Round 75: saved areas are private — they live in a table only you can read. (Before
+    // 20261114_audit_fixes.sql has run that table doesn't exist: fall back to the profile.)
+    let rest = changes
+    if ('areas' in changes) {
+      const { error: placesError } = await supabase
+        .from('private_places')
+        .upsert({ user_id: userId, areas: changes.areas ?? [], updated_at: new Date().toISOString() })
+      if (!placesError) {
+        rest = { ...changes }
+        delete rest.areas
+      }
+    }
+    if (!Object.keys(rest).length) return
+    const { error } = await supabase.from('profiles').update(rest).eq('id', userId)
     if (error) {
       onProfile(before)
       toast.error(error.message)
@@ -280,6 +293,8 @@ export function PreferencesCard({
         <p className="font-semibold">Saved areas</p>
         <p className="text-sm text-muted-foreground">
           Work, the cottage, your parents’ place… then filter your places to just that area.
+          🔒 Only you can see these. A spot the whole group should share (like the office) goes in
+          Group settings → Group locations.
         </p>
         <div className="mt-2 flex flex-col gap-2">
           {(profile?.areas ?? []).map((a) => (

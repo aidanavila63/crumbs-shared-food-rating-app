@@ -5,11 +5,20 @@
 export const BACKUP_BUCKET = 'crumbs-backups'
 export const KEEP_BACKUPS = 8
 
-/** Tables worth restoring (not caches, counters or phone push keys). */
+/** Tables worth restoring. EVERY table must be named here or in NOT_BACKED_UP below — a test
+ * (tests/backup.test.ts) reads the SQL files and fails when a new table is in neither list.
+ * (Found Nov 15: 13 tables holding real data were in neither list and were silently skipped.) */
 export const BACKUP_TABLES = [
   'profiles',
+  'private_places',
+  'profile_picks',
+  'handle_reservations',
+  'blocked_handle_words',
+  'access_requests',
   'groups',
   'group_members',
+  'group_join_requests',
+  'group_locations',
   'places',
   'place_ratings',
   'place_private_notes',
@@ -23,6 +32,7 @@ export const BACKUP_TABLES = [
   'home_meals',
   'home_meal_ratings',
   'home_meal_cooks',
+  'recipe_saves',
   'activity',
   'reactions',
   'comments',
@@ -31,6 +41,10 @@ export const BACKUP_TABLES = [
   'swipe_sessions',
   'swipe_votes',
   'restaurants',
+  'restaurant_slugs',
+  'restaurant_reservations',
+  'restaurant_question_skips',
+  'dish_of_week',
   'restaurant_dishes',
   'restaurant_dish_votes',
   'restaurant_dish_prices',
@@ -55,6 +69,16 @@ export const BACKUP_TABLES = [
   'restaurant_tips',
   'restaurant_tip_votes',
   'waitlist',
+  'crumbs_migrations',
+] as const
+
+/** Left out on purpose: they rebuild themselves, or (push keys) are no use once restored. */
+export const NOT_BACKED_UP = [
+  'site_read_cache', // what a restaurant's website said last time: read again when needed
+  'menu_read_cache', // same, for menus
+  'usage_counts', // today's allowance counters
+  'push_subscriptions', // phones' notification keys: each phone signs up again by itself
+  'client_errors', // the last 500 app errors
 ] as const
 
 /** crumbs-2026-10-26.json.gz */

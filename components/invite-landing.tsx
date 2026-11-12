@@ -292,6 +292,9 @@ export function InviteLanding({
             </p>
             <p className="text-sm text-muted-foreground">
               New to Crumbs? Use any email — it makes your account.
+              {preview.gate
+                ? ` This invite doesn’t let you straight in: ${keeper} approves every new person first, then you’ll land in ${preview.name}.`
+                : ''}
             </p>
             <SignInForm supabase={supabase} next={invitePath(code)} />
           </div>

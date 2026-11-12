@@ -3,6 +3,7 @@ import { overDailyLimit } from '@/lib/tier-limits'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { overpass } from '@/lib/osm'
 import { overpassQuery, overpassToPlaces } from '@/lib/nearby'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 // #36 Discover places near a spot you loved, from OpenStreetMap (free; no Google calls).
 // Results are cached per area + cuisine for a day so repeat looks don't hit Overpass again.
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   const params = new URL(request.url).searchParams
   const lat = Number(params.get('lat'))
   const lon = Number(params.get('lon'))

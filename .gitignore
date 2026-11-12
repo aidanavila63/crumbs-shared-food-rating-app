@@ -20,3 +20,6 @@ next-env.d.ts
 
 # click-through test screenshots
 smoke-*.png
+
+# a stray second copy of the repo some machines have inside it: never commit it
+/crumbs-shared-food-rating-app/

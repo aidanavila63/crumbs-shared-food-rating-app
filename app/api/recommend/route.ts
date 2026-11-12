@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { flagAllows } from '@/lib/flags-server'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 const schema = z.object({
   ideas: z
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(data.user.id))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
   const capped = await overDailyLimit(supabase, data.user.id, 'ai')
   if (capped) return Response.json({ error: capped }, { status: 429 })
 
-  const { taste } = await request.json()
+  const { taste } = await request.json().catch(() => ({}))
   if (!taste || typeof taste !== 'string') {
     return Response.json({ error: 'Nothing to base ideas on yet' }, { status: 400 })
   }

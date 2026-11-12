@@ -33,6 +33,7 @@ export function settingsOf(group?: Pick<Group, 'settings'> | null): Required<Gro
     weather: s.weather !== false,
     trips: s.trips !== false,
     tags: Array.isArray(s.tags) && s.tags.length ? s.tags.slice(0, 16) : DEFAULT_TAGS,
+    members_add_locations: !!s.members_add_locations,
   }
 }
 

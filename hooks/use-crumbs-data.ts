@@ -100,6 +100,8 @@ export type GroupSettings = {
   home?: boolean // #77 (on unless false)
   weather?: boolean // #35 (on unless false)
   tags?: string[] // #8 preset vibe tags
+  /** Round 75: every member (not guests) may add group locations, not just the owner/admins */
+  members_add_locations?: boolean
 }
 export type Group = {
   id: string
@@ -179,9 +181,13 @@ export type Profile = {
   /** #121 diet (Vegetarian, Vegan, Gluten-free…) and the Safe for me switch */
   diet?: string[] | null
   safe_for_me?: boolean | null
-  /** #128 saved areas to filter by */
-  areas?: { name: string; lat: number; lng: number; km: number }[] | null
+  /** #128 saved areas to filter by — private: only ever filled in on your own profile */
+  areas?: Area[] | null
 }
+/** A named spot with a radius: one of your private places, or one a whole group shares. */
+export type Area = { name: string; lat: number; lng: number; km: number }
+/** Round 75: a location everyone in a group can use (a work group's office for lunches). */
+export type GroupLocation = Area & { id: string; group_id: string; created_by?: string | null }
 export type List = {
   id: string
   group_id: string
@@ -404,6 +410,9 @@ export function useCrumbsData() {
   const [lists, setLists] = useState<List[]>([])
   const [members, setMembers] = useState<Profile[]>(demo ? demoMembers : [])
   const [homeMeals, setHomeMeals] = useState<HomeMeal[]>(demo ? demoMeals : [])
+  const [groupLocations, setGroupLocations] = useState<GroupLocation[]>([])
+  // false until 20261114_audit_fixes.sql has run (the table isn't there yet): the button stays hidden
+  const [locationsReady, setLocationsReady] = useState(demo)
   // v4 = the 20261025 database update has been run. Until then new features stay hidden.
   const [v4, setV4] = useState(demo)
   // #166 when the network is down: the saved copy's time (null = live data)
@@ -421,6 +430,10 @@ export function useCrumbsData() {
       { data: listRows, error: listsError },
       { data: memberRows },
       meals,
+      safeProfiles,
+      myProfile,
+      myPlaces,
+      sharedSpots,
     ] = await Promise.all([
         supabase
           .from('places')
@@ -440,6 +453,14 @@ export function useCrumbsData() {
           )
           .eq('group_id', group.id)
           .order('created_at', { ascending: false }),
+        // Round 75: group-mates' names, photos and the few things the app shows about them come
+        // from one database function; your own row comes in full; your saved areas live in a
+        // table only you can read; the group's shared locations in another. Each of these is
+        // missing until 20261114_audit_fixes.sql has run — then the old way below is used.
+        supabase.rpc('group_profiles', { target_group: group.id }),
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabase.from('private_places').select('areas').eq('user_id', user.id).maybeSingle(),
+        supabase.from('group_locations').select('id,group_id,name,lat,lng,km,created_by').eq('group_id', group.id).order('created_at'),
       ])
     if (placesError) throw placesError
     if (listsError) throw listsError
@@ -450,13 +471,27 @@ export function useCrumbsData() {
     )
     let profileRows: Profile[] = []
     if (ids.length) {
-      const { data: rows } = await supabase.from('profiles').select('*').in('id', ids)
-      profileRows = ((rows ?? []) as Profile[]).map((row) => ({
+      let rows: Profile[]
+      if (!safeProfiles.error && Array.isArray(safeProfiles.data)) {
+        const mine = (myProfile.data ?? null) as Profile | null
+        rows = (safeProfiles.data as Profile[]).map((row) =>
+          row.id === user.id && mine ? { ...row, ...mine } : row,
+        )
+      } else {
+        const { data } = await supabase.from('profiles').select('*').in('id', ids)
+        rows = (data ?? []) as Profile[]
+      }
+      const areas = !myPlaces.error && Array.isArray(myPlaces.data?.areas) ? (myPlaces.data.areas as Area[]) : null
+      profileRows = rows.map((row) => ({
         ...row,
+        // private places: yours come from your own table; nobody else's are ever loaded
+        areas: row.id === user.id ? (areas?.length ? areas : (row.areas ?? [])) : [],
         role: row.id === group.created_by ? 'owner' : (roles[row.id] ?? 'member'),
         joined_at: joined[row.id] ?? null,
       }))
     }
+    setGroupLocations(sharedSpots.error ? [] : ((sharedSpots.data ?? []) as GroupLocation[]))
+    setLocationsReady(!sharedSpots.error)
     setV4(!meals.error)
     setHomeMeals(meals.error ? [] : ((meals.data ?? []) as HomeMeal[]))
     setMembers(profileRows)
@@ -670,6 +705,9 @@ export function useCrumbsData() {
     setLists,
     homeMeals,
     setHomeMeals,
+    groupLocations,
+    setGroupLocations,
+    locationsReady,
     v4,
     members,
     setMembers,

@@ -2,7 +2,9 @@
 -- Expected refusals: 0. (Reports are written directly here: this checks the counting rule.)
 \set A '00000000-0000-0000-0000-00000000000a'
 \set E '00000000-0000-0000-0000-0000000000ee'
-create temp table mc as select r.id from restaurants r where coalesce(r.business_status, 'OPERATIONAL') = 'OPERATIONAL' order by r.id limit 1;
+-- (a restaurant no group has saved yet: one the testers' other groups already share would count twice)
+create temp table mc as select r.id from restaurants r where coalesce(r.business_status, 'OPERATIONAL') = 'OPERATIONAL'
+  and not exists (select 1 from places p where p.restaurant_id = r.id) order by r.id limit 1;
 insert into groups (name, created_by, join_code) values ('MC one', :'A', 'MCQAAA'), ('MC two', :'A', 'MCQBBB');
 insert into group_members (group_id, user_id) select id, :'A' from groups where name = 'MC one';
 insert into group_members (group_id, user_id) select id, :'E' from groups where name = 'MC two';

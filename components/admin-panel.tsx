@@ -556,6 +556,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       <div id="admin-quality" className="scroll-mt-16">
         <QualityCard supabase={supabase} demo={demo} />
         <DataHealthCard supabase={supabase} demo={demo} />
+        <MigrationsCard supabase={supabase} demo={demo} />
       </div>
       <div id="admin-menus" className="scroll-mt-16">
         <MenuQueueCard supabase={supabase} demo={demo} />
@@ -1425,6 +1426,62 @@ function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
           </div>
         )
       })}
+    </section>
+  )
+}
+
+/**
+ * Round 74: which database updates (the SQL files in supabase/migrations) have been run, so
+ * "was that file run?" has an answer on screen. The newest file the app expects is named here:
+ * bump it whenever a new SQL file ships.
+ */
+const NEWEST_SQL = '20261114_audit_fixes'
+function MigrationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [rows, setRows] = useState<{ name: string; ran: boolean; ran_at: string | null }[] | null>(null)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => {
+    if (demo) return
+    supabase.rpc('admin_migrations').then(({ data, error }: any) => {
+      if (error) setMissing(true)
+      else setRows(Array.isArray(data) ? data : [])
+    })
+  }, [demo, supabase])
+  if (demo) return null
+  const notRun = (rows ?? []).filter((r) => !r.ran).map((r) => r.name)
+  if (rows && !rows.some((r) => r.name === NEWEST_SQL)) notRun.push(NEWEST_SQL)
+  const waiting = missing ? [NEWEST_SQL] : notRun
+  return (
+    <section className="surface settings-card mt-3">
+      <h3 className="settings-heading">Database updates</h3>
+      {!rows && !missing ? (
+        <p className="text-sm text-muted-foreground">Checking…</p>
+      ) : waiting.length ? (
+        <>
+          <p className="text-sm font-semibold" style={{ color: '#b7791f' }}>
+            {waiting.length === 1 ? 'One update hasn’t been run yet' : `${waiting.length} updates haven’t been run yet`}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Run {waiting.length === 1 ? 'this file' : 'these files, oldest first,'} in the Supabase SQL editor
+            (from <code>supabase/migrations</code>). The app keeps working meanwhile; the features
+            that need {waiting.length === 1 ? 'it' : 'them'} stay off.
+          </p>
+          <ul className="text-sm [overflow-wrap:anywhere]">
+            {waiting.map((name) => (
+              <li key={name}>
+                <code>{name}.sql</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          All {rows!.length} database updates are in. Newest: <code>{NEWEST_SQL}.sql</code>
+          {rows!.find((r) => r.name === NEWEST_SQL)?.ran_at
+            ? `, run ${new Date(rows!.find((r) => r.name === NEWEST_SQL)!.ran_at!).toLocaleDateString()}`
+            : ''}
+          .
+        </p>
+      )}
     </section>
   )
 }

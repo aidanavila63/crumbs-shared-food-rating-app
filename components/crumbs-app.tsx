@@ -38,6 +38,7 @@ import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { cleanCode, invitePath, isJoinCode, pendingInvite } from '@/lib/invite'
 import { SignInForm } from './sign-in-form'
+import { Landing } from './landing'
 import { StatusFilter } from './status-filter'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
@@ -58,6 +59,7 @@ import { oneEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
 import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
+import { areaChoices, groupAnchor } from '@/lib/areas'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -128,6 +130,11 @@ export function CrumbsApp() {
 
 function CrumbsShell() {
   const data = useCrumbsData()
+  // Round 76: signed-out visitors see the landing page first; "Sign in" (or /?signin=1) shows the box.
+  // (Read once on the phone; while the first screen is still "Loading…" so nothing flickers.)
+  const [signingIn, setSigningIn] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('signin'),
+  )
   const social = useSocialStore({
     groupId: data.group?.id,
     userId: data.user?.id,
@@ -402,8 +409,15 @@ function CrumbsShell() {
     [deferredQuery, data.places, data.lists, data.homeMeals, decide?.plans],
   )
   // #128 a saved area to filter the list by
+  // Round 75: the group's shared locations sit in the same picker as your own (private) areas.
+  // `areaName` holds the choice's key ("group:<id>" or "me:<name>").
   const [areaName, setAreaName] = useState<string | null>(null)
-  const area = (me?.areas ?? []).find((a) => a.name === areaName) ?? null
+  const areaOptions = useMemo(
+    () => areaChoices(me?.areas ?? [], data.groupLocations),
+    [me?.areas, data.groupLocations],
+  )
+  const areaChoice = areaOptions.find((choice) => choice.key === areaName) ?? null
+  const area = areaChoice?.area ?? null
   // #82: search also looks inside dishes and everyone's notes. Built once per data change,
   // not on every keystroke.
   const haystacks = useMemo(() => {
@@ -481,7 +495,7 @@ function CrumbsShell() {
         ids.add(real.id)
     return ids
   }, [blind, data.places, userId])
-  const filtersOn = filter !== 'All' || !!areaName || query.trim() !== ''
+  const filtersOn = filter !== 'All' || !!areaChoice || query.trim() !== ''
   function clearFilters() {
     haptic('tap')
     setQuery('')
@@ -602,6 +616,18 @@ function CrumbsShell() {
     const params = new URLSearchParams(window.location.search)
     const action = params.get('do')
     const incoming = fromShare(params)
+    // Tapped a notification about a place: open it (if it's in the group that's showing).
+    const placeId = params.get('place')
+    if (placeId && /^[0-9a-f-]{36}$/i.test(placeId)) {
+      params.delete('place')
+      const rest = params.toString()
+      window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+      const wanted = data.places.find((p) => p.id === placeId)
+      if (wanted) {
+        setSelected(wanted)
+        return
+      }
+    }
     // #212 scanned a restaurant's "Find us on Crumbs" poster: add it (or open it if it's saved)
     // (or "Save to try" on a public restaurant page, remembered across signing in)
     const pendingAdd = takePendingAdd()
@@ -665,22 +691,30 @@ function CrumbsShell() {
         <p className="text-muted-foreground">Loading Crumbs…</p>
       </main>
     )
+  // Round 76: someone who isn't signed in sees what Crumbs is first; the sign-in box is one tap
+  // away (or straight there from a "Sign in" link: /?signin=1).
+  if (!data.user && !signingIn) return <Landing onSignIn={() => setSigningIn(true)} />
   if (!data.user)
     return (
       <main className="grid min-h-screen place-items-center bg-background p-5">
         <div className="surface w-full max-w-sm">
           <Wordmark height={38} />
-          <h1 className="mt-8 font-serif text-4xl font-bold">Your shared food map</h1>
+          <h1 className="mt-8 font-serif text-4xl font-bold">Sign in to Crumbs</h1>
           <p className="mt-3 leading-6 text-muted-foreground">
-            Collect the places and dishes you love together.{' '}
-            <a href="/welcome" className="font-semibold text-primary underline">
-              What is Crumbs?
-            </a>
+            New here? Sign in and ask to join. For now every new person is approved by hand before
+            they can use Crumbs — you’ll see a waiting screen until then.
           </p>
           <SignInForm supabase={data.supabase} />
           <p className="mt-5 text-center text-xs text-muted-foreground">
-            Crumbs is invite-only for now. Got an invite link? Open it to join your group.
+            An invite link doesn’t skip this. It only decides which group you land in once you’re
+            approved.
           </p>
+          <button
+            className="mx-auto mt-3 block text-xs font-semibold text-primary underline"
+            onClick={() => setSigningIn(false)}
+          >
+            What is Crumbs?
+          </button>
         </div>
       </main>
     )
@@ -773,8 +807,8 @@ function CrumbsShell() {
                 <section className="surface">
                   <h2 className="font-serif text-2xl font-bold">Crumbs lets people in one by one</h2>
                   <p className="mt-2 leading-6 text-muted-foreground">
-                    {keeper} checks everyone who joins. Got an invite link? Open it and ask from there
-                    — you’ll head to that group once you’re in. No link? Ask here.
+                    {keeper} approves everyone who joins, invite link or not. Got a link? Open it and
+                    ask from there, so you head to that group once you’re approved. No link? Ask here.
                   </p>
                   <textarea
                     aria-label="Who are you? (optional)"
@@ -928,6 +962,11 @@ function CrumbsShell() {
           onReload={() => {
             data.load().catch(() => {})
           }}
+          locations={data.groupLocations}
+          locationsReady={data.locationsReady}
+          myAreas={me?.areas ?? []}
+          places={data.places}
+          onLocations={data.setGroupLocations}
         />
         </div>
         {switching && (
@@ -1197,24 +1236,41 @@ function CrumbsShell() {
                       </select>
                       <ChevronDown size={15} aria-hidden="true" />
                     </label>
-                    {(me?.areas?.length ?? 0) > 0 && (
-                      <label className={`pick-pill ${areaName ? 'pick-pill-on' : ''}`}>
+                    {areaOptions.length > 0 && (
+                      <label className={`pick-pill ${areaChoice ? 'pick-pill-on' : ''}`}>
                         <MapPin size={15} aria-hidden="true" />
-                        <span aria-hidden="true">{areaName ? `Near ${areaName}` : 'Anywhere'}</span>
+                        <span aria-hidden="true">{areaChoice ? `Near ${areaChoice.name}` : 'Anywhere'}</span>
                         <select
                           aria-label="Area"
-                          value={areaName ?? ''}
+                          value={areaChoice?.key ?? ''}
                           onChange={(event) => {
                             haptic('select')
                             setAreaName(event.target.value || null)
                           }}
                         >
                           <option value="">Anywhere</option>
-                          {me!.areas!.map((a) => (
-                            <option key={a.name} value={a.name}>
-                              Near {a.name}
-                            </option>
-                          ))}
+                          {areaOptions.some((choice) => choice.shared) && (
+                            <optgroup label={data.group.name}>
+                              {areaOptions
+                                .filter((choice) => choice.shared)
+                                .map((choice) => (
+                                  <option key={choice.key} value={choice.key}>
+                                    Near {choice.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          )}
+                          {areaOptions.some((choice) => !choice.shared) && (
+                            <optgroup label="Only you 🔒">
+                              {areaOptions
+                                .filter((choice) => !choice.shared)
+                                .map((choice) => (
+                                  <option key={choice.key} value={choice.key}>
+                                    Near {choice.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          )}
                         </select>
                         <ChevronDown size={15} aria-hidden="true" />
                       </label>
@@ -1268,8 +1324,8 @@ function CrumbsShell() {
                       <p className="mt-2 font-serif text-xl font-bold">Nothing matches</p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {query.trim()
-                          ? `No places with “${query.trim()}”${filter !== 'All' ? ` in ${filter}` : ''}${areaName ? ` around ${areaName}` : ''}.`
-                          : `No places in ${filter !== 'All' ? filter : 'this view'}${areaName ? ` around ${areaName}` : ''} yet.`}
+                          ? `No places with “${query.trim()}”${filter !== 'All' ? ` in ${filter}` : ''}${areaChoice ? ` around ${areaChoice.name}` : ''}.`
+                          : `No places in ${filter !== 'All' ? filter : 'this view'}${areaChoice ? ` around ${areaChoice.name}` : ''} yet.`}
                       </p>
                       <button className="secondary mx-auto mt-4" onClick={clearFilters}>
                         Show everything
@@ -1530,7 +1586,7 @@ function CrumbsShell() {
           demo={data.demo}
           supabase={data.supabase}
           shared={shared}
-          near={middleOf(data.places)}
+          near={groupAnchor(data.groupLocations) ?? middleOf(data.places)}
           onClose={() => {
             setAdding(false)
             setShared(null)

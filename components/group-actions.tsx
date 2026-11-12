@@ -2,13 +2,14 @@
 // Small buttons next to the group name: 👋 invite people (code, link, QR) and ⚙️ group settings
 // (owner and admins only). They open on their own pages so the Group tab stays about the group.
 import { useEffect, useState } from 'react'
-import { Copy, Link2, QrCode, Settings, Share2, UserPlus } from 'lucide-react'
+import { Copy, Link2, MapPin, QrCode, Settings, Share2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Group, Profile } from '@/hooks/use-crumbs-data'
+import type { Area, Group, GroupLocation, Place, Profile } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
 import { inviteLink } from '@/lib/invite'
 import { Overlay } from './overlay'
 import { GroupSettingsCard } from './group-settings'
+import { GroupLocationsCard } from './group-locations'
 import { SharePosterCard } from './share-poster'
 
 export function GroupActions({
@@ -20,7 +21,18 @@ export function GroupActions({
   v4,
   onGroup,
   onReload,
+  locations,
+  locationsReady,
+  myAreas,
+  places,
+  onLocations,
 }: {
+  /** Round 75: the group's shared locations (hidden until the database has them) */
+  locations: GroupLocation[]
+  locationsReady: boolean
+  myAreas: Area[]
+  places: Place[]
+  onLocations: (next: GroupLocation[]) => void
   group: Group
   members: Profile[]
   userId?: string
@@ -32,7 +44,7 @@ export function GroupActions({
 }) {
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
   const canManage = myRole === 'owner' || myRole === 'admin'
-  const [open, setOpen] = useState<'invite' | 'settings' | null>(null)
+  const [open, setOpen] = useState<'invite' | 'settings' | 'locations' | null>(null)
   const [showQr, setShowQr] = useState(true)
   const [qr, setQr] = useState<string | null>(null)
   // Crumbs-style QR (plum dots, cookie in the middle, crumb trail). The QR library is only downloaded when
@@ -86,6 +98,18 @@ export function GroupActions({
           }}
         >
           <UserPlus size={18} />
+        </button>
+      )}
+      {locationsReady && (
+        <button
+          className="icon-btn group-action-btn"
+          aria-label="Group locations"
+          onClick={() => {
+            haptic('tap')
+            setOpen('locations')
+          }}
+        >
+          <MapPin size={18} />
         </button>
       )}
       {canManage && (
@@ -164,6 +188,23 @@ export function GroupActions({
             </div>
             <SharePosterCard group={group} />
           </div>
+        </Overlay>
+      )}
+      {open === 'locations' && (
+        <Overlay label="Group locations" title="Group locations" onClose={() => setOpen(null)}>
+          <GroupLocationsCard
+            group={group}
+            locations={locations}
+            myAreas={myAreas}
+            places={places}
+            canManage={canManage}
+            isGuest={myRole === 'guest'}
+            userId={userId}
+            supabase={supabase}
+            demo={demo}
+            onLocations={onLocations}
+            onGroup={onGroup}
+          />
         </Overlay>
       )}
       {open === 'settings' && (

@@ -208,7 +208,16 @@ export async function POST(request: Request) {
             : body.type === 'join_request' || body.type === 'join_accepted'
               ? 'join'
               : 'craving'
-  const sent = await deliver(db, others, kind, text, tag)
+  // Round 74: phones' push keys are read with the server's own key, so nobody needs to be able to
+  // read (or delete) a group-mate's keys. Without that key, fall back to the signed-in person's
+  // access (which only reaches other people's keys before 20261114_audit_fixes.sql has run).
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const sender =
+    serviceKey && projectUrl
+      ? createServiceClient(projectUrl, serviceKey, { auth: { persistSession: false } })
+      : db
+  const sent = await deliver(sender, others, kind, text, tag)
   return Response.json({ sent })
 }
 

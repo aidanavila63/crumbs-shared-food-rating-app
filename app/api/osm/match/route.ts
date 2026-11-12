@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { overpass } from '@/lib/osm'
 import { bestMatch, matchQuery } from '@/lib/osm-match'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 // Fills a shared restaurant profile with OpenStreetMap facts (address, phone, website, cuisine,
 // hours) — data Crumbs may keep forever, unlike Google's. Runs once per restaurant every ~3 months.
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(`osm-match:${data.user.id}`, 20))
     return Response.json({ error: 'Slow down a little' }, { status: 429 })
   const { restaurantId, utc } = await request.json().catch(() => ({}))

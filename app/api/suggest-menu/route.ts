@@ -7,6 +7,7 @@ import { flagAllows } from '@/lib/flags-server'
 import { RobotsBlockedError, readMenuText } from '@/lib/menu-fetch'
 import { menuFingerprint, siteKey } from '@/lib/menu-fingerprint'
 import { cachedMenu, saveMenu } from '@/lib/read-cache'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 export const maxDuration = 30
 
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(data.user.id))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   const capped = await overDailyLimit(supabase, data.user.id, 'menuImport')
   if (capped) return Response.json({ error: capped }, { status: 429 })
 
-  const { placeId } = await request.json()
+  const { placeId } = await request.json().catch(() => ({}))
   if (!placeId || typeof placeId !== 'string') {
     return Response.json({ error: 'Place is required' }, { status: 400 })
   }

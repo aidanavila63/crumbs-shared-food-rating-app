@@ -4,6 +4,7 @@ import { AwsClient } from 'aws4fetch'
 import { createClient } from '@/lib/supabase/server'
 import { r2Key } from '@/lib/photos'
 import { tooManyRequests } from '@/lib/rate-limit'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 const UUID = /^[0-9a-f-]{36}$/
 
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(`photos:${data.user.id}`, 60))
     return Response.json({ error: 'Slow down a little' }, { status: 429 })
   const store = r2()

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { parseImage } from '@/lib/menu-photo'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 export const maxDuration = 30
 
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(data.user.id))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },

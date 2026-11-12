@@ -6,6 +6,7 @@ import { cleanWebsite } from '@/lib/osm'
 import { takeAllowance } from '@/lib/allowance'
 import { cachedSite, saveSite } from '@/lib/read-cache'
 import { siteKey } from '@/lib/menu-fingerprint'
+import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
 
 // Reads a restaurant's own website (only where its robots.txt allows) for hours, phone,
 // cuisine, price, address and menu link. GET shows them on the place page; POST saves them on
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   const site = cleanWebsite(new URL(request.url).searchParams.get('url'))
   if (!site) return Response.json({ error: 'Need a website' }, { status: 400 })
   if (tooManyRequests(`site:${data.user.id}`, 40))
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
+  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
   if (tooManyRequests(`site-merge:${data.user.id}`, 20))
     return Response.json({ error: 'Slow down a little' }, { status: 429 })
   const { restaurantId, utc } = await request.json().catch(() => ({}))
