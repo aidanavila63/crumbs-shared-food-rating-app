@@ -14,10 +14,18 @@ import { monthPace } from '@/lib/limits'
 import { Switch } from './switch'
 import { askConfirm } from '@/lib/ask'
 import { AccessRequestsCard } from './access-requests'
+import { JobsCard, LaunchNumbersCard, NoticeCard, PhotosCard } from './admin-extra'
+import { buildLabel } from './site-notice'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
 type Feedback = { id: string; body: string; page: string | null; created_at: string }
-type ClientError = { id: number; message: string; url: string | null; created_at: string }
+type ClientError = {
+  id: number
+  message: string
+  url: string | null
+  created_at: string
+  source?: 'app' | 'server'
+}
 type Waiting = { id: string; email: string; created_at: string }
 
 const STATES: Flag['state'][] = ['off', 'admin', 'everyone']
@@ -362,7 +370,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       supabase.from('feature_flags').select('key,state,note').order('key'),
       supabase
         .from('client_errors')
-        .select('id,message,url,created_at')
+        .select('*')
         .order('id', { ascending: false })
         .limit(40),
       supabase
@@ -487,6 +495,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         )}
         <p className="text-xs text-muted-foreground">
           Counts only — no personal data. Supabase and Vercel dashboards show storage and bandwidth.
+          This is Crumbs version {buildLabel()}.
         </p>
         <p className="text-xs text-muted-foreground">
           {analyticsOn ? (
@@ -510,36 +519,45 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
 
       {/* Jump to a section instead of scrolling the whole page */}
       <nav aria-label="Admin sections" className="chip-row">
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-access')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Access requests
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-budgets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Spending guard
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-points')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Points
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-builders')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Builders
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-backups')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Backups
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-quality')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Data quality
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-menus')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Menu PDFs
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-claims')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Claims
-        </button>
-        <button type="button" className="chip" onClick={() => document.getElementById('admin-booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Booking links
-        </button>
+        {(
+          [
+            ['admin-launch', 'Launch numbers'],
+            ['admin-access', 'Access requests'],
+            ['admin-waitlist', 'Waitlist'],
+            ['admin-notice', 'Notice and pause'],
+            ['admin-budgets', 'Spending guard'],
+            ['admin-points', 'Points'],
+            ['admin-builders', 'Builders'],
+            ['admin-backups', 'Backups and runs'],
+            ['admin-photos', 'Photos'],
+            ['admin-quality', 'Data quality'],
+            ['admin-menus', 'Menu PDFs'],
+            ['admin-claims', 'Claims'],
+            ['admin-booking', 'Booking links'],
+            ['admin-feedback', 'Feedback'],
+            ['admin-errors', 'Errors'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className="chip"
+            onClick={() =>
+              document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          >
+            {label}
+          </button>
+        ))}
       </nav>
+      <div id="admin-launch" className="scroll-mt-16">
+        <LaunchNumbersCard supabase={supabase} demo={demo} />
+      </div>
       <div id="admin-access" className="scroll-mt-16">
         <AccessRequestsCard supabase={supabase} demo={demo} full />
+      </div>
+      <div id="admin-notice" className="scroll-mt-16">
+        <NoticeCard supabase={supabase} demo={demo} />
       </div>
       <div id="admin-budgets" className="scroll-mt-16">
         <BudgetsCard supabase={supabase} demo={demo} />
@@ -552,6 +570,10 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       </div>
       <div id="admin-backups" className="scroll-mt-16">
         <BackupsCard supabase={supabase} demo={demo} />
+        <JobsCard supabase={supabase} demo={demo} />
+      </div>
+      <div id="admin-photos" className="scroll-mt-16">
+        <PhotosCard supabase={supabase} demo={demo} />
       </div>
       <div id="admin-quality" className="scroll-mt-16">
         <QualityCard supabase={supabase} demo={demo} />
@@ -604,7 +626,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         ))}
       </section>
 
-      <section className="surface settings-card">
+      <section id="admin-feedback" className="surface settings-card scroll-mt-16">
         <h3 className="settings-heading">Feedback ({feedback.length})</h3>
         {feedback.length === 0 && <p className="text-sm text-muted-foreground">Nothing yet.</p>}
         {feedback.map((item) => (
@@ -631,7 +653,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         ))}
       </section>
 
-      <section className="surface settings-card">
+      <section id="admin-errors" className="surface settings-card scroll-mt-16">
         <h3 className="settings-heading">Error log ({errors.length})</h3>
         {errors.length === 0 && (
           <p className="text-sm text-muted-foreground">No errors reported. 🎉</p>
@@ -639,6 +661,9 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         {errors.map((item) => (
           <div key={item.id} className="surface-soft flex items-start justify-between gap-2">
             <p className="min-w-0 break-words font-mono text-xs">
+              {item.source === 'server' && (
+                <span className="mr-1 rounded bg-amber-100 px-1 text-amber-900">server</span>
+              )}
               {item.message}
               <span className="block text-muted-foreground">
                 {timeAgo(item.created_at)}
@@ -660,7 +685,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         ))}
       </section>
 
-      <section className="surface settings-card">
+      <section id="admin-waitlist" className="surface settings-card scroll-mt-16">
         <div className="flex items-center justify-between">
           <h3 className="settings-heading">Waitlist ({waitlist.length})</h3>
           {waitlist.length > 0 && (
@@ -859,7 +884,11 @@ function BackupsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
       const response = await fetch('/api/backup', { method: 'POST' })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Backup failed')
-      toast.success(`Saved ${body.saved} (${Math.round(body.bytes / 1024)} KB, ${body.rows} rows)`)
+      toast.success(
+        `Saved ${body.saved} (${Math.round(body.bytes / 1024)} KB, ${body.rows} rows${
+          body.r2 === 'saved' ? ', copied to R2' : ''
+        })`,
+      )
       load()
     } catch (error: any) {
       toast.error(error?.message || 'Backup failed')
@@ -878,7 +907,8 @@ function BackupsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
       <p className="text-sm text-muted-foreground">
         Every Monday all Crumbs tables are saved as one compressed file (newest 8 kept). Needs
         SUPABASE_SERVICE_ROLE_KEY and CRON_SECRET in Vercel. Photos and sign-in accounts aren’t in
-        it.
+        it. With the R2 backup settings in Vercel (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET) a copy also goes to Cloudflare, off Supabase.
       </p>
       {files?.length ? (
         files.map((f) => (
@@ -1435,7 +1465,7 @@ function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
  * "was that file run?" has an answer on screen. The newest file the app expects is named here:
  * bump it whenever a new SQL file ships.
  */
-const NEWEST_SQL = '20261114_audit_fixes'
+const NEWEST_SQL = '20261116_round77'
 function MigrationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   const [rows, setRows] = useState<{ name: string; ran: boolean; ran_at: string | null }[] | null>(null)
   const [missing, setMissing] = useState(false)

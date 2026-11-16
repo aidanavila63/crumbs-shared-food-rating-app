@@ -1,7 +1,8 @@
 'use client'
 // #94 Waitlist: strangers leave an email; the admin page lists them. Anyone can add, only admins read.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { TURNSTILE_SITE_KEY } from '@/lib/turnstile'
 
 const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 
@@ -11,6 +12,35 @@ export function WaitlistForm() {
   const [trap, setTrap] = useState('') // hidden field bots fill in
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
   const [message, setMessage] = useState('')
+  // S8 (Round 77): with Turnstile set up, a quick bot check (usually invisible) before saving.
+  const box = useRef<HTMLDivElement>(null)
+  const [token, setToken] = useState<string | null>(null)
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || demo) return
+    let widget: string | undefined
+    const draw = () => {
+      const turnstile = (window as any).turnstile
+      if (!turnstile || !box.current || widget) return
+      widget = turnstile.render(box.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        callback: (t: string) => setToken(t),
+        'expired-callback': () => setToken(null),
+        'error-callback': () => setToken(null),
+      })
+    }
+    if ((window as any).turnstile) draw()
+    else if (!document.getElementById('cf-turnstile')) {
+      const script = document.createElement('script')
+      script.id = 'cf-turnstile'
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+      script.async = true
+      script.onload = draw
+      document.head.appendChild(script)
+    } else document.getElementById('cf-turnstile')!.addEventListener('load', draw)
+    return () => {
+      if (widget) (window as any).turnstile?.remove(widget)
+    }
+  }, [])
 
   async function join(event: React.FormEvent) {
     event.preventDefault()
@@ -22,6 +52,26 @@ export function WaitlistForm() {
     if (trap) return setState('done')
     setState('busy')
     if (demo) return setState('done')
+    if (TURNSTILE_SITE_KEY) {
+      if (!token) {
+        setState('error')
+        return setMessage('One moment: the robot check is still loading.')
+      }
+      const response = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: clean, note, token }),
+      })
+      if (response.ok) return setState('done')
+      const body = await response.json().catch(() => ({}))
+      ;(window as any).turnstile?.reset?.()
+      setToken(null)
+      // Not set up on the server yet: fall through to the direct way in.
+      if (response.status !== 503) {
+        setState('error')
+        return setMessage(body.error || 'Couldn’t save that just now. Try again in a minute.')
+      }
+    }
     const { error } = await createClient()
       .from('waitlist')
       .insert({ email: clean.slice(0, 200), note: note.trim().slice(0, 300) || null })
@@ -62,7 +112,7 @@ export function WaitlistForm() {
         Who would you use it with? (optional)
         <input
           className="field"
-          placeholder="My partner, my roommates, the work lunch crew…"
+          placeholder="Just me, my partner, my roommates, the work lunch crew…"
           maxLength={300}
           value={note}
           onChange={(event) => setNote(event.target.value)}
@@ -77,6 +127,7 @@ export function WaitlistForm() {
         onChange={(event) => setTrap(event.target.value)}
         name="website"
       />
+      {TURNSTILE_SITE_KEY && <div ref={box} className="min-h-[65px]" />}
       {state === 'error' && <p className="text-sm text-destructive">{message}</p>}
       <button className="primary" disabled={state === 'busy'}>
         {state === 'busy' ? 'Adding you…' : 'Join the waitlist'}

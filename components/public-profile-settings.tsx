@@ -8,6 +8,8 @@ import { Switch } from './switch'
 import { handleShapeProblem, suggestHandle, HANDLE_CHANGE_DAYS } from '@/lib/handles'
 import { profilePath } from '@/lib/public-page'
 import { buildSnapshot, dishCandidates, favouriteCandidates } from '@/lib/profile-snapshot'
+import { siteOrigin } from '@/lib/site'
+import { refreshPublicPages } from '@/lib/refresh-public'
 
 type Pick = { kind: 'place' | 'dish'; restaurant_id: string; dish?: string | null }
 type Mine = {
@@ -139,6 +141,7 @@ export function PublicProfileSettings({
           p_picks: picks,
         })
         if (error) throw error
+        refreshPublicPages('profile')
         toast.success(`Saved — crumbs…${profilePath((data as any).handle)}`)
       }
       const { data: fresh } = await supabase.rpc('my_public_profile')
@@ -151,7 +154,7 @@ export function PublicProfileSettings({
   }
 
   async function copy() {
-    const url = `${location.origin}${profilePath(typed)}`
+    const url = `${siteOrigin()}${profilePath(typed)}`
     try {
       if (navigator.share) await navigator.share({ title: `${profile?.display_name} on Crumbs`, url })
       else {

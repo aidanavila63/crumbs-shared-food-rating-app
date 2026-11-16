@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { siteOrigin } from '@/lib/site'
 
 /** Private read-only link to one list. Shows names, addresses, cuisine, price and average stars only. */
 export function ShareList({
@@ -17,7 +18,7 @@ export function ShareList({
   const [token, setToken] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(demo)
   const [busy, setBusy] = useState(false)
-  const url = token ? `${location.origin}/share/${token}` : null
+  const url = token ? `${siteOrigin()}/share/${token}` : null
 
   useEffect(() => {
     if (demo) return
@@ -60,7 +61,7 @@ export function ShareList({
     setBusy(false)
     if (error) return toast.error(error.message)
     setToken(data.token)
-    copy(`${location.origin}/share/${data.token}`)
+    copy(`${siteOrigin()}/share/${data.token}`)
   }
 
   async function stop() {

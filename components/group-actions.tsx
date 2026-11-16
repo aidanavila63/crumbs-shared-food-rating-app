@@ -64,7 +64,8 @@ export function GroupActions({
   }, [open, showQr, group.join_code, group.name])
 
   async function share() {
-    const link = inviteLink(group.join_code)
+    // Carries who shared it, so the "Wants to join" list can say who invited them.
+    const link = inviteLink(group.join_code, undefined, userId)
     const text = `Join our Crumbs group ${group.name}: ${link} (or use code ${group.join_code})`
     try {
       if (navigator.share) await navigator.share({ title: 'Join Crumbs', text, url: link })

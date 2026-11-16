@@ -4,7 +4,7 @@ export const TOUR = [
   {
     emoji: '🍜',
     title: 'Welcome to Crumbs',
-    text: 'A food map you share with your people. Save places, rate them together and always know where to eat next.',
+    text: 'A food map for you, and for the people you eat with. Save places, rate them, and always know where to eat next.',
   },
   {
     emoji: '➕',
@@ -30,6 +30,11 @@ export const TOUR = [
     emoji: '👥',
     title: 'Your group',
     text: 'See what everyone’s been up to, react and comment, invite people, and set what you get notified about.',
+  },
+  {
+    emoji: '🔔',
+    title: 'On an iPhone?',
+    text: 'Add Crumbs to your Home Screen (Safari → Share → Add to Home Screen) and open it from there: that’s where notifications work, and it opens like an app.',
   },
 ]
 
@@ -92,6 +97,27 @@ export const GUIDE: { title: string; emoji: string; points: string[] }[] = [
     ],
   },
   {
+    title: 'Your group',
+    emoji: '👥',
+    points: [
+      'The 📍 button beside the group name holds the group’s shared spots (an office, a campus). Your own saved areas stay private to you.',
+      'The owner picks the main spot: Decide, Tonight, Surprise and Explore measure from it, and anyone can swap it for themselves for a while.',
+      'Deleted a place or a list by mistake? Group → Recently deleted puts it back, with everyone’s ratings, for 30 days.',
+      'Owners can hand the group to someone else or delete it (type its name to confirm). Leaving as the owner hands it over first.',
+      'Every new person is let in by hand, invite link or not; the link only decides which group they land in.',
+    ],
+  },
+  {
+    title: 'Your account',
+    emoji: '🔐',
+    points: [
+      'Settings → Sign out on every device if you lost a phone or used a shared computer.',
+      'Settings → Your data downloads everything you’ve added; you can delete your account there too.',
+      'An expired sign-in link just asks you for a new one — links work once, for about an hour.',
+      'When a newer Crumbs is out, “Update ready” appears at the bottom: tap it to refresh.',
+    ],
+  },
+  {
     title: 'Offline',
     emoji: '📴',
     points: [
@@ -110,6 +136,7 @@ export const TIPS = [
   'Settings → Remember my last choices pre-fills how you usually log.',
   'Safe for me (Settings) marks dishes that fit your diet — always confirm allergies with the restaurant.',
   'Guests (Group settings) can look around your group without changing anything.',
+  'A line at the top of Crumbs is a notice from Aidan (planned work or a known problem).',
 ]
 
 const KEY = 'crumbs-tour-done'

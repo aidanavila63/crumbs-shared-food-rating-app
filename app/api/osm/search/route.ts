@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { OSM_UA, isFoodFeature, photonToPlace } from '@/lib/osm'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 const TAGS = [
   'amenity:restaurant',
@@ -33,7 +34,7 @@ async function photon(q: string, lat: string | null, lon: string | null, tagged:
   return (json.features ?? []) as any[]
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -63,3 +64,6 @@ export async function GET(request: Request) {
     return Response.json({ error: error?.message || 'Search failed' }, { status: 502 })
   }
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const GET = keepErrors('GET /api/osm/search', handleGET)

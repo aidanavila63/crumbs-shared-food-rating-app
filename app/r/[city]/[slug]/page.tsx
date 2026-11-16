@@ -8,11 +8,17 @@ import { PublicRestaurantView } from '@/components/public-restaurant-view'
 // totals from many groups, so it doesn't need to be live to the second.
 export const revalidate = 3600
 
+// E14 (Round 77): without this the hour above was ignored and every view was built from scratch
+// (8 database calls). Pages are built on first visit, then kept; owner edits refresh them early.
+export function generateStaticParams() {
+  return []
+}
+
 type Params = { params: Promise<{ city: string; slug: string }> }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { city, slug } = await params
-  const data = await loadRestaurant(city, slug)
+  const data = await loadRestaurant(city, slug).catch(() => null)
   if (!data || isRedirect(data)) return { title: 'Crumbs', robots: { index: false, follow: false } }
   const description = pageDescription(data)
   return {

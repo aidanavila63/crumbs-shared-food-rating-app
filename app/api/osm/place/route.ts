@@ -2,9 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { OSM_UA, cleanWebsite, cuisineFromTag } from '@/lib/osm'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 // Best-effort extra details (website, cuisine) for one picked OpenStreetMap place.
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -37,3 +38,6 @@ export async function GET(request: Request) {
     return Response.json({ website: null, cuisine: null })
   }
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const GET = keepErrors('GET /api/osm/place', handleGET)

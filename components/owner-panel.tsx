@@ -1,4 +1,5 @@
 'use client'
+import { refreshPublicPages } from '@/lib/refresh-public'
 // "Your restaurants": the area for verified owners (#100). Each page they run: what members
 // suggest (grouped, never who), every detail, and the menu — add, fix prices, remove dishes.
 // Price level isn't set by hand: it follows the menu's prices.
@@ -137,6 +138,8 @@ const demoMenu = (): MenuDish[] =>
 
 /** The list of pages you run; tap one to manage it. */
 export function OwnerPanel({ supabase, demo }: { supabase: any; demo: boolean }) {
+  // E14 (Round 77): leaving the owner tools refreshes the public restaurant pages straight away.
+  useEffect(() => () => refreshPublicPages('restaurant'), [])
   const [list, setList] = useState<OwnedRestaurant[] | null>(demo ? DEMO_LIST : null)
   const [open, setOpen] = useState<OwnedRestaurant | null>(null)
   const [round, setRound] = useState(0)

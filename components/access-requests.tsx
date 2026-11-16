@@ -14,6 +14,9 @@ type Asking = {
   group_name: string | null
   role: 'member' | 'guest'
   created_at: string
+  /** Round 77 (third pass #19): who shared the link, and the group's owner */
+  invited_by?: string | null
+  group_owner?: string | null
 }
 type SaidNo = { user_id: string; display_name: string; email: string | null }
 
@@ -37,7 +40,9 @@ export function AccessRequestsCard({
   const load = useCallback(async () => {
     if (demo) return
     // Before the approval SQL has run this fails: show nothing.
-    const { data, error } = await supabase.rpc('access_request_list')
+    // Round 77 adds who shared the invite link; before that SQL has run, the older list.
+    let { data, error } = await supabase.rpc('access_request_people')
+    if (error) ({ data, error } = await supabase.rpc('access_request_list'))
     if (error) return
     setAsking(data ?? [])
     if (full) {
@@ -113,6 +118,11 @@ export function AccessRequestsCard({
               {r.group_name
                 ? ` · invited to ${r.group_name}${r.role === 'guest' ? ' as a guest' : ''}`
                 : ' · no invite'}
+              {r.invited_by
+                ? ` · invited by ${r.invited_by}`
+                : r.group_name && r.group_owner
+                  ? ` (${r.group_owner}’s group)`
+                  : ''}
             </span>
             {r.note && <p className="mt-1 text-sm">“{r.note}”</p>}
           </div>

@@ -17,7 +17,7 @@ import { WrappedStory } from './wrapped'
 import { PublicProfileSettings } from './public-profile-settings'
 import { OwnerTag } from './restaurant-profile'
 import { PhotoCropper } from './photo-cropper'
-import { PHOTO_BUCKET, photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
+import { pathFromUrl, photoUrl, removePhoto, uploadPhoto } from '@/lib/photos'
 import { wrappedSeason } from '@/lib/wrapped'
 import { ChevronDown } from 'lucide-react'
 
@@ -111,9 +111,11 @@ export function ProfileHub({
   async function saveAvatar(blob: Blob) {
     setAvatarFile(null)
     if (settings.demo) return toast('Photos need the real database, not demo mode')
+    if (!userId) return
     setAvatarBusy(true)
     try {
-      const path = await uploadPhoto(settings.supabase, group.id, blob)
+      // Filed under you, not this group: it's shown in every group you're in (B12).
+      const path = await uploadPhoto(settings.supabase, userId, blob)
       const avatar_url = photoUrl(path)
       const { error } = await settings.supabase
         .from('profiles')
@@ -124,7 +126,7 @@ export function ProfileHub({
         return toast.error(error.message)
       }
       // Tidy the old one away if it was a Crumbs upload (not a sign-in picture).
-      const old = profile?.avatar_url?.split(`/public/${PHOTO_BUCKET}/`)[1]
+      const old = pathFromUrl(profile?.avatar_url)
       if (old) await removePhoto(settings.supabase, old).catch(() => {})
       settings.onProfile({ avatar_url })
       toast.success('Profile photo saved')

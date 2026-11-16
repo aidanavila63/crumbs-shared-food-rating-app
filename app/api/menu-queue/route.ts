@@ -4,11 +4,12 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { leftoverAi, processMenuQueue } from '@/lib/menu-queue'
 import type { LimitReport } from '@/lib/limits'
+import { keepErrors } from '@/lib/server-errors'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-export async function POST() {
+async function handlePOST() {
   const session = await createSessionClient()
   const { data } = await session.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -32,3 +33,6 @@ export async function POST() {
   const done = await processMenuQueue(db, left)
   return Response.json({ ...done, left })
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const POST = keepErrors('POST /api/menu-queue', handlePOST)

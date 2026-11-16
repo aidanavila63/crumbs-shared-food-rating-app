@@ -1,11 +1,12 @@
 'use client'
 import { useShowScore } from './score-input'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { LocateFixed, SlidersHorizontal, Telescope, X } from 'lucide-react'
+import { LocateFixed, MapPin, SlidersHorizontal, Telescope, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { notYetSaved, type FoundSpot } from '@/lib/add-found'
 import { distanceKm, mustTry } from '@/lib/stats'
 import { AdvancedMarker, Map, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { groupPins } from '@/lib/pin-groups'
 import { googleNearby } from './nearby-off-list'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
@@ -89,6 +90,51 @@ function CenterProbe({ onProbe }: { onProbe: (probe: () => { lat: number; lng: n
   }, [map, onProbe])
   return null
 }
+/** E9 (Round 77): overlapping pins become one bubble with a count; tapping it zooms in. */
+function GroupedPins({ places, render }: { places: Place[]; render: (place: Place) => React.ReactNode }) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(12)
+  useEffect(() => {
+    if (!map) return
+    const update = () => setZoom(map.getZoom() ?? 12)
+    update()
+    const listener = map.addListener('idle', update)
+    return () => listener.remove()
+  }, [map])
+  const pins = useMemo(
+    () =>
+      places
+        .filter((p) => p.latitude !== null && p.longitude !== null)
+        .map((p) => ({ id: p.id, lat: p.latitude!, lng: p.longitude!, place: p })),
+    [places],
+  )
+  const groups = useMemo(() => groupPins(pins, zoom), [pins, zoom])
+  return (
+    <>
+      {groups.map((group) =>
+        group.items.length === 1 ? (
+          render(group.items[0].place)
+        ) : (
+          <AdvancedMarker
+            key={group.key}
+            position={{ lat: group.lat, lng: group.lng }}
+            onClick={() => {
+              haptic('tap')
+              const bounds = new (window as any).google.maps.LatLngBounds()
+              group.items.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }))
+              map?.fitBounds(bounds, 64)
+            }}
+          >
+            <div className="marker marker-group" aria-label={`${group.items.length} places here`}>
+              {group.items.length}
+            </div>
+          </AdvancedMarker>
+        ),
+      )}
+    </>
+  )
+}
+
 function Recenter({ target }: { target: { lat: number; lng: number } | null }) {
   const map = useMap()
   useEffect(() => {
@@ -137,7 +183,10 @@ export function MapTab({
   demo = false,
   onAddFound,
   supabase,
+  anchor = null,
 }: {
+  /** Round 77: the group's main location (or this phone's swap): a button flies the map there */
+  anchor?: { lat: number; lng: number; label: string } | null
   demo?: boolean
   /** for the Google backup's allowance check */
   supabase?: any
@@ -515,22 +564,24 @@ export function MapTab({
                 </AdvancedMarker>
               ))}
               {heat && <HeatCircles places={filtered} onPick={setPreviewId} />}
-              {!heat &&
-                filtered
-                .filter((place) => place.latitude !== null && place.longitude !== null)
-                .map((place) => (
-                  <AdvancedMarker
-                    key={place.id}
-                    position={{ lat: place.latitude!, lng: place.longitude! }}
-                    onClick={() => setPreviewId(place.id)}
-                  >
-                    <div
-                      className={`marker ${markerClass(place, placeAverage(place), pinMode)} ${previewId === place.id ? 'marker-selected' : ''}`}
+              {!heat && (
+                <GroupedPins
+                  places={filtered}
+                  render={(place) => (
+                    <AdvancedMarker
+                      key={place.id}
+                      position={{ lat: place.latitude!, lng: place.longitude! }}
+                      onClick={() => setPreviewId(place.id)}
                     >
-                      {labels[place.id] ?? (placeAverage(place) ? show(placeAverage(place)) : '+')}
-                    </div>
-                  </AdvancedMarker>
-                ))}
+                      <div
+                        className={`marker ${markerClass(place, placeAverage(place), pinMode)} ${previewId === place.id ? 'marker-selected' : ''}`}
+                      >
+                        {labels[place.id] ?? (placeAverage(place) ? show(placeAverage(place)) : '+')}
+                      </div>
+                    </AdvancedMarker>
+                  )}
+                />
+              )}
             </Map>
           </>
         )}
@@ -703,6 +754,20 @@ export function MapTab({
             <Telescope size={20} />
           )}
         </button>
+        {anchor && (
+          <button
+            type="button"
+            aria-label={`Go to ${anchor.label}`}
+            title={anchor.label}
+            className={`icon-btn absolute bottom-36 right-4 z-10 ${showFilters ? 'hidden' : ''}`}
+            onClick={() => {
+              haptic('tap')
+              setLocateTarget({ lat: anchor.lat, lng: anchor.lng })
+            }}
+          >
+            <MapPin size={20} />
+          </button>
+        )}
         <button
           type="button"
           aria-label="Locate me"

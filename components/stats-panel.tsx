@@ -173,7 +173,9 @@ export function StatsPanel({
 
       {stats.match && (
         <div className="surface flex flex-col gap-2">
-          <span className="tag w-fit">You two</span>
+          <span className="tag w-fit">
+            You and {partner?.display_name?.split(' ')[0] ?? 'them'}
+          </span>
           {stats.match && (
             <p className="text-sm">
               Taste match{' '}

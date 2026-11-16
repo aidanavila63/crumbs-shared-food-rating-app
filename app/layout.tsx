@@ -3,6 +3,7 @@ import { Figtree, Fredoka, Young_Serif } from 'next/font/google'
 import { SwRegister } from '@/components/sw-register'
 import { OfflineBanner } from '@/components/offline-banner'
 import { EARLY_PREFS_SCRIPT } from '@/lib/early-prefs'
+import { siteUrl } from '@/lib/site'
 import './globals.css'
 import './polish.css'
 
@@ -21,8 +22,16 @@ const fredoka = Fredoka({
 })
 
 export const metadata: Metadata = {
-  title: 'Crumbs — your group food map',
-  description: 'A shared food map for the places you love and the ones you want to try.',
+  // Round 77: link previews use the site's real address (NEXT_PUBLIC_SITE_URL, lib/site.ts).
+  metadataBase: new URL(siteUrl()),
+  title: 'Crumbs — your food map, for you and your people',
+  description: 'A food map for the places you love and the ones you want to try — yours, and shared with the people you eat with.',
+  openGraph: {
+    title: 'Crumbs',
+    description: 'Save places, rate dishes, decide where to eat. For you, and the people you eat with.',
+    siteName: 'Crumbs',
+    type: 'website',
+  },
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [

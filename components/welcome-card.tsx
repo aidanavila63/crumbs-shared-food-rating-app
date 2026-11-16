@@ -53,7 +53,7 @@ export function WelcomeCard({
         </li>
         <li className="surface-soft flex items-center justify-between gap-3">
           <span>
-            <strong>2.</strong> Invite your partner with code{' '}
+            <strong>2.</strong> Invite your people (if you like) with code{' '}
             <strong className="tracking-widest">{group.join_code}</strong>
           </span>
           <button className="secondary" onClick={copyCode}>

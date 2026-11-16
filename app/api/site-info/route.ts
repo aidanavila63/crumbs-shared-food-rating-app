@@ -7,6 +7,7 @@ import { takeAllowance } from '@/lib/allowance'
 import { cachedSite, saveSite } from '@/lib/read-cache'
 import { siteKey } from '@/lib/menu-fingerprint'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 // Reads a restaurant's own website (only where its robots.txt allows) for hours, phone,
 // cuisine, price, address and menu link. GET shows them on the place page; POST saves them on
@@ -53,7 +54,7 @@ async function readSite(
   return { info, over: false }
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -67,7 +68,7 @@ export async function GET(request: Request) {
 }
 
 /** Save what a restaurant's website says onto its shared profile (at most monthly). */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -116,3 +117,7 @@ export async function POST(request: Request) {
       .then(() => {}, () => {})
   return Response.json({ applied: result?.applied ?? [] })
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const GET = keepErrors('GET /api/site-info', handleGET)
+export const POST = keepErrors('POST /api/site-info', handlePOST)

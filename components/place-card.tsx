@@ -113,7 +113,7 @@ export const PlaceCard = memo(function PlaceCard({
         <div className="flex flex-wrap gap-2 text-sm">
           {place.place_ratings.map((rating) => (
             <span className="surface-soft !px-3 !py-1" key={rating.user_id}>
-              <strong>{(names[rating.user_id] ?? 'Partner').split(' ')[0]}</strong> {rating.score}★
+              <strong>{(names[rating.user_id] ?? 'Someone').split(' ')[0]}</strong> {rating.score}★
             </span>
           ))}
         </div>

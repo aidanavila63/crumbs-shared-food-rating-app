@@ -1,11 +1,24 @@
 import type { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 
 export const metadata: Metadata = {
   title: 'Shared list · Crumbs',
   robots: { index: false, follow: false },
 }
-export const dynamic = 'force-dynamic'
+// E29 (Round 77): same for everyone who opens the link, so it's kept for a minute instead of
+// being rebuilt (with a sign-in check) on every view. Unsharing takes effect within the minute.
+export const revalidate = 60
+export function generateStaticParams() {
+  return []
+}
+
+function anon() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  )
+}
 
 type SharedPlace = {
   name: string
@@ -18,9 +31,9 @@ type SharedPlace = {
 
 export default async function SharedListPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const supabase = await createClient()
-  const { data } = /^[a-f0-9]{16,128}$/.test(token)
-    ? await supabase.rpc('get_shared_list', { share_token: token })
+  const { data } =
+    /^[a-f0-9]{16,128}$/.test(token) && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true'
+      ? await anon().rpc('get_shared_list', { share_token: token })
     : { data: null }
   const list = data as { name: string; emoji: string; places: SharedPlace[] } | null
 

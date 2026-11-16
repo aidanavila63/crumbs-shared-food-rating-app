@@ -11,7 +11,15 @@ const securityHeaders = [
   { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=()' },
 ]
 
+// Round 77 (third pass #5): which build this is, shown in Settings and Admin, and compared with
+// /api/version so an open app can say "Update ready".
+const BUILD_ID = (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7)
+
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_BUILD_ID: BUILD_ID,
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  },
   // Round 74: type errors stop a build again (the type check has been clean since Round 39).
   typescript: {
     ignoreBuildErrors: false,

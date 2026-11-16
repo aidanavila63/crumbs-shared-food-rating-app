@@ -283,7 +283,7 @@ function DishRow({
       )}
       {others.map((rating) => (
         <p className="text-sm" key={rating.user_id}>
-          <strong>{names[rating.user_id] ?? 'Partner'}</strong>: {dishPoints(rating)}/100
+          <strong>{names[rating.user_id] ?? 'Someone'}</strong>: {dishPoints(rating)}/100
           {rating.notes ? ` — ${rating.notes}` : ''}
         </p>
       ))}
@@ -303,7 +303,7 @@ function DishRow({
         aspect={1}
         label={dish.name}
         path={dish.photo_path}
-        groupId={groupId}
+        folder={groupId}
         supabase={supabase}
         demo={demo}
         onChange={onPhoto}
@@ -1103,7 +1103,7 @@ export function PlaceSheet({
         <PhotoButton
           label={place.name}
           path={place.photo_path}
-          groupId={place.group_id}
+          folder={place.group_id}
           supabase={supabase}
           demo={demo}
           onChange={setPlacePhoto}
@@ -1395,7 +1395,7 @@ export function PlaceSheet({
               <div className="surface-soft flex flex-col gap-1" key={rating.user_id}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">
-                    {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
+                    {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Someone')}
                     {rating.draft && <span className="tag ml-2">draft · only you</span>}
                   </span>
                   <ScoreDisplay rating={rating} scale={scale} />

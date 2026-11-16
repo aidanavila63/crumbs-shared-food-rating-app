@@ -5,6 +5,7 @@
 import Link from 'next/link'
 import { Wordmark } from '@/components/wordmark'
 import { WaitlistForm } from '@/components/waitlist-form'
+import { ExpiredLinkRedirect } from '@/components/expired-link-redirect'
 
 const FEATURES = [
   ['📍', 'Your own food map', 'Every place you’ve been and want to try, with your scores, notes and photos. Yours first — it works with nobody else in it.'],
@@ -36,6 +37,7 @@ export function Landing({ onSignIn }: { onSignIn?: () => void }) {
     )
   return (
     <main className="welcome min-h-screen bg-background">
+      <ExpiredLinkRedirect />
       <div className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-8 sm:px-8">
         <header className="flex items-center justify-between">
           <Wordmark height={38} />

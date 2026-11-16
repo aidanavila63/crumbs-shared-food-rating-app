@@ -9,6 +9,7 @@ import { DAY_SHORT, datesText, daysText, type PostKind, type RestaurantPost } fr
 import { haptic } from '@/lib/motion'
 import { hoursToText, parseHoursText } from '@/lib/hours-text'
 import { specialHoursNote, type Hours } from '@/lib/place-info'
+import { siteOrigin } from '@/lib/site'
 
 const KINDS: { id: PostKind; label: string; hint: string }[] = [
   { id: 'special', label: '📅 Weekly special', hint: 'e.g. Half-price wings — Tue & Thu' },
@@ -315,7 +316,7 @@ export function OwnerPoster({ restaurantId, name }: { restaurantId: string; name
   async function make() {
     setBusy(true)
     try {
-      const link = `${window.location.origin}/?add=${restaurantId}`
+      const link = `${siteOrigin()}/?add=${restaurantId}`
       const [{ brandQrSvg, svgDataUrl }, { wordmarkSvg }] = await Promise.all([
         import('@/lib/brand-qr'),
         import('./wordmark'),

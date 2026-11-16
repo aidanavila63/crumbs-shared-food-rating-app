@@ -3,19 +3,23 @@
 //  #172 checks the free limits and raises Admin alerts (and a push to admins, if set up),
 //  #141 reminds people about plans coming up (needs push keys),
 //  #214 in the last 3 days of a month, reads queued menu PDFs with leftover AI allowance,
-//  #89  makes the weekly backup on Mondays,
-//  Part three: puts the usual hours back where special (holiday/seasonal) hours have ended.
+//  Part three: puts the usual hours back where special (holiday/seasonal) hours have ended,
+//  Round 77: empties "Recently deleted" of anything older than 30 days.
+// Round 77 (E23): one chore failing no longer stops the rest (each has its own try), the run is
+// recorded (Admin → Last runs), and the weekly backup has its own scheduled job (vercel.json →
+// /api/backup, Mondays) so a slow day can't squeeze it out.
 // Without CRON_SECRET it only does the harmless wake-up read.
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
 import { limitAlerts, type LimitReport } from '@/lib/limits'
 import { isMonthEnd, leftoverAi, processMenuQueue } from '@/lib/menu-queue'
-import { runBackup } from '@/lib/run-backup'
+import { recordJob } from '@/lib/jobs'
+import { keepErrors } from '@/lib/server-errors'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -33,36 +37,65 @@ export async function GET(request: Request) {
   if (!trusted) return Response.json(done)
   if (!url || !key) return Response.json({ ...done, limits: 'needs SUPABASE_SERVICE_ROLE_KEY' })
 
-  // #172 Free-limit check.
   const db = createClient(url, key, { auth: { persistSession: false } })
-  const { data: report, error } = await db.rpc('limit_report')
-  if (error) done.limits = error.message
-  else {
-    const alerts = limitAlerts(report as LimitReport)
-    done.alerts = alerts.length
-    if (alerts.length) {
-      const { data: fresh } = await db
-        .from('admin_alerts')
-        .upsert(alerts, { onConflict: 'kind,day', ignoreDuplicates: true })
-        .select('kind,level,message')
-      done.pushed = await pushAdmins(db, fresh ?? [])
+  return recordJob(db, 'daily', async () => {
+    // Each chore on its own: one failing is written down and the rest still run.
+    const chore = async (name: string, work: () => Promise<unknown>) => {
+      try {
+        done[name] = await work()
+      } catch (error: any) {
+        done[name] = `failed: ${String(error?.message ?? error).slice(0, 200)}`
+        done.failed = [...((done.failed as string[]) ?? []), name]
+      }
     }
-  }
 
-  // #214 Last days of the month: spend the AI allowance that's left reading queued menu PDFs.
-  if (!error && isMonthEnd())
-    done.menus = await processMenuQueue(db, leftoverAi((report as LimitReport).budgets))
+    // #172 Free-limit check.
+    let report: LimitReport | null = null
+    await chore('alerts', async () => {
+      const { data, error } = await db.rpc('limit_report')
+      if (error) throw new Error(error.message)
+      report = data as LimitReport
+      const alerts = limitAlerts(report)
+      if (alerts.length) {
+        const { data: fresh } = await db
+          .from('admin_alerts')
+          .upsert(alerts, { onConflict: 'kind,day', ignoreDuplicates: true })
+          .select('kind,level,message')
+        done.pushed = await pushAdmins(db, fresh ?? [])
+      }
+      return alerts.length
+    })
 
-  // Part three: special hours whose last day has passed go back to the usual hours.
-  const { data: ended, error: endError } = await db.rpc('end_seasonal_hours')
-  done.special_hours_ended = endError ? endError.message : ended
+    // #214 Last days of the month: spend the AI allowance that's left reading queued menu PDFs.
+    if (report && isMonthEnd())
+      await chore('menus', () => processMenuQueue(db, leftoverAi(report!.budgets)))
 
-  // #141 Plan reminders (the day before).
-  done.reminders = await remindPlans(db)
+    // Part three: special hours whose last day has passed go back to the usual hours.
+    await chore('special_hours_ended', async () => {
+      const { data, error } = await db.rpc('end_seasonal_hours')
+      if (error) throw new Error(error.message)
+      return data
+    })
 
-  // #89 Weekly backup (Mondays).
-  if (new Date().getUTCDay() === 1) done.backup = await (await runBackup()).json()
-  return Response.json(done)
+    // #141 Plan reminders (the day before).
+    await chore('reminders', () => remindPlans(db))
+
+    // Round 77: Recently deleted keeps things 30 days.
+    await chore('deleted_purged', async () => {
+      const { data, error } = await db.rpc('purge_deleted')
+      if (error) throw new Error(error.message)
+      return data
+    })
+
+    // E30: website and menu reads older than 90 days are dropped (read again when needed).
+    await chore('caches_trimmed', async () => {
+      const { data, error } = await db.rpc('trim_read_caches')
+      if (error) throw new Error(error.message)
+      return data
+    })
+
+    return done // a "failed" list marks the run as not OK in Admin
+  })
 }
 
 /** New (not already raised today) warnings reach the admins' phones, if push is set up. */
@@ -128,7 +161,7 @@ async function pushTo(
     .select('endpoint,p256dh,auth')
     .in('user_id', userIds)
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'mailto:crumbs@example.com',
+    process.env.VAPID_SUBJECT || 'mailto:crumbs.foodapp@gmail.com',
     publicKey,
     privateKey,
   )
@@ -149,3 +182,6 @@ async function pushTo(
   )
   return sent
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const GET = keepErrors('GET /api/daily', handleGET)

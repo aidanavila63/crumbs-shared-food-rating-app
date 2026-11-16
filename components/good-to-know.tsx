@@ -372,7 +372,8 @@ export function GoodToKnow({
                 <PhotoButton
                   label={KIND_LABEL[adding]}
                   path={photo}
-                  groupId={groupId}
+                  // Shared with everyone, so it's filed under the restaurant, not this group (B12).
+                  folder={restaurantId}
                   supabase={supabase}
                   demo={demo}
                   compact

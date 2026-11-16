@@ -2,7 +2,6 @@
 import { overlapText, tasteOverlap } from '@/lib/taste-overlap'
 import { settingsOf, type Scale } from '@/lib/ratings'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
 import { haptic, useCountUp } from '@/lib/motion'
 import type { HomeMeal } from '@/hooks/use-crumbs-data'
@@ -13,7 +12,7 @@ import { tasteProfile } from '@/lib/catch-up'
 import { oneEmoji } from '@/lib/group-look'
 import { JoinRequestsCard } from './join-requests'
 import { AccessRequestsCard } from './access-requests'
-import { askConfirm } from '@/lib/ask'
+import { LeaveGroup, RecentlyDeleted } from './group-ownership'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -159,30 +158,25 @@ export function GroupTab({
           </div>
         </div>
       )}
-      <button
-        className="secondary text-destructive"
-        onClick={async () => {
-          if (
-            !(await askConfirm(`Leave ${group.name}?`, {
-              body: 'You can rejoin with the code.',
-              confirm: 'Leave',
-              danger: true,
-            }))
-          )
-            return
-          if (!demo) {
-            const { error } = await supabase
-              .from('group_members')
-              .delete()
-              .eq('group_id', group.id)
-              .eq('user_id', userId)
-            if (error) return toast.error(error.message)
-          }
-          onLeft?.(group.id)
-        }}
-      >
-        Leave group
-      </button>
+      {v4 && (
+        <RecentlyDeleted
+          group={group}
+          supabase={supabase}
+          demo={demo}
+          canEmpty={canManage}
+          canRestore={myRole !== 'guest'}
+          names={names}
+          onRestored={onReload}
+        />
+      )}
+      <LeaveGroup
+        group={group}
+        members={members}
+        userId={userId}
+        supabase={supabase}
+        demo={demo}
+        onLeft={onLeft}
+      />
     </section>
   )
 }

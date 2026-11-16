@@ -14,11 +14,14 @@ export function SurpriseSheet({
   members = [],
   onOpen,
   onClose,
+  anchor = null,
 }: {
   places: Place[]
   members?: Profile[]
   onOpen: (place: Place) => void
   onClose: () => void
+  /** Round 77: the group's main location (or this phone's swap); "near" measures from it */
+  anchor?: { lat: number; lng: number; label: string } | null
 }) {
   const [cuisine, setCuisine] = useState<string | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
@@ -27,7 +30,9 @@ export function SurpriseSheet({
   const [openNow, setOpenNow] = useState(false)
   const [skipWarned, setSkipWarned] = useState(true)
   const [picked, setPicked] = useState<Place | null>(null)
-  const location = useUserLocation(near, { ask: true })
+  // Round 77: near the group's main spot when there is one; otherwise where the phone is.
+  const gps = useUserLocation(near && !anchor, { ask: true })
+  const location = anchor ?? gps
   const wishlist = useMemo(() => places.filter((place) => place.status === 'Want to try'), [places])
   const cuisines = useMemo(
     () => [...new Set(wishlist.map((place) => place.cuisine).filter(Boolean) as string[])].sort(),
@@ -135,7 +140,7 @@ export function SurpriseSheet({
             📌 Pinned only
           </button>
           <button aria-pressed={near} className={chip(near)} onClick={() => setNear(!near)}>
-            📍 Within 10 km
+            📍 Within 10 km{anchor ? ` of ${anchor.label}` : ''}
           </button>
           <button
             aria-pressed={openNow}

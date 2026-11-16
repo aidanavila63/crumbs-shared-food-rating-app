@@ -211,7 +211,7 @@ export function MealSheet({
         <div key="read" className="rise-panel mt-5 flex flex-col gap-5">
           {photo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <img loading="lazy" decoding="async"
               src={photo}
               alt={meal.name}
               className="w-full rounded-2xl object-cover"
@@ -349,7 +349,7 @@ export function MealSheet({
                 <div key={rating.user_id} className="surface-soft flex flex-col gap-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold">
-                      {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Partner')}
+                      {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Someone')}
                     </span>
                     <RatingStars value={rating.score} />
                   </div>
@@ -522,7 +522,7 @@ export function MealSheet({
             <PhotoButton
               label={meal.name}
               path={meal.photo_path}
-              groupId={groupId}
+              folder={groupId}
               supabase={supabase}
               demo={demo}
               onChange={(path) => save({ photo_path: path })}

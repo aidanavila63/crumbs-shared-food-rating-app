@@ -277,7 +277,7 @@ export function GroupSettingsCard({
               aspect={2.2}
               label={`${group.name} cover`}
               path={group.cover_path}
-              groupId={group.id}
+              folder={group.id}
               supabase={supabase}
               demo={demo}
               onChange={async (cover_path) => {

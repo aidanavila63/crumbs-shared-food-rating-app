@@ -12,7 +12,7 @@ export const contentType = 'image/png'
 
 export default async function Image({ params }: { params: Promise<{ city: string; slug: string }> }) {
   const { city, slug } = await params
-  const data = await loadRestaurant(city, slug)
+  const data = await loadRestaurant(city, slug).catch(() => null)
   const r = data && !isRedirect(data) ? data : null
   const name = (r?.name ?? 'Crumbs').slice(0, 60)
   const meta = r ? metaLine(r) : 'Your shared food map'

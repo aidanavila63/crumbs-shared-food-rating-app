@@ -4,6 +4,7 @@ import { tooManyRequests } from '@/lib/rate-limit'
 import { overpass } from '@/lib/osm'
 import { overpassQuery, overpassToPlaces } from '@/lib/nearby'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 // #36 Discover places near a spot you loved, from OpenStreetMap (free; no Google calls).
 // Results are cached per area + cuisine for a day so repeat looks don't hit Overpass again.
@@ -12,7 +13,7 @@ const cache = new Map<string, { at: number; results: unknown[] }>()
 // The free servers are asked together (up to 12 s).
 export const maxDuration = 20
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -49,3 +50,6 @@ export async function GET(request: Request) {
     )
   }
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const GET = keepErrors('GET /api/osm/nearby', handleGET)

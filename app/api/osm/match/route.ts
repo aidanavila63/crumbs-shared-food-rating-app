@@ -3,13 +3,14 @@ import { tooManyRequests } from '@/lib/rate-limit'
 import { overpass } from '@/lib/osm'
 import { bestMatch, matchQuery } from '@/lib/osm-match'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 // Fills a shared restaurant profile with OpenStreetMap facts (address, phone, website, cuisine,
 // hours) — data Crumbs may keep forever, unlike Google's. Runs once per restaurant every ~3 months.
 // Up to three free servers are tried (about 8 s each).
 export const maxDuration = 30
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -47,3 +48,6 @@ export async function POST(request: Request) {
   if (match) await supabase.rpc('touch_open_data', { target: r.id, fields: Object.keys(match.data) })
   return Response.json({ matched: match?.osm ?? null, fields: Object.keys(match?.data ?? {}) })
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const POST = keepErrors('POST /api/osm/match', handlePOST)

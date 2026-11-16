@@ -37,6 +37,10 @@ import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { cleanCode, invitePath, isJoinCode, pendingInvite } from '@/lib/invite'
+import { SiteNotice } from './site-notice'
+import { FromPicker } from './from-picker'
+import { useGrow } from '@/lib/use-grow'
+import { resolveFrom, saveFrom, savedFrom, type FromChoice } from '@/lib/anchor'
 import { SignInForm } from './sign-in-form'
 import { Landing } from './landing'
 import { StatusFilter } from './status-filter'
@@ -134,6 +138,14 @@ function CrumbsShell() {
   // (Read once on the phone; while the first screen is still "Loading…" so nothing flickers.)
   const [signingIn, setSigningIn] = useState(
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('signin'),
+  )
+  // Third pass #4: the sign-in link had expired or was already used (from /auth/callback, or the
+  // sign-in service's own "#error_code=otp_expired" on the address).
+  const [linkExpired, setLinkExpired] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      (new URLSearchParams(window.location.search).get('link') === 'expired' ||
+        /error_code=(otp_expired|access_denied)|error=access_denied/.test(window.location.hash)),
   )
   const social = useSocialStore({
     groupId: data.group?.id,
@@ -295,6 +307,28 @@ function CrumbsShell() {
         ? localStorage.setItem('crumbs-home', JSON.stringify(next))
         : localStorage.removeItem('crumbs-home')
     } catch {}
+  }
+  // Round 77: where "near" is measured from in Decide, Tonight, Surprise and Explore — the group's
+  // main location unless this phone swapped it for now (lib/anchor.ts).
+  const [fromChoice, setFromChoice] = useState<FromChoice>('auto')
+  useEffect(() => {
+    if (data.group?.id) setFromChoice(savedFrom(data.group.id))
+  }, [data.group?.id])
+  const fromHere = useUserLocation(fromChoice === 'here', { ask: true })
+  const anchor = useMemo(
+    () =>
+      resolveFrom(fromChoice, {
+        locations: data.groupLocations,
+        mainId: settingsOf(data.group).main_location,
+        mine: me?.areas ?? [],
+        home,
+        here: fromHere,
+      }),
+    [fromChoice, data.groupLocations, data.group, me?.areas, home, fromHere],
+  )
+  function chooseFrom(choice: FromChoice) {
+    setFromChoice(choice)
+    if (data.group?.id) saveFrom(data.group.id, choice)
   }
   const [tripMapId, setTripMapId] = useState<string | null>(null)
   const tripList = data.lists.find((list) => list.id === tripMapId) ?? null
@@ -483,6 +517,9 @@ function CrumbsShell() {
     }
     return list
   }, [view, filter, deferredQuery, sort, origin, area, haystacks, inFilter])
+  // E10 (Round 77): long lists draw 60 cards at a time as you scroll.
+  const { shown: shownPlaces, more: morePlaces, sentinel: moreSentinel, showAll: showAllPlaces } =
+    useGrow(filtered)
   // Blind ratings: which cards hide the group score (looked up once, not per card).
   const hiddenIds = useMemo(() => {
     if (!blind) return null
@@ -693,13 +730,19 @@ function CrumbsShell() {
     )
   // Round 76: someone who isn't signed in sees what Crumbs is first; the sign-in box is one tap
   // away (or straight there from a "Sign in" link: /?signin=1).
-  if (!data.user && !signingIn) return <Landing onSignIn={() => setSigningIn(true)} />
+  if (!data.user && !signingIn && !linkExpired) return <Landing onSignIn={() => setSigningIn(true)} />
   if (!data.user)
     return (
       <main className="grid min-h-screen place-items-center bg-background p-5">
         <div className="surface w-full max-w-sm">
           <Wordmark height={38} />
           <h1 className="mt-8 font-serif text-4xl font-bold">Sign in to Crumbs</h1>
+          {linkExpired && (
+            <p role="alert" className="site-notice site-notice-warn mt-4 mb-0">
+              That sign-in link expired or was already used. Send yourself a new one below (links
+              work once, for about an hour).
+            </p>
+          )}
           <p className="mt-3 leading-6 text-muted-foreground">
             New here? Sign in and ask to join. For now every new person is approved by hand before
             they can use Crumbs — you’ll see a waiting screen until then.
@@ -711,7 +754,10 @@ function CrumbsShell() {
           </p>
           <button
             className="mx-auto mt-3 block text-xs font-semibold text-primary underline"
-            onClick={() => setSigningIn(false)}
+            onClick={() => {
+              setSigningIn(false)
+              setLinkExpired(false)
+            }}
           >
             What is Crumbs?
           </button>
@@ -911,6 +957,7 @@ function CrumbsShell() {
           <Wordmark height={38} />
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
+        <SiteNotice supabase={data.supabase} demo={data.demo} />
         {/* The group name is the group switcher: switch, start a new group, join, find one. */}
         <div className="mb-5 flex items-center gap-2">
         <button
@@ -1306,7 +1353,7 @@ function CrumbsShell() {
                     </div>
                   ) : filtered.length ? (
                     <div className="stagger place-list flex flex-col gap-4">
-                      {filtered.map((place) => (
+                      {shownPlaces.map((place) => (
                         <PlaceCard
                           key={place.id}
                           place={place}
@@ -1317,6 +1364,13 @@ function CrumbsShell() {
                           onSelect={setSelected}
                         />
                       ))}
+                      {morePlaces > 0 && (
+                        <div ref={moreSentinel}>
+                          <button className="secondary w-full" onClick={showAllPlaces}>
+                            Show all {filtered.length} places
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : data.places.length > 0 && filtersOn ? (
                     <div className="empty pop-in">
@@ -1370,6 +1424,7 @@ function CrumbsShell() {
               )}
               <MapTab
                 places={mapPlaces}
+                anchor={anchor}
                 apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
                 onSelect={(place) => {
                   if (place.group_id === data.group?.id) return setSelected(place)
@@ -1415,7 +1470,18 @@ function CrumbsShell() {
               onSelect={setSelected}
               onSurprise={() => setSurprising(true)}
               onWrapped={() => setHub(['menu', 'wrapped'])}
-              home={home}
+              home={anchor}
+              nearSlot={
+                <FromPicker
+                  choice={fromChoice}
+                  anchor={anchor}
+                  locations={data.groupLocations}
+                  mainId={settingsOf(data.group).main_location}
+                  mine={me?.areas ?? []}
+                  hasHome={!!home}
+                  onChoose={chooseFrom}
+                />
+              }
               meals={data.homeMeals}
               userId={userId}
               turns={data.v4 && settingsOf(data.group).turns}
@@ -1542,6 +1608,7 @@ function CrumbsShell() {
         <SurpriseSheet
           places={view}
           members={data.members}
+          anchor={anchor}
           onClose={() => setSurprising(false)}
           onOpen={(place) => {
             setSurprising(false)

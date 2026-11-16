@@ -1,6 +1,6 @@
 'use client'
 import { useShowScore } from './score-input'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dices, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, PlaceVisit, Profile } from '@/hooks/use-crumbs-data'
@@ -42,6 +42,7 @@ export function DecideTab({
   onSurprise,
   onWrapped,
   home = null,
+  nearSlot,
   meals = [],
   userId,
   turns = false,
@@ -88,6 +89,8 @@ export function DecideTab({
   /** #61 open Crumbs Wrapped (teaser card in Dec–Feb) */
   onWrapped?: () => void
   home?: { lat: number; lng: number } | null
+  /** Round 77: "Near: Office ▾" (where Decide measures from) */
+  nearSlot?: React.ReactNode
 }) {
   const show = useShowScore()
   const [page, setPage] = useState<'together' | 'plans' | 'crawl' | 'discover' | null>(null)
@@ -199,6 +202,15 @@ export function DecideTab({
     return { rated, favourites, disagreements, topCuisines, picks, liked }
   }, [places, decide?.plans])
 
+  // E30 (Round 77): ideas are kept for the day (per group), so asking again doesn't spend AI
+  // allowance on the same answer.
+  const ideasKey = `crumbs-ideas-${groupId}-${new Date().toLocaleDateString('en-CA')}`
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ideasKey)
+      if (saved) setIdeas(JSON.parse(saved))
+    } catch {}
+  }, [ideasKey])
   async function getIdeas() {
     setThinking(true)
     try {
@@ -219,6 +231,9 @@ export function DecideTab({
       const result = await response.json()
       if (!response.ok) throw new Error(result.error)
       setIdeas(result.ideas)
+      try {
+        localStorage.setItem(ideasKey, JSON.stringify(result.ideas))
+      } catch {}
     } catch (error: any) {
       toast.error(error?.message || 'Could not get ideas')
     } finally {
@@ -231,6 +246,7 @@ export function DecideTab({
       <div>
         <p className="text-sm text-muted-foreground">What are we eating?</p>
         <h2 className="font-serif text-3xl font-bold">Decide &amp; Plan</h2>
+        {nearSlot && <div className="mt-2">{nearSlot}</div>}
       </div>
 
       <button className="primary" onClick={onSurprise}>

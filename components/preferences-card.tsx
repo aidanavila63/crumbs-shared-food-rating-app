@@ -213,7 +213,7 @@ export function PreferencesCard({
         <span>
           <span className="font-semibold">Blind ratings</span>
           <span className="block text-sm text-muted-foreground">
-            Hide your partner’s scores on anything you haven’t rated yet. This is your own setting.
+            Hide everyone else’s scores on anything you haven’t rated yet. This is your own setting.
           </span>
         </span>
         <Switch

@@ -9,6 +9,7 @@ import { tooManyRequests } from '@/lib/rate-limit'
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { parseImage } from '@/lib/menu-photo'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 export const maxDuration = 30
 
@@ -25,7 +26,7 @@ const schema = z.object({
     .max(80),
 })
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -97,3 +98,6 @@ export async function POST(request: Request) {
     )
   }
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const POST = keepErrors('POST /api/read-menu-photo', handlePOST)

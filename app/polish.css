@@ -434,3 +434,45 @@ button.chip:active {
     transform: scale(0.7);
   }
 }
+
+/* Round 77: Admin notice line and "Update ready" (third pass #5, #16) */
+.site-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  font-size: 0.875rem;
+  animation: rise-in 0.3s ease both;
+}
+.site-notice-warn {
+  background: #fdf0d2;
+  color: #6b4a00;
+}
+.update-ready {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 55;
+  transform: translateX(-50%);
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  animation: rise-in 0.3s ease both;
+}
+
+/* E9 (Round 77): several places on one spot when zoomed out */
+.marker-group {
+  min-width: 2.4rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 25%, transparent);
+  font-weight: 700;
+}

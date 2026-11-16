@@ -1,0 +1,21 @@
+# Third pass #12 (Round 77): GitHub opens a pull request once a week when a package Crumbs uses
+# has an update (small updates grouped into one), and right away for security fixes. Each one runs
+# the CI checks; merge it only when they pass. Free.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Toronto
+    open-pull-requests-limit: 3
+    groups:
+      small-updates:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2

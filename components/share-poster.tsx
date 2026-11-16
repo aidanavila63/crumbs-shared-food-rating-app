@@ -9,6 +9,7 @@ import type { Group } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
 import { inviteLink } from '@/lib/invite'
 import { crumbsPoster, downloadBlob, groupPoster, makePoster, sharePoster } from '@/lib/poster'
+import { siteOrigin } from '@/lib/site'
 
 type Kind = 'group' | 'crumbs'
 
@@ -24,7 +25,7 @@ export function SharePosterCard({ group }: { group: Group }) {
   const preview = ready?.url ?? null
   const failed = failedKey === key
 
-  const link = kind === 'group' ? inviteLink(code) : `${window.location.origin}/`
+  const link = kind === 'group' ? inviteLink(code) : `${siteOrigin()}/`
   const fileName = kind === 'group' ? `join-${slug(name)}-on-crumbs.png` : 'join-crumbs.png'
   const message =
     kind === 'group'
@@ -38,7 +39,7 @@ export function SharePosterCard({ group }: { group: Group }) {
     const spec =
       kind === 'group'
         ? groupPoster({ name, emoji, color, join_code: code }, inviteLink(code))
-        : crumbsPoster(`${window.location.origin}/`)
+        : crumbsPoster(`${siteOrigin()}/`)
     makePoster(spec)
       .then((picture) => {
         if (cancelled) return

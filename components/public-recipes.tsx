@@ -281,7 +281,7 @@ function RecipeCard({
       <button className="flex items-center gap-3 text-left" onClick={onToggle}>
         {photo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
+          <img loading="lazy" decoding="async" src={photo} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
         )}
         <span className="min-w-0 flex-1">
           {tag && <span className="tag mb-1 inline-block !text-[0.7rem]">{tag}</span>}

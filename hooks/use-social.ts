@@ -101,11 +101,12 @@ export function useSocialStore({
         .select('id,target,user_id,emoji')
         .eq('group_id', groupId)
         .limit(2000),
+      // E19: the newest 1,000 (it used to be the oldest 1,000 once a group had more)
       supabase
         .from('comments')
         .select('id,target,user_id,body,created_at')
         .eq('group_id', groupId)
-        .order('created_at')
+        .order('created_at', { ascending: false })
         .limit(1000),
       supabase
         .from('activity')
@@ -115,7 +116,7 @@ export function useSocialStore({
         .limit(80),
     ])
     if (!r.error) setReactions(r.data ?? [])
-    if (!c.error) setComments(c.data ?? [])
+    if (!c.error) setComments([...(c.data ?? [])].reverse())
     if (!a.error) setActivity(a.data ?? [])
   }, [demo, groupId, supabase, v4])
 
@@ -126,23 +127,37 @@ export function useSocialStore({
     if (!enabled) return
     load()
     if (demo) return
-    // Live: reactions/comments/feed arrive as your mates add them.
+    // Live: reactions/comments/feed arrive as your mates add them. E19 (Round 77): each change is
+    // applied as it comes (it used to reload all three lists, up to 3,000 rows, every time).
+    const apply =
+      <T extends { id: string }>(set: (fn: (current: T[]) => T[]) => void, keep = Infinity, newestFirst = false) =>
+      (payload: any) => {
+        const row = payload.new as T | undefined
+        const gone = payload.old as { id?: string } | undefined
+        set((current) => {
+          if (payload.eventType === 'DELETE') return current.filter((x) => x.id !== gone?.id)
+          if (!row?.id) return current
+          const rest = current.filter((x) => x.id !== row.id)
+          const next = newestFirst ? [row, ...rest] : [...rest, row]
+          return next.length > keep ? (newestFirst ? next.slice(0, keep) : next.slice(-keep)) : next
+        })
+      }
     const channel = supabase
       .channel(`social-${groupId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reactions', filter: `group_id=eq.${groupId}` },
-        load,
+        apply(setReactions as any),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comments', filter: `group_id=eq.${groupId}` },
-        load,
+        apply(setComments as any, 1000),
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'activity', filter: `group_id=eq.${groupId}` },
-        load,
+        apply(setActivity as any, 80, true),
       )
       .subscribe()
     return () => {

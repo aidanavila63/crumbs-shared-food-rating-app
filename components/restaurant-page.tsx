@@ -33,6 +33,7 @@ import {
   websiteSources,
   type PublicRestaurant,
 } from '@/lib/public-page'
+import { siteOrigin } from '@/lib/site'
 
 const TABS = ['Overview', 'Menu', 'Photos', 'Info'] as const
 const COURSE: Record<string, string> = {
@@ -77,7 +78,7 @@ export function RestaurantPage({
   const reserve = safeUrl(data.reservation_url)
   const link = () =>
     data.city && data.slug && typeof location !== 'undefined'
-      ? `${location.origin}${restaurantPath(data.city, data.slug)}`
+      ? `${siteOrigin()}${restaurantPath(data.city, data.slug)}`
       : ''
   async function share() {
     const url = link()

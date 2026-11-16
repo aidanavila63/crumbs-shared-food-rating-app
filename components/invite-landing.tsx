@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase'
-import { clearJoinCode, invitePath, rememberInvite } from '@/lib/invite'
+import { clearJoinCode, invitePath, inviter, rememberInvite, rememberInviter } from '@/lib/invite'
 import { haptic } from '@/lib/motion'
 import { Wordmark } from './wordmark'
 import { SignInForm } from './sign-in-form'
@@ -73,8 +73,10 @@ export function InviteLanding({
 
   // Remember the invite through sign-in (the magic link can open a fresh page).
   useEffect(() => {
-    if (initial) rememberInvite(code)
-    else clearJoinCode()
+    if (initial) {
+      rememberInvite(code)
+      rememberInviter(new URLSearchParams(window.location.search).get('by'))
+    } else clearJoinCode()
   }, [code, initial])
 
   useEffect(() => {
@@ -130,6 +132,9 @@ export function InviteLanding({
     haptic('success')
     if (data?.status === 'pending_app') {
       setPreview({ ...preview, asked: true })
+      // Who shared the link (third pass #19); ignored before the Round 77 SQL.
+      const by = inviter()
+      if (by) await supabase.rpc('note_inviter', { inviter: by }).then(() => {}, () => {})
       fetch('/api/notify', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

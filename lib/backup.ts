@@ -70,6 +70,8 @@ export const BACKUP_TABLES = [
   'restaurant_tip_votes',
   'waitlist',
   'crumbs_migrations',
+  'deleted_items', // Recently deleted places and lists (30 days)
+  'site_settings', // Admin notice banner and pause switch
 ] as const
 
 /** Left out on purpose: they rebuild themselves, or (push keys) are no use once restored. */
@@ -79,6 +81,8 @@ export const NOT_BACKED_UP = [
   'usage_counts', // today's allowance counters
   'push_subscriptions', // phones' notification keys: each phone signs up again by itself
   'client_errors', // the last 500 app errors
+  'rate_counters', // this hour's write counts per person (rate limits)
+  'job_runs', // when the scheduled jobs last ran (kept 60 days)
 ] as const
 
 /** crumbs-2026-10-26.json.gz */

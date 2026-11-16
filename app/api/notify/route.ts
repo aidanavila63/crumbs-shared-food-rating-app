@@ -3,11 +3,12 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { cleanCode, isJoinCode } from '@/lib/invite'
+import { keepErrors } from '@/lib/server-errors'
 
 export const runtime = 'nodejs'
 
 // Sends a push notification to the other people in a group. Does nothing until the VAPID keys are set.
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   const privateKey = process.env.VAPID_PRIVATE_KEY
   if (!publicKey || !privateKey) return Response.json({ sent: 0, reason: 'not-configured' })
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     .select('display_name')
     .eq('id', me.id)
     .maybeSingle()
-  const who = (profile?.display_name || 'Your partner').split(' ')[0].slice(0, 30)
+  const who = (profile?.display_name || 'Someone in your group').split(' ')[0].slice(0, 30)
   let text: string | null = null
   let groupId = ''
   let tag = 'crumbs'
@@ -237,7 +238,7 @@ async function deliver(db: any, ids: string[], kind: string, text: string, tag: 
     .in('user_id', others)
 
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'mailto:crumbs@example.com',
+    process.env.VAPID_SUBJECT || 'mailto:crumbs.foodapp@gmail.com',
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!,
   )
@@ -260,3 +261,6 @@ async function deliver(db: any, ids: string[], kind: string, text: string, tag: 
   )
   return sent
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const POST = keepErrors('POST /api/notify', handlePOST)

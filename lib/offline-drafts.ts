@@ -91,16 +91,81 @@ export async function writeOrDraft(
 }
 
 // ---------- the saved copy shown while offline ----------
-export function cacheGroup(groupId: string, data: Record<string, unknown>) {
-  try {
-    localStorage.setItem(
-      `crumbs-cache-${groupId}`,
-      JSON.stringify({ ...data, at: new Date().toISOString() }),
-    )
-  } catch {
-    // too big for this phone's storage: skip the copy
-  }
+// E20 (Round 77): the copy lives in IndexedDB (room for a big group; localStorage holds ~5 MB per
+// site and a big group's copy was silently skipped), written at most every 30 s per group.
+// Small things (the list of groups) stay in localStorage. Older copies there are still read.
+const DB = 'crumbs-offline'
+const STORE = 'copies'
+const lastSaved = new Map<string, number>()
+
+function openDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(DB, 1)
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => resolve(null)
+    } catch {
+      resolve(null)
+    }
+  })
 }
+
+export function cacheGroup(groupId: string, data: Record<string, unknown>, { force = false } = {}) {
+  const value = { ...data, at: new Date().toISOString() }
+  if (groupId === 'groups') {
+    try {
+      localStorage.setItem(`crumbs-cache-${groupId}`, JSON.stringify(value))
+    } catch {}
+    return
+  }
+  if (!force && Date.now() - (lastSaved.get(groupId) ?? 0) < 30_000) return
+  lastSaved.set(groupId, Date.now())
+  openDb().then((db) => {
+    if (!db) {
+      try {
+        localStorage.setItem(`crumbs-cache-${groupId}`, JSON.stringify(value))
+      } catch {
+        // too big for this phone's storage: skip the copy
+      }
+      return
+    }
+    try {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).put(value, groupId)
+      tx.oncomplete = () => {
+        db.close()
+        // the old copy in localStorage isn't needed any more (and frees room)
+        try {
+          localStorage.removeItem(`crumbs-cache-${groupId}`)
+        } catch {}
+      }
+    } catch {
+      db.close()
+    }
+  })
+}
+
+/** The saved copy (IndexedDB first, then an older localStorage copy). */
+export async function readCachedGroup<T>(groupId: string): Promise<(T & { at: string }) | null> {
+  const db = await openDb()
+  if (db) {
+    const found = await new Promise<any>((resolve) => {
+      try {
+        const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(groupId)
+        request.onsuccess = () => resolve(request.result ?? null)
+        request.onerror = () => resolve(null)
+      } catch {
+        resolve(null)
+      }
+    })
+    db.close()
+    if (found) return found
+  }
+  return cachedGroup<T>(groupId)
+}
+
 export function cachedGroup<T>(groupId: string): (T & { at: string }) | null {
   try {
     return JSON.parse(localStorage.getItem(`crumbs-cache-${groupId}`) ?? 'null')

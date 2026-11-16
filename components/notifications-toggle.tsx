@@ -8,9 +8,15 @@ export function NotificationsToggle({ userId, supabase }: { userId?: string; sup
   const [supported, setSupported] = useState(false)
   const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Third pass #7: on an iPhone, notifications only work in the Home Screen app.
+  const [iphoneInSafari, setIphoneInSafari] = useState(false)
   useEffect(() => {
     const ok = pushSupported()
     setSupported(ok)
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    const installed =
+      window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true
+    setIphoneInSafari(ios && !installed)
     if (ok)
       pushIsOn()
         .then(setOn)
@@ -42,7 +48,7 @@ export function NotificationsToggle({ userId, supabase }: { userId?: string; sup
         <div>
           <h3 className="font-serif text-xl font-bold">Notifications</h3>
           <p className="text-sm text-muted-foreground">
-            Know when your partner adds or rates something.
+            Know when someone in your group adds or rates something.
           </p>
         </div>
         <button
@@ -53,7 +59,14 @@ export function NotificationsToggle({ userId, supabase }: { userId?: string; sup
           {on ? 'Turn off' : 'Turn on'}
         </button>
       </div>
-      {!supported && (
+      {iphoneInSafari ? (
+        <ol className="list-decimal pl-5 text-xs text-muted-foreground">
+          <li>On iPhone, notifications only work in the Crumbs app on your Home Screen.</li>
+          <li>In Safari, tap Share (the square with the arrow), then Add to Home Screen.</li>
+          <li>Open Crumbs from the new icon, then come back here and tap Turn on.</li>
+          <li>Needs iOS 16.4 or newer (Settings → General → Software Update).</li>
+        </ol>
+      ) : !supported && (
         <p className="text-xs text-muted-foreground">
           On some phones this only works from the Home Screen app: tap Share → Add to Home Screen,
           then open Crumbs from there (needs an up-to-date phone).

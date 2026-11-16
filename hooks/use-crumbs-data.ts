@@ -5,7 +5,8 @@ import { toast } from 'sonner'
 import { pendingDeletes } from '@/lib/undoable'
 import { createClient } from '@/lib/supabase'
 import type { Facts, Hours } from '@/lib/place-info'
-import { cacheGroup, cachedGroup, isNetworkError, isOffline } from '@/lib/offline-drafts'
+import { cacheGroup, cachedGroup, isNetworkError, isOffline, readCachedGroup } from '@/lib/offline-drafts'
+import { MAX_PLACES_LIVE, mergePlaces, placeOfChange } from '@/lib/live-places'
 
 export type Status = 'Been' | 'Want to try'
 export type Rating = {
@@ -91,6 +92,10 @@ export type Place = {
   // v4: the shared restaurant profile this place is linked to (#27)
   restaurant_id?: string | null
 }
+/** Everything a place carries in the app (the full load and live updates read the same). */
+const PLACE_SELECT =
+  '*,place_ratings(*),place_visits(*),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))'
+
 export type GroupSettings = {
   scale?: '5' | 'half' | '10' // #2
   categories?: boolean // #1
@@ -102,6 +107,8 @@ export type GroupSettings = {
   tags?: string[] // #8 preset vibe tags
   /** Round 75: every member (not guests) may add group locations, not just the owner/admins */
   members_add_locations?: boolean
+  /** Round 77: the group location Decide, Tonight, Surprise and Explore measure from */
+  main_location?: string | null
 }
 export type Group = {
   id: string
@@ -421,6 +428,13 @@ export function useCrumbsData() {
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
   const loadedOnce = useRef(false)
 
+  const placesRef = useRef<Place[]>([])
+  /** which group's live data is on screen (a saved copy never replaces it) */
+  const liveFor = useRef<string | null>(null)
+  useEffect(() => {
+    placesRef.current = places
+  }, [places])
+
   const load = useCallback(async () => {
     if (demo || !user || !group) return
     if (!loadedOnce.current) setLoading(true)
@@ -437,9 +451,7 @@ export function useCrumbsData() {
     ] = await Promise.all([
         supabase
           .from('places')
-          .select(
-            '*,place_ratings(*),place_visits(*),place_facts(*),dishes(*,dish_ratings(score,points,user_id,notes))',
-          )
+          .select(PLACE_SELECT)
           .eq('group_id', group.id)
           .order('pinned', { ascending: false })
           .order('created_at', { ascending: false }),
@@ -507,6 +519,7 @@ export function useCrumbsData() {
       v4: !meals.error,
     })
     loadedOnce.current = true
+    liveFor.current = group.id
     setLoading(false)
   }, [group, supabase, user])
 
@@ -569,15 +582,31 @@ export function useCrumbsData() {
         setGroupsLoaded(true)
       })
   }, [user, supabase])
+  const groupIdRef = useRef<string | null>(null)
   useEffect(() => {
     loadedOnce.current = false
+    groupIdRef.current = group?.id ?? null
     if (group) localStorage.setItem('crumbs-group', group.id)
   }, [group])
   useEffect(() => {
-    load().catch((error) => {
+    // E16 (Round 77): show the copy saved on this phone straight away while the live data loads
+    // (it replaces the copy a moment later), instead of skeletons until every request is back.
+    if (group && !demo && !loadedOnce.current && liveFor.current !== group.id) {
+      const id = group.id
+      readCachedGroup<any>(id).then((copy) => {
+        if (!copy || loadedOnce.current || id !== groupIdRef.current || liveFor.current === id) return
+        setPlaces(copy.places ?? [])
+        setLists(copy.lists ?? [])
+        setMembers(copy.members ?? [])
+        setHomeMeals(copy.homeMeals ?? [])
+        setV4(!!copy.v4)
+        setLoading(false)
+      })
+    }
+    load().catch(async (error) => {
       console.error(error)
       // #166 no signal: show the copy saved on this phone (read-only, edits become drafts)
-      const copy = group ? cachedGroup<any>(group.id) : null
+      const copy = group ? await readCachedGroup<any>(group.id) : null
       if (copy && (isOffline() || isNetworkError(error))) {
         setPlaces(copy.places ?? [])
         setLists(copy.lists ?? [])
@@ -597,21 +626,48 @@ export function useCrumbsData() {
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // While the app is in the background, changes just mark it stale; one reload on return.
   const stale = useRef(false)
-  const scheduleLoad = useCallback(() => {
+  // E1–E3 (Round 77): places that changed since the last flush ('all' = reload the group).
+  const changed = useRef<Set<string> | 'all'>(new Set())
+  const flush = useCallback(async () => {
+    const pending = changed.current
+    changed.current = new Set()
+    const groupId = group?.id
+    if (pending === 'all' || pending.size > MAX_PLACES_LIVE || !groupId) return loadRef.current()
+    if (!pending.size) return
+    const ids = [...pending]
+    const { data, error } = await supabase.from('places').select(PLACE_SELECT).in('id', ids)
+    if (error) return loadRef.current()
+    setPlaces((current) =>
+      mergePlaces(current, ids, ((data ?? []) as Place[]).filter((p) => !pendingDeletes.has(p.id)), groupId),
+    )
+  }, [group?.id, supabase])
+  const flushRef = useRef(flush)
+  useEffect(() => {
+    flushRef.current = flush
+  }, [flush])
+  const scheduleLoad = useCallback((place?: string | null) => {
+    const current = changed.current
+    if (place === undefined || place === null || current === 'all') changed.current = 'all'
+    else current.add(place)
     if (typeof document !== 'undefined' && document.hidden) {
       stale.current = true
       return
     }
     clearTimeout(reloadTimer.current)
     reloadTimer.current = setTimeout(() => {
-      loadRef.current().catch((error) => console.error(error))
+      flushRef.current().catch((error) => console.error(error))
     }, 250)
   }, [])
+  /** For the place tables: re-read just the place the change belongs to. */
+  const placeChanged = useCallback(
+    (table: string) => (payload: any) => scheduleLoad(placeOfChange(table, payload, placesRef.current)),
+    [scheduleLoad],
+  )
   useEffect(() => {
     const onShow = () => {
       if (document.hidden || !stale.current) return
       stale.current = false
-      scheduleLoad()
+      scheduleLoad(null)
     }
     document.addEventListener('visibilitychange', onShow)
     return () => {
@@ -626,38 +682,34 @@ export function useCrumbsData() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'places', filter: `group_id=eq.${group.id}` },
-        scheduleLoad,
+        placeChanged('places'),
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'place_ratings' },
-        scheduleLoad,
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_visits' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_facts' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, scheduleLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, scheduleLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_ratings' }, placeChanged('place_ratings'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_visits' }, placeChanged('place_visits'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'place_facts' }, placeChanged('place_facts'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, placeChanged('dishes'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_ratings' }, placeChanged('dish_ratings'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, () => scheduleLoad(null))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'list_places' }, () => scheduleLoad(null))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'home_meals', filter: `group_id=eq.${group.id}` },
-        scheduleLoad,
+        () => scheduleLoad(null),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'home_meal_ratings' },
-        scheduleLoad,
+        () => scheduleLoad(null),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'home_meal_cooks' },
-        scheduleLoad,
+        () => scheduleLoad(null),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${group.id}` },
-        scheduleLoad,
+        () => scheduleLoad(null),
       )
       // Group settings / look changed by the owner or an admin: apply straight away.
       .on(
@@ -678,7 +730,7 @@ export function useCrumbsData() {
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group?.id, scheduleLoad, supabase])
+  }, [group?.id, scheduleLoad, placeChanged, supabase])
 
   const mutate = useCallback(
     async (work: () => Promise<any>) => {

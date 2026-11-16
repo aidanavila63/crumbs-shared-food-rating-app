@@ -1,7 +1,9 @@
 'use client'
+import { buildLabel } from './site-notice'
 import { useState } from 'react'
 import { FileUp, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
+import { askConfirm } from '@/lib/ask'
 import type { Group, List, Place, Profile } from '@/hooks/use-crumbs-data'
 import { canVibrate, haptic, setMotionPrefs, useMotionPrefs } from '@/lib/motion'
 import { ACCENTS, TEXT_SIZES, setThemePrefs, useThemePrefs, type ThemeMode } from '@/lib/theme'
@@ -376,6 +378,27 @@ export function SettingsPanel({
       <button className="secondary" onClick={onSignOut}>
         <LogOut size={18} /> Sign out
       </button>
+      {/* Third pass #21: a lost phone, or a shared computer you forgot to sign out of. */}
+      <button
+        className="text-center text-sm text-muted-foreground underline"
+        onClick={async () => {
+          if (
+            !(await askConfirm('Sign out on every device?', {
+              body: 'Every phone and computer signed in to your Crumbs account will need to sign in again, including this one.',
+              confirm: 'Sign out everywhere',
+            }))
+          )
+            return
+          if (!demo) {
+            const { error } = await supabase.auth.signOut({ scope: 'global' })
+            if (error) return toast.error(error.message)
+          }
+          onSignOut()
+        }}
+      >
+        Sign out on every device
+      </button>
+      <p className="text-center text-xs text-muted-foreground">Crumbs version {buildLabel()}</p>
     </div>
   )
 }

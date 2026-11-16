@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import type { Area, Group, GroupLocation, Place } from '@/hooks/use-crumbs-data'
 import { askConfirm } from '@/lib/ask'
 import { privatePlaceNear } from '@/lib/areas'
+import { mainLocation } from '@/lib/anchor'
 import { Switch } from './switch'
 
 export const MAX_GROUP_LOCATIONS = 8
@@ -108,6 +109,21 @@ export function GroupLocationsCard({
     )
   }
 
+  // Round 77: the main location is where Decide, Tonight, Surprise and Explore measure from.
+  const mainId = mainLocation(locations, group.settings?.main_location)?.id ?? null
+  async function makeMain(location: GroupLocation) {
+    const before = group
+    const next = { ...group, settings: { ...(group.settings ?? {}), main_location: location.id } }
+    onGroup(next)
+    if (demo) return
+    const { error } = await supabase.from('groups').update({ settings: next.settings }).eq('id', group.id)
+    if (error) {
+      onGroup(before)
+      return toast.error(error.message)
+    }
+    toast.success(`${location.name} is ${group.name}’s main spot`)
+  }
+
   async function setMembersMayAdd(on: boolean) {
     const before = group
     const next = { ...group, settings: { ...(group.settings ?? {}), members_add_locations: on } }
@@ -125,8 +141,10 @@ export function GroupLocationsCard({
       <h3 className="settings-heading">Group locations</h3>
       <p className="text-sm text-muted-foreground">
         Spots everyone in {group.name} shares — the office for a lunch group, your neighbourhood,
-        the campus. Pick one above your places to see just what’s near it. Everyone in the group
-        can see where these are; your own saved areas in Settings stay private.
+        the campus. Pick one above your places to see just what’s near it. The main one (⭐) is
+        where Decide, Tonight, Surprise and Explore measure “near” from; anyone can swap it for
+        themselves there. Everyone in the group can see where these are; your own saved areas in
+        Settings stay private.
       </p>
       <div className="flex flex-col gap-2">
         {locations.length === 0 && (
@@ -137,13 +155,24 @@ export function GroupLocationsCard({
         {locations.map((location) => (
           <div key={location.id} className="flex items-center justify-between gap-2 text-sm">
             <span className="min-w-0 [overflow-wrap:anywhere]">
-              📍 <strong>{location.name}</strong> · within {Number(location.km)} km
+              {location.id === mainId ? '⭐' : '📍'} <strong>{location.name}</strong> · within{' '}
+              {Number(location.km)} km
+              {location.id === mainId && locations.length > 1 && (
+                <span className="text-xs text-muted-foreground"> · main</span>
+              )}
             </span>
-            {canEdit && (
-              <button className="shrink-0 text-xs text-primary underline" onClick={() => remove(location)}>
-                Remove
-              </button>
-            )}
+            <span className="flex shrink-0 gap-3">
+              {canManage && location.id !== mainId && (
+                <button className="text-xs text-primary underline" onClick={() => makeMain(location)}>
+                  Make main
+                </button>
+              )}
+              {canEdit && (
+                <button className="text-xs text-primary underline" onClick={() => remove(location)}>
+                  Remove
+                </button>
+              )}
+            </span>
           </div>
         ))}
       </div>

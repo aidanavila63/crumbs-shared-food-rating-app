@@ -2,10 +2,11 @@ import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { isMapsHost, parseMapsUrl } from '@/lib/maps-link'
 import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { keepErrors } from '@/lib/server-errors'
 
 // Follows a pasted Google Maps link (including maps.app.goo.gl short links) and returns the
 // restaurant name and rough position. Only Google Maps hosts are ever fetched.
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
@@ -38,3 +39,6 @@ export async function POST(request: Request) {
   }
   return Response.json({ error: "Couldn't find a restaurant in that link" }, { status: 422 })
 }
+
+// Third pass #9: unexpected failures go into Admin → Errors (Vercel keeps logs an hour).
+export const POST = keepErrors('POST /api/maps-link', handlePOST)

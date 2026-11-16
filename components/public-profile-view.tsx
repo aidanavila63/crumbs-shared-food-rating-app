@@ -62,7 +62,7 @@ export function PublicProfileView({ profile }: { profile: PublicProfile | null }
         <div className="grid size-24 place-items-center overflow-hidden rounded-full bg-muted text-4xl font-bold text-primary">
           {profile.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={profile.avatar_url} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
+            <img loading="lazy" decoding="async" src={profile.avatar_url} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
           ) : (
             (profile.name?.[0] ?? '?').toUpperCase()
           )}

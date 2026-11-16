@@ -7,7 +7,7 @@ import { PhotoCropper } from './photo-cropper'
 /** One photo: add, replace, remove. The caller saves the returned path on its own row. */
 export function PhotoButton({
   path,
-  groupId,
+  folder,
   supabase,
   demo,
   label,
@@ -18,7 +18,8 @@ export function PhotoButton({
   /** shape of where the photo is shown (width ÷ height); you crop to it before it's saved */
   aspect?: number
   path?: string | null
-  groupId: string
+  /** id of the group, person or restaurant the photo is filed under (B12) */
+  folder: string
   supabase: any
   demo: boolean
   label: string
@@ -35,7 +36,7 @@ export function PhotoButton({
     if (demo) return toast('Photos need the real database, not demo mode')
     setBusy(true)
     try {
-      const next = await uploadPhoto(supabase, groupId, file)
+      const next = await uploadPhoto(supabase, folder, file)
       const saved = await onChange(next)
       if (saved === false) return removePhoto(supabase, next)
       await removePhoto(supabase, path)
