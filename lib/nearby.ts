@@ -83,3 +83,58 @@ export function overpassToPlaces(json: any) {
     })
     .filter(Boolean)
 }
+
+// Round 79 (decided Nov 12): nearby features read Crumbs' own restaurants first (members' places,
+// open data, the Overture import). OpenStreetMap is only asked when there aren't enough.
+export const OWN_ENOUGH = 20
+
+type NearbySpot = {
+  google_place_id: string
+  name: string
+  formatted_address: string | null
+  latitude: number
+  longitude: number
+  price_level: number | null
+  cuisine: string | null
+  website: string | null
+  google_maps_url: string | null
+}
+
+/** restaurants_near rows → the same shape the app gets from OpenStreetMap. */
+export function ownToPlaces(rows: any[]): NearbySpot[] {
+  return (rows ?? [])
+    .filter((r) => r && r.source_key && r.name && typeof r.latitude === 'number' && typeof r.longitude === 'number')
+    .map((r) => ({
+      google_place_id: String(r.source_key),
+      name: String(r.name).slice(0, 120),
+      formatted_address: r.formatted_address ?? null,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      price_level: null,
+      cuisine: r.cuisine ?? null,
+      website: r.website ?? null,
+      google_maps_url: r.google_maps_url ?? null,
+    }))
+}
+
+const fold = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+/** Our own spots first; an OpenStreetMap spot is left out when it's the same place (same id, or the
+ * same name within ~80 m). */
+export function mergeNearby<T extends NearbySpot>(own: T[], osm: T[]): T[] {
+  const near = (a: T, b: T) =>
+    Math.abs(a.latitude - b.latitude) < 0.0008 && Math.abs(a.longitude - b.longitude) < 0.0011
+  const extra = osm.filter(
+    (o) =>
+      !own.some(
+        (m) => m.google_place_id === o.google_place_id || (near(m, o) && fold(m.name) === fold(o.name)),
+      ),
+  )
+  return [...own, ...extra]
+}

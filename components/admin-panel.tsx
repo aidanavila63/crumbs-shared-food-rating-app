@@ -14,7 +14,7 @@ import { monthPace } from '@/lib/limits'
 import { Switch } from './switch'
 import { askConfirm } from '@/lib/ask'
 import { AccessRequestsCard } from './access-requests'
-import { JobsCard, LaunchNumbersCard, NoticeCard, PhotosCard, QuietCard, ReportsCard } from './admin-extra'
+import { JobsCard, LaunchNumbersCard, NoticeCard, OvertureCard, PhotosCard, QuietCard, ReportsCard } from './admin-extra'
 import { buildLabel } from './site-notice'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
@@ -600,6 +600,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       </div>
       <div id="admin-quality" className="scroll-mt-16">
         <QualityCard supabase={supabase} demo={demo} />
+        <OvertureCard supabase={supabase} demo={demo} />
         <DataHealthCard supabase={supabase} demo={demo} />
         <MigrationsCard supabase={supabase} demo={demo} />
       </div>
@@ -1497,7 +1498,7 @@ function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
  * "was that file run?" has an answer on screen. The newest file the app expects is named here:
  * bump it whenever a new SQL file ships.
  */
-const NEWEST_SQL = '20261117_round78'
+const NEWEST_SQL = '20261118_round79'
 function MigrationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   const [rows, setRows] = useState<{ name: string; ran: boolean; ran_at: string | null }[] | null>(null)
   const [missing, setMissing] = useState(false)

@@ -95,8 +95,9 @@ export function hoursAreStale(place: Pick<Place, 'opening_hours' | 'hours_checke
   return now.getTime() - new Date(place.hours_checked_at).getTime() > days * 86400000
 }
 
-export const hasGoogleId = (place: Pick<Place, 'google_place_id'>) =>
-  !place.google_place_id.startsWith('manual:') && !place.google_place_id.startsWith('osm:')
+/** A Google place id ("ChIJ…"), not one of Crumbs' own (manual:, osm:, and Round 79's ovt: for
+ * Overture places). */
+export const hasGoogleId = (place: Pick<Place, 'google_place_id'>) => !/^[a-z]+:/.test(place.google_place_id)
 
 /** Keeps us inside Google's small free daily limits (counted per phone, per day). */
 export function takeQuota(name: string, perDay: number) {

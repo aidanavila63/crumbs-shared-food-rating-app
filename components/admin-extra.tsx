@@ -12,7 +12,7 @@ import { TURNSTILE_SITE_KEY } from '@/lib/turnstile'
 import { Switch } from './switch'
 import { timeAgo } from './social'
 
-const NEEDS_SQL = 'Run 20261116_round77.sql in Supabase to turn this on.'
+const NEEDS_SQL = 'Run the newest database updates in Supabase to turn this on (Admin → Database updates lists them).'
 const kb = (bytes: number) =>
   bytes > 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 
@@ -611,5 +611,77 @@ export function QuietCard({ supabase, demo }: { supabase: any; demo: boolean }) 
       cleared by the daily job; nothing they wrote is touched) and <strong>{q.quiet_groups}</strong>{' '}
       groups (photo shrinking waits until warning emails can be sent).
     </p>
+  )
+}
+
+type OvertureNumbers = {
+  loaded: number
+  waiting: number
+  linked: number
+  added: number
+  skipped: number
+  release: string | null
+  restaurants: number
+}
+
+/** Round 79: the Overture import (scripts/overture/README.md) — load, then merge a batch at a time. */
+export function OvertureCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [n, setN] = useState<OvertureNumbers | null>(null)
+  const [missing, setMissing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    if (demo) return
+    const { data, error } = await supabase.rpc('admin_overture')
+    if (error) return setMissing(true)
+    setN(data)
+  }, [demo, supabase])
+  useEffect(() => {
+    load()
+  }, [load])
+  async function merge() {
+    setBusy(true)
+    let total = { linked: 0, added: 0 }
+    // A few batches per tap, each a short database call.
+    for (let i = 0; i < 5; i += 1) {
+      const { data, error } = await supabase.rpc('merge_overture', { batch: 2000 })
+      if (error) {
+        toast.error(error.message)
+        break
+      }
+      total = { linked: total.linked + data.linked, added: total.added + data.added }
+      if (!data.waiting) break
+    }
+    setBusy(false)
+    toast.success(`${total.added} new restaurants, ${total.linked} matched to ones Crumbs had`)
+    load()
+  }
+  if (demo) return null
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Overture (open place data)</h3>
+      {missing ? (
+        <p className="text-sm text-muted-foreground">{NEEDS_SQL}</p>
+      ) : !n ? (
+        <div className="skeleton h-16" />
+      ) : (
+        <>
+          <p className="text-sm">
+            {n.loaded
+              ? `${n.loaded.toLocaleString()} GTA food places loaded${n.release ? ` (release ${n.release})` : ''}: ${n.added.toLocaleString()} added, ${n.linked.toLocaleString()} matched to places Crumbs already had, ${n.waiting.toLocaleString()} waiting.`
+              : 'Nothing loaded yet. See scripts/overture/README.md: make the file, load it into overture_places, then merge here.'}{' '}
+            Crumbs has {n.restaurants.toLocaleString()} restaurants in all.
+          </p>
+          {n.waiting > 0 && (
+            <button className="primary !min-h-10 text-sm" disabled={busy} onClick={merge}>
+              {busy ? 'Merging…' : `Merge the next ${Math.min(n.waiting, 10000).toLocaleString()}`}
+            </button>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Merging never replaces a detail members, an owner or a restaurant’s website gave; it only
+            fills empty ones. Imported places show in search and nearby, not as pins.
+          </p>
+        </>
+      )}
+    </section>
   )
 }

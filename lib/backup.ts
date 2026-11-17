@@ -85,6 +85,7 @@ export const NOT_BACKED_UP = [
   'client_errors', // the last 500 app errors
   'rate_counters', // this hour's write counts per person (rate limits)
   'job_runs', // when the scheduled jobs last ran (kept 60 days)
+  'overture_places', // Round 79: the Overture import's holding table (load it again from Overture)
 ] as const
 
 /** crumbs-2026-10-26.json.gz */

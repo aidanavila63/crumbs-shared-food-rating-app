@@ -74,3 +74,26 @@ test('the old address sends people to the new one, live site only', () => {
   assert.equal(movedTo(new URL('https://crumbs.example/'), 'https://crumbs.example', 'production'), null)
   assert.equal(movedTo(new URL('https://x.vercel.app/api/daily'), 'https://crumbs.example', 'production'), null)
 })
+
+import { mergeNearby, ownToPlaces } from '../lib/nearby.ts'
+test('nearby: our own restaurants first, the same place from OpenStreetMap left out', () => {
+  const own = ownToPlaces([
+    { source_key: 'ovt:1', name: 'Crêperie Tranquille', latitude: 43.7, longitude: -79.4, cuisine: 'Café' },
+  ])
+  const spot = (id: string, name: string, lat: number) => ({
+    google_place_id: id, name, formatted_address: null, latitude: lat, longitude: -79.4,
+    price_level: null, cuisine: null, website: null, google_maps_url: null,
+  })
+  const merged = mergeNearby(own, [spot('osm:N1', 'Creperie Tranquille', 43.7002), spot('osm:N2', 'Other Place', 43.701)])
+  assert.deepEqual(merged.map((m) => m.google_place_id), ['ovt:1', 'osm:N2'])
+})
+
+import { parseCsvLine, toRows } from '../scripts/overture/load.mjs'
+test('the Overture CSV is read safely (quotes, empty cells, bad websites)', () => {
+  assert.deepEqual(parseCsvLine('a,"b, c","say ""hi"""'), ['a', 'b, c', 'say "hi"'])
+  const rows = toRows('id,name,latitude,longitude,website,confidence\nx1,"Pho, Place",43.7,-79.4,javascript:alert(1),0.9\nx2,,43.7,-79.4,,\n')
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].name, 'Pho, Place')
+  assert.equal(rows[0].website, null)
+  assert.equal(rows[0].confidence, 0.9)
+})
