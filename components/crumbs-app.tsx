@@ -66,6 +66,7 @@ import { settingsOf } from '@/lib/ratings'
 import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
 import { areaChoices, groupAnchor } from '@/lib/areas'
 import { LegalLinks } from '@/components/legal-page'
+import { orderSpaces, spaceKicker } from '@/lib/spaces'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -548,6 +549,28 @@ function CrumbsShell() {
     setFilter('All')
     setAreaName(null)
   }
+  // Round 80 (#22): first run asks "just me" or "with other people". Just me makes My Crumbs, a
+  // private space for one — open to anyone who's been let in, invite or not.
+  const [firstRun, setFirstRun] = useState<'ask' | 'together'>('ask')
+  async function startSolo() {
+    if (!data.user) return
+    setBusy(true)
+    const { data: mine, error } = await data.supabase.rpc('ensure_my_crumbs')
+    setBusy(false)
+    if (error) {
+      // Before 20261119_round80.sql has run there's no such thing yet: show the group options.
+      setFirstRun('together')
+      return toast.error(
+        /ensure_my_crumbs|schema cache|PGRST202/i.test(error.message ?? '')
+          ? 'A private space isn’t switched on yet — start or join a group for now'
+          : error.message,
+      )
+    }
+    haptic('success')
+    data.setGroups((current) => orderSpaces([...current.filter((g) => g.id !== mine.id), mine]))
+    data.setGroup(mine)
+    toast.success('My Crumbs is ready — only you can see it')
+  }
   async function createGroup() {
     if (!groupName.trim() || !data.user) return
     setBusy(true)
@@ -898,7 +921,7 @@ function CrumbsShell() {
         <div className="mx-auto flex max-w-xl flex-col gap-4 pt-8">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-serif text-4xl font-bold">
-              {gate && !gate.canStart ? 'Almost there' : 'Start your food map'}
+              Start your food map
             </h1>
             <button
               className="secondary !min-h-10 !px-3 text-xs"
@@ -921,6 +944,52 @@ function CrumbsShell() {
           ))}
           {!gate ? (
             <p className="text-muted-foreground">Loading…</p>
+          ) : firstRun === 'ask' && !waiting.length ? (
+            <section className="surface flex flex-col gap-3">
+              <h2 className="font-serif text-2xl font-bold">Who’s this for?</h2>
+              <p className="text-sm text-muted-foreground">
+                You can change your mind any time: share places with a group later, or keep a
+                private space next to your groups.
+              </p>
+              <button
+                className="first-run-choice"
+                disabled={busy}
+                onClick={() => {
+                  haptic('tap')
+                  startSolo()
+                }}
+              >
+                <span className="text-3xl" aria-hidden="true">
+                  🍞
+                </span>
+                <span>
+                  <span className="block font-serif text-xl font-bold">
+                    {busy ? 'Making your space…' : 'Just me for now'}
+                  </span>
+                  <span className="block text-sm text-muted-foreground">
+                    Your own food map. Only you can see it.
+                  </span>
+                </span>
+              </button>
+              <button
+                className="first-run-choice"
+                disabled={busy}
+                onClick={() => {
+                  haptic('tap')
+                  setFirstRun('together')
+                }}
+              >
+                <span className="text-3xl" aria-hidden="true">
+                  🍽️
+                </span>
+                <span>
+                  <span className="block font-serif text-xl font-bold">With other people</span>
+                  <span className="block text-sm text-muted-foreground">
+                    Start a group, or join one with an invite.
+                  </span>
+                </span>
+              </button>
+            </section>
           ) : gate.canStart ? (
             <>
               <section className="surface">
@@ -942,17 +1011,28 @@ function CrumbsShell() {
           ) : (
             <>
               <section className="surface">
-                <h2 className="font-serif text-2xl font-bold">Crumbs is invite-only for now</h2>
+                <h2 className="font-serif text-2xl font-bold">Groups are invite-only for now</h2>
                 <p className="mt-2 leading-6 text-muted-foreground">
-                  You’re signed in as {data.user.email}. To get in, open the invite link someone in
-                  a group sent you — it shows the group and lets you join from there.
+                  You’re signed in as {data.user.email}. To join a group, open the invite link
+                  someone in it sent you — it shows the group and lets you join from there.
                 </p>
-                <a href="/welcome#waitlist" className="primary mt-4 block w-full text-center">
-                  No invite? Join the waitlist
-                </a>
+                <p className="mt-2 leading-6 text-muted-foreground">
+                  Or keep your own private food map while you wait for one.
+                </p>
+                <button className="primary mt-4 w-full" disabled={busy} onClick={startSolo}>
+                  {busy ? 'Making your space…' : 'Just me for now'}
+                </button>
               </section>
               {codeBox}
             </>
+          )}
+          {gate && firstRun === 'together' && (
+            <button
+              className="self-center text-sm text-muted-foreground underline"
+              onClick={() => setFirstRun('ask')}
+            >
+              ← Back
+            </button>
           )}
         </div>
       </main>
@@ -987,7 +1067,7 @@ function CrumbsShell() {
             setSwitching(true)
           }}
         >
-          <span className="text-sm text-muted-foreground">Your shared food map</span>
+          <span className="text-sm text-muted-foreground">{spaceKicker(data.group)}</span>
           <span className="group-name-row font-serif font-bold">
             {oneEmoji(data.group.emoji) && (
               <span
@@ -1049,9 +1129,9 @@ function CrumbsShell() {
             onCreated={(g) => {
               setSwitching(false)
               setHub([])
-              data.setGroups((current) => [...current, g])
+              data.setGroups((current) => orderSpaces([...current.filter((x) => x.id !== g.id), g]))
               data.setGroup(g)
-              setTab('Group')
+              if (!g.is_personal) setTab('Group')
             }}
             onJoined={(g) => {
               setSwitching(false)

@@ -89,7 +89,7 @@ export function GroupActions({
 
   return (
     <span className="group-actions">
-      {myRole !== 'guest' && (
+      {myRole !== 'guest' && !group.is_personal && (
         <button
           className="icon-btn group-action-btn"
           aria-label="Invite people"

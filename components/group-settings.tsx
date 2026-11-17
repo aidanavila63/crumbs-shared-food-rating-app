@@ -52,6 +52,8 @@ export function GroupSettingsCard({
 }) {
   const s = settingsOf(group)
   const isOwner = !!userId && group.created_by === userId
+  // Round 80: My Crumbs has no one to invite, list or let in.
+  const personal = !!group.is_personal
   const [name, setName] = useState(group.name)
   const [picking, setPicking] = useState(false)
   const [newTag, setNewTag] = useState('')
@@ -86,7 +88,9 @@ export function GroupSettingsCard({
     <section className="surface settings-card">
       <h3 className="settings-heading">Group settings</h3>
       <p className="text-sm text-muted-foreground">
-        {isOwner ? 'You created' : 'You’re an admin of'} {group.name}. These apply to everyone in it.
+        {personal
+          ? 'Your private space. Only you can see it, and nobody can join it.'
+          : `${isOwner ? 'You created' : 'You’re an admin of'} ${group.name}. These apply to everyone in it.`}
       </p>
 
       <label className="text-sm font-semibold" htmlFor="group-name">
@@ -109,7 +113,7 @@ export function GroupSettingsCard({
         </button>
       </div>
 
-      {v4 && isOwner && (
+      {v4 && isOwner && !personal && (
         <div className="flex flex-col gap-2">
           <span className="font-semibold">Who can find and join</span>
           <div className="segmented" role="radiogroup" aria-label="Who can see the group">
@@ -172,7 +176,7 @@ export function GroupSettingsCard({
         </div>
       )}
 
-      {v4 && (
+      {v4 && !personal && (
         <div className="flex flex-col gap-2">
           <span className="font-semibold">People with your invite link</span>
           <div className="segmented" role="radiogroup" aria-label="People with your invite link">
@@ -385,6 +389,8 @@ export function GroupSettingsCard({
             </div>
           </div>
 
+          {!personal && (
+          <>
           <div className="flex flex-col gap-2">
             <span className="font-semibold">Members &amp; admins</span>
             {members.map((member) => {
@@ -519,6 +525,8 @@ export function GroupSettingsCard({
               {group.guest_code ? 'New code' : 'Invite guests'}
             </button>
           </div>
+          </>
+          )}
         </>
       )}
     </section>

@@ -144,6 +144,39 @@
   border-radius: 16px;
   padding: 12px 14px;
 }
+/* Round 80: the first-run question ("Just me for now" / "With other people"). */
+.first-run-choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: var(--muted);
+  border: 1.5px solid transparent;
+  border-radius: 18px;
+  padding: 16px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.first-run-choice:hover {
+  border-color: var(--border);
+}
+.first-run-choice:active {
+  transform: scale(0.98);
+}
+.first-run-choice:disabled {
+  opacity: 0.6;
+}
+.space-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
 .empty {
   border: 1.5px dashed var(--border);
   border-radius: 24px;

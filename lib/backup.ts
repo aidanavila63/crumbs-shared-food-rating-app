@@ -11,6 +11,7 @@ export const KEEP_BACKUPS = 8
 export const BACKUP_TABLES = [
   'profiles',
   'private_places',
+  'private_spends',
   'profile_picks',
   'handle_reservations',
   'blocked_handle_words',

@@ -270,6 +270,32 @@ export function PreferencesCard({
           </div>
         </div>
       )}
+      {/* Round 80 (#20): private spending. Shows once 20261119_round80.sql has run. */}
+      {profile?.private_spend !== undefined && (
+        <div className="settings-row">
+          <span>
+            <span className="font-semibold">Keep what I spend private</span>
+            <span className="block text-sm text-muted-foreground">
+              Your groups see your visits but not the amounts. They still count, without your
+              name, in the typical cost per person on restaurant pages.
+            </span>
+          </span>
+          <Switch
+            label="Keep what I spend private"
+            checked={!!profile.private_spend}
+            onChange={async (on) => {
+              onProfile({ private_spend: on })
+              if (demo) return
+              const { error } = await supabase.rpc('set_private_spend', { keep_private: on })
+              if (error) {
+                onProfile({ private_spend: !on })
+                return toast.error(error.message)
+              }
+              toast.success(on ? 'Your amounts are private now, earlier ones too' : 'Your amounts show to your groups again')
+            }}
+          />
+        </div>
+      )}
       <div>
         <p className="font-semibold">Home</p>
         <p className="text-sm text-muted-foreground">

@@ -39,7 +39,9 @@ export function WelcomeCard({
         <p className="text-3xl">🍞</p>
         <h2 className="mt-2 font-serif text-2xl font-bold">Welcome to {group.name}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Rate places together, keep a wish list, and see where your tastes match.
+          {group.is_personal
+            ? 'Your own food map: places you love, places to try, what you ordered and what it cost.'
+            : 'Rate places together, keep a wish list, and see where your tastes match.'}
         </p>
       </div>
       <ol className="flex flex-col gap-3 text-sm">
@@ -51,15 +53,22 @@ export function WelcomeCard({
             Add
           </button>
         </li>
-        <li className="surface-soft flex items-center justify-between gap-3">
-          <span>
-            <strong>2.</strong> Invite your people (if you like) with code{' '}
-            <strong className="tracking-widest">{group.join_code}</strong>
-          </span>
-          <button className="secondary" onClick={copyCode}>
-            Copy
-          </button>
-        </li>
+        {group.is_personal ? (
+          <li className="surface-soft">
+            <strong>2.</strong> Only you can see this space. Share any place with a group later with{' '}
+            <em>Also save to…</em> on the place.
+          </li>
+        ) : (
+          <li className="surface-soft flex items-center justify-between gap-3">
+            <span>
+              <strong>2.</strong> Invite your people (if you like) with code{' '}
+              <strong className="tracking-widest">{group.join_code}</strong>
+            </span>
+            <button className="secondary" onClick={copyCode}>
+              Copy
+            </button>
+          </li>
+        )}
         <li className="surface-soft">
           <button
             className="w-full text-left"

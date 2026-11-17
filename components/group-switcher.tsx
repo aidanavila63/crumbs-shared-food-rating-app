@@ -2,13 +2,14 @@
 // Your groups in one place: switch between them, start a new one, join with a code, or find a
 // public group. Opened from the group name at the top of the app or under your name in Profile.
 import { useEffect, useState } from 'react'
-import { Check, Plus, Search } from 'lucide-react'
+import { Check, Lock, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
 import { oneEmoji } from '@/lib/group-look'
 import { cleanCode, invitePath, isJoinCode } from '@/lib/invite'
 import { Overlay } from './overlay'
+import { isPersonal, orderSpaces } from '@/lib/spaces'
 
 export type PublicGroup = {
   id: string
@@ -119,6 +120,40 @@ export function GroupSwitcher({
     }
   }
 
+  /** Round 80: your private space (made the first time). */
+  async function startMine() {
+    setBusy(true)
+    try {
+      let mine: Group
+      if (demo) {
+        mine = {
+          ...group,
+          id: crypto.randomUUID(),
+          name: 'My Crumbs',
+          emoji: '🍞',
+          is_personal: true,
+          cover_path: null,
+        }
+      } else {
+        const { data, error } = await supabase.rpc('ensure_my_crumbs')
+        if (error) throw error
+        mine = data
+      }
+      haptic('success')
+      toast.success('My Crumbs is ready — only you can see it')
+      onCreated(mine)
+    } catch (error: any) {
+      toast.error(
+        /ensure_my_crumbs|schema cache|PGRST202/i.test(error?.message ?? '')
+          ? 'A private space isn’t switched on yet'
+          : error?.message || 'Could not make your space',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+  const hasMine = groups.some(isPersonal)
+
   /** A code opens its invite page: the group, then Join (or Ask to join if the owner lets people in). */
   function join() {
     const clean = cleanCode(code)
@@ -209,7 +244,7 @@ export function GroupSwitcher({
 
         {mode === 'mine' && (
           <div className="flex flex-col gap-2">
-            {groups.map((g) => (
+            {orderSpaces(groups).map((g) => (
               <button
                 key={g.id}
                 className={`surface flex items-center gap-3 text-left ${g.id === group.id ? 'ring-2 ring-primary' : ''}`}
@@ -228,9 +263,32 @@ export function GroupSwitcher({
                 <span className="min-w-0 flex-1 truncate font-serif text-xl font-bold">
                   {g.name}
                 </span>
+                {isPersonal(g) && (
+                  <span className="space-tag">
+                    <Lock size={12} aria-hidden="true" /> Only you
+                  </span>
+                )}
                 {g.id === group.id && <Check size={18} className="text-primary" />}
               </button>
             ))}
+            {!hasMine && (
+              <button
+                className="surface-soft flex items-center gap-3 text-left"
+                disabled={busy}
+                onClick={startMine}
+              >
+                <span className="text-2xl" aria-hidden="true">
+                  🍞
+                </span>
+                <span>
+                  <span className="block font-semibold">Start My Crumbs</span>
+                  <span className="block text-sm text-muted-foreground">
+                    A private food map just for you, next to your groups. Share any place to a group
+                    later.
+                  </span>
+                </span>
+              </button>
+            )}
             <div className="flex gap-2">
               <button className="secondary flex-1" onClick={() => setMode('new')}>
                 <Plus size={16} /> New group

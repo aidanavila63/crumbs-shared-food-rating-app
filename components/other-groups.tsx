@@ -2,11 +2,14 @@
 // #52 What your other groups think of this place, and #47 sharing your rating with them.
 // Only groups you're in, and only places they saved too — nothing public. Your notes stay in
 // the group you wrote them in; only the scores travel.
+// Round 80 (solo-first): "Also save to…" puts the place in another of your spaces (My Crumbs or
+// a group) in one tap, with your scores.
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { Group, Place, Profile, Rating } from '@/hooks/use-crumbs-data'
 import { average5, formatScore, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
+import { isPersonal, saveTargets } from '@/lib/spaces'
 
 type Copy = {
   id: string
@@ -70,13 +73,57 @@ export function OtherGroups({
         ]
       : real
   const [copies, setCopies] = useState<Copy[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState<string | null>(null)
   const [offer, setOffer] = useState<Copy[]>([])
   const mode = profile?.share_ratings ?? 'group'
   const otherIds = others.map((g) => g.id).join(',')
 
   const nameOf = (id: string) => {
     const g = others.find((x) => x.id === id)
-    return g ? `${g.emoji ? `${g.emoji} ` : ''}${g.name}` : null
+    return g ? `${isPersonal(g) ? '🔒 ' : g.emoji ? `${g.emoji} ` : ''}${g.name}` : null
+  }
+
+  /** Also save to…: copy this place (and your scores) into another of your spaces. */
+  async function saveTo(target: Group) {
+    if (saving) return
+    setSaving(target.id)
+    try {
+      const mine = place.place_ratings.find((r) => r.user_id === userId)
+      let id = `demo-copy-${target.id}`
+      let existed = false
+      if (!demo) {
+        const { data, error } = await supabase.rpc('copy_place', {
+          source: place.id,
+          target_group: target.id,
+        })
+        if (error) throw error
+        id = data.id
+        existed = !!data.existed
+      }
+      setCopies((all) => [
+        ...all.filter((c) => c.id !== id),
+        {
+          id,
+          group_id: target.id,
+          status: place.status,
+          place_ratings:
+            mine && !existed && userId
+              ? [{ user_id: userId, score: mine.score, points: mine.points ?? null }]
+              : [],
+        },
+      ])
+      haptic('success')
+      toast.success(`${existed ? 'Already in' : 'Saved to'} ${nameOf(target.id) ?? target.name}`)
+    } catch (error: any) {
+      toast.error(
+        /copy_place|schema cache|PGRST202/i.test(error?.message ?? '')
+          ? 'Saving to another space isn’t switched on yet'
+          : error?.message || 'Could not save it there',
+      )
+    } finally {
+      setSaving(null)
+    }
   }
 
   async function share(targets: Copy[], announce = true) {
@@ -150,7 +197,10 @@ export function OtherGroups({
       const all = [...(byKey.data ?? []), ...(byRestaurant.data ?? [])].filter((c: Copy) =>
         seen.has(c.id) ? false : (seen.add(c.id), true),
       )
-      if (!cancelled) setCopies(all)
+      if (!cancelled) {
+        setCopies(all)
+        setLoaded(true)
+      }
     })()
     return () => {
       cancelled = true
@@ -168,13 +218,23 @@ export function OtherGroups({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rated?.at])
 
-  if (!copies.length) return null
+  const targets =
+    loaded || demo
+      ? saveTargets(
+          real,
+          place.group_id,
+          copies.map((c) => c.group_id),
+        )
+      : []
+  if (!copies.length && !targets.length) return null
   const iRated = place.place_ratings.some((r) => r.user_id === userId)
   const hidden = !!profile?.blind_ratings && !iRated
 
   return (
     <div className="surface-soft flex flex-col gap-2">
-      <h3 className="font-serif text-xl font-bold">Your other groups</h3>
+      <h3 className="font-serif text-xl font-bold">
+        {others.some(isPersonal) ? 'Your other spaces' : 'Your other groups'}
+      </h3>
       {copies.map((c) => {
         const avg = average5(c.place_ratings)
         const mine = c.place_ratings.find((r) => r.user_id === userId)
@@ -195,6 +255,24 @@ export function OtherGroups({
           </div>
         )
       })}
+      {targets.length > 0 && (
+        <div
+          className={`flex flex-wrap items-center gap-2 ${copies.length ? 'border-t border-[var(--border)] pt-2' : ''}`}
+        >
+          <span className="text-sm">Also save to…</span>
+          {targets.map((g) => (
+            <button
+              key={g.id}
+              className="chip chip-sm"
+              disabled={!!saving}
+              aria-busy={saving === g.id}
+              onClick={() => saveTo(g)}
+            >
+              {saving === g.id ? 'Saving…' : (nameOf(g.id) ?? g.name)}
+            </button>
+          ))}
+        </div>
+      )}
       {offer.length > 0 && (
         <div className="rise-panel flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
           <span className="text-sm">Add your rating there too?</span>

@@ -89,7 +89,9 @@ export function GroupTab({
         onSelect={onSelect}
       />
       <div className="surface">
-        <h2 className="font-serif text-2xl font-bold">Together so far</h2>
+        <h2 className="font-serif text-2xl font-bold">
+          {group.is_personal ? 'So far' : 'Together so far'}
+        </h2>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           <Stat value={places.length} label="places" />
           <Stat value={places.filter((place) => place.status === 'Been').length} label="been" />
@@ -99,6 +101,7 @@ export function GroupTab({
           />
         </div>
       </div>
+      {!group.is_personal && (
       <div className="surface">
         <h2 className="font-serif text-2xl font-bold">Members</h2>
         <div className="mt-3 flex flex-col gap-2">
@@ -139,6 +142,17 @@ export function GroupTab({
           })}
         </div>
       </div>
+      )}
+      {group.is_personal && (
+        <div className="surface">
+          <h2 className="font-serif text-2xl font-bold">🔒 Just for you</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Nobody else can see or join My Crumbs. To share a place, open it and use{' '}
+            <strong>Also save to…</strong> to put it in one of your groups (your scores go with it,
+            never your notes).
+          </p>
+        </div>
+      )}
       {groups.length > 1 && (
         <div className="surface">
           <h2 className="font-serif text-2xl font-bold">Switch group</h2>
@@ -169,6 +183,7 @@ export function GroupTab({
           onRestored={onReload}
         />
       )}
+      {!group.is_personal && (
       <LeaveGroup
         group={group}
         members={members}
@@ -177,6 +192,7 @@ export function GroupTab({
         demo={demo}
         onLeft={onLeft}
       />
+      )}
     </section>
   )
 }

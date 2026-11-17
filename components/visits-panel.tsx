@@ -141,7 +141,9 @@ export function VisitsPanel({
           .select('*')
           .single()
         if (error) throw error
-        row = data
+        // With private spending on, the database keeps the amount out of the shared row; show it
+        // to you anyway (it's yours).
+        row = { ...data, spend: data.spend ?? amount }
       }
       await apply([...(place.place_visits ?? []), row])
       haptic('success')

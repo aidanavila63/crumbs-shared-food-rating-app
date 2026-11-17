@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase'
 import type { Facts, Hours } from '@/lib/place-info'
 import { cacheGroup, cachedGroup, isNetworkError, isOffline, readCachedGroup } from '@/lib/offline-drafts'
 import { MAX_PLACES_LIVE, mergePlaces, placeOfChange } from '@/lib/live-places'
+import { withPrivateSpends, type PrivateSpend } from '@/lib/private-spend'
+import { orderSpaces } from '@/lib/spaces'
 
 export type Status = 'Been' | 'Want to try'
 export type Rating = {
@@ -129,6 +131,8 @@ export type Group = {
   description?: string | null
   /** invite links: false = join straight away, true = the owner/admins let each person in */
   invite_approval?: boolean | null
+  /** Round 80: My Crumbs, your private space (nobody else can ever join it) */
+  is_personal?: boolean | null
 }
 export type Ingredient = { qty: string; unit: string; item: string }
 export type HomeMealRating = { user_id: string; score: number; notes: string | null }
@@ -179,6 +183,8 @@ export type Profile = {
   restaurant_owner?: boolean | null
   /** #47 copy my ratings to my other groups that saved the same place */
   share_ratings?: 'group' | 'all' | 'ask'
+  /** Round 80 (#20): the amounts on visits I log stay mine (still counted in anonymous totals) */
+  private_spend?: boolean | null
   /** #135 guests can look but not change anything */
   role?: 'owner' | 'admin' | 'member' | 'guest' | null
   /** #190 when they joined this group */
@@ -396,6 +402,7 @@ const demoMembers: Profile[] = [
     is_admin: true,
     restaurant_owner: true,
     share_ratings: 'ask',
+    private_spend: false,
     role: 'owner',
   },
   {
@@ -427,6 +434,7 @@ export function useCrumbsData() {
   const [loading, setLoading] = useState(!demo)
   const [groupsLoaded, setGroupsLoaded] = useState(demo)
   const loadedOnce = useRef(false)
+  const privateSpends = useRef<PrivateSpend[]>([])
 
   const placesRef = useRef<Place[]>([])
   /** which group's live data is on screen (a saved copy never replaces it) */
@@ -448,6 +456,7 @@ export function useCrumbsData() {
       myProfile,
       myPlaces,
       sharedSpots,
+      mySpends,
     ] = await Promise.all([
         supabase
           .from('places')
@@ -473,6 +482,8 @@ export function useCrumbsData() {
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
         supabase.from('private_places').select('areas').eq('user_id', user.id).maybeSingle(),
         supabase.from('group_locations').select('id,group_id,name,lat,lng,km,created_by').eq('group_id', group.id).order('created_at'),
+        // Round 80: your own private amounts (none, or missing before 20261119_round80.sql)
+        supabase.from('private_spends').select('visit_id,amount').eq('user_id', user.id),
       ])
     if (placesError) throw placesError
     if (listsError) throw listsError
@@ -507,7 +518,13 @@ export function useCrumbsData() {
     setV4(!meals.error)
     setHomeMeals(meals.error ? [] : ((meals.data ?? []) as HomeMeal[]))
     setMembers(profileRows)
-    setPlaces(((placeRows ?? []) as Place[]).filter((place) => !pendingDeletes.has(place.id)))
+    privateSpends.current = mySpends.error ? [] : ((mySpends.data ?? []) as PrivateSpend[])
+    setPlaces(
+      withPrivateSpends(
+        ((placeRows ?? []) as Place[]).filter((place) => !pendingDeletes.has(place.id)),
+        privateSpends.current,
+      ),
+    )
     setLists(((listRows ?? []) as List[]).filter((list) => !pendingDeletes.has(list.id)))
     setOfflineCopy(null)
     // #166 keep a copy on the phone for when there's no signal
@@ -570,7 +587,7 @@ export function useCrumbsData() {
       .select('groups(*)')
       .eq('user_id', user.id)
       .then(({ data, error }: any) => {
-        let list = (data ?? []).map((row: any) => row.groups).filter(Boolean) as Group[]
+        let list = orderSpaces((data ?? []).map((row: any) => row.groups).filter(Boolean) as Group[])
         // #166 offline: use the groups saved on this phone last time
         if (error && (isOffline() || isNetworkError(error)))
           list = cachedGroup<{ groups: Group[] }>('groups')?.groups ?? []
@@ -635,12 +652,24 @@ export function useCrumbsData() {
     if (pending === 'all' || pending.size > MAX_PLACES_LIVE || !groupId) return loadRef.current()
     if (!pending.size) return
     const ids = [...pending]
-    const { data, error } = await supabase.from('places').select(PLACE_SELECT).in('id', ids)
+    const [{ data, error }, spends] = await Promise.all([
+      supabase.from('places').select(PLACE_SELECT).in('id', ids),
+      user ? supabase.from('private_spends').select('visit_id,amount').eq('user_id', user.id) : { data: null, error: null },
+    ])
     if (error) return loadRef.current()
+    if (!spends.error && spends.data) privateSpends.current = spends.data as PrivateSpend[]
     setPlaces((current) =>
-      mergePlaces(current, ids, ((data ?? []) as Place[]).filter((p) => !pendingDeletes.has(p.id)), groupId),
+      mergePlaces(
+        current,
+        ids,
+        withPrivateSpends(
+          ((data ?? []) as Place[]).filter((p) => !pendingDeletes.has(p.id)),
+          privateSpends.current,
+        ),
+        groupId,
+      ),
     )
-  }, [group?.id, supabase])
+  }, [group?.id, supabase, user])
   const flushRef = useRef(flush)
   useEffect(() => {
     flushRef.current = flush
