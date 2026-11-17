@@ -2,7 +2,7 @@
 \set B '00000000-0000-0000-0000-00000000000b'
 \set C '00000000-0000-0000-0000-00000000000c'
 \set D '00000000-0000-0000-0000-00000000000d'
-create temp table g as select id from groups where created_by = :'B' limit 1;
+create temp table g as select id from groups where created_by = :'B' and not is_personal limit 1;
 grant select on g to authenticated;
 begin; set local role authenticated; set local request.jwt.claim.sub = :'B';
 select 'guest code', length(public.guest_invite((select id from g))) = 7;

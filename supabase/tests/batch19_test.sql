@@ -19,7 +19,7 @@ insert into place_private_notes (place_id, user_id, body, next_time)
   on conflict (place_id, user_id) do update set next_time = excluded.next_time;
 select 'B next time', next_time from place_private_notes where user_id = :'B';
 -- a home meal, private then public
-create temp table bm as select id from groups where created_by = :'B' limit 1;
+create temp table bm as select id from groups where created_by = :'B' and not is_personal limit 1;
 insert into home_meals (group_id, name, status, created_by, recipe) select id, 'B curry', 'Cooked', :'B', 'Fry onions…' from bm;
 commit;
 create temp table bc as select id from home_meals where name = 'B curry';

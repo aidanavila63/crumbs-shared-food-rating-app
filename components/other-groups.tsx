@@ -10,6 +10,7 @@ import type { Group, Place, Profile, Rating } from '@/hooks/use-crumbs-data'
 import { average5, formatScore, type Scale } from '@/lib/ratings'
 import { haptic } from '@/lib/motion'
 import { isPersonal, saveTargets } from '@/lib/spaces'
+import { Switch } from './switch'
 
 type Copy = {
   id: string
@@ -75,6 +76,38 @@ export function OtherGroups({
   const [copies, setCopies] = useState<Copy[]>([])
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
+  // Round 81: show this place on your public profile (only once your profile is public)
+  const canPick = !demo && !!profile?.profile_public && !!place.restaurant_id && !!userId
+  const [picked, setPicked] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!canPick) return
+    let cancelled = false
+    supabase
+      .from('profile_picks')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('kind', 'place')
+      .eq('restaurant_id', place.restaurant_id)
+      .then(({ data, error }: any) => {
+        if (!cancelled) setPicked(error ? null : !!data?.length)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canPick, supabase, userId, place.restaurant_id])
+  async function setOnProfile(on: boolean) {
+    setPicked(on)
+    const { error } = await supabase.rpc('toggle_profile_pick', {
+      restaurant: place.restaurant_id,
+      show: on,
+    })
+    if (error) {
+      setPicked(!on)
+      return toast.error(error.message)
+    }
+    haptic('success')
+    toast.success(on ? `On your profile (@${profile?.handle ?? 'you'})` : 'Taken off your profile')
+  }
   const [offer, setOffer] = useState<Copy[]>([])
   const mode = profile?.share_ratings ?? 'group'
   const otherIds = others.map((g) => g.id).join(',')
@@ -226,15 +259,17 @@ export function OtherGroups({
           copies.map((c) => c.group_id),
         )
       : []
-  if (!copies.length && !targets.length) return null
+  if (!copies.length && !targets.length && picked === null) return null
   const iRated = place.place_ratings.some((r) => r.user_id === userId)
   const hidden = !!profile?.blind_ratings && !iRated
 
   return (
     <div className="surface-soft flex flex-col gap-2">
-      <h3 className="font-serif text-xl font-bold">
-        {others.some(isPersonal) ? 'Your other spaces' : 'Your other groups'}
-      </h3>
+      {(copies.length > 0 || targets.length > 0) && (
+        <h3 className="font-serif text-xl font-bold">
+          {others.some(isPersonal) ? 'Your other spaces' : 'Your other groups'}
+        </h3>
+      )}
       {copies.map((c) => {
         const avg = average5(c.place_ratings)
         const mine = c.place_ratings.find((r) => r.user_id === userId)
@@ -271,6 +306,19 @@ export function OtherGroups({
               {saving === g.id ? 'Saving…' : (nameOf(g.id) ?? g.name)}
             </button>
           ))}
+        </div>
+      )}
+      {picked !== null && (
+        <div
+          className={`flex items-center justify-between gap-3 ${copies.length || targets.length ? 'border-t border-[var(--border)] pt-2' : ''}`}
+        >
+          <span className="text-sm">
+            <span className="font-semibold">Show on my public profile</span>
+            <span className="block text-muted-foreground">
+              Anyone with your profile link (@{profile?.handle}) sees it in your favourites.
+            </span>
+          </span>
+          <Switch label="Show on my public profile" checked={picked} onChange={setOnProfile} />
         </div>
       )}
       {offer.length > 0 && (

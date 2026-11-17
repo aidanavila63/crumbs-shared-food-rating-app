@@ -1498,7 +1498,7 @@ function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
  * "was that file run?" has an answer on screen. The newest file the app expects is named here:
  * bump it whenever a new SQL file ships.
  */
-const NEWEST_SQL = '20261119_round80'
+const NEWEST_SQL = '20261120_round81'
 function MigrationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   const [rows, setRows] = useState<{ name: string; ran: boolean; ran_at: string | null }[] | null>(null)
   const [missing, setMissing] = useState(false)

@@ -1,7 +1,7 @@
 \set B '00000000-0000-0000-0000-00000000000b'
 \set D '00000000-0000-0000-0000-00000000000d'
 \set A '00000000-0000-0000-0000-00000000000a'
-create temp table bg as select id from groups where created_by = :'B' limit 1;
+create temp table bg as select id from groups where created_by = :'B' and not is_personal limit 1;
 insert into home_meals (group_id, name, status, created_by, recipe, recipe_public, dietary) select id, 'Vegan chili', 'Cooked', :'B', 'Beans…', true, '{Vegan}' from bg;
 insert into home_meals (group_id, name, status, created_by, recipe, recipe_public) select id, 'Old pie', 'Cooked', :'B', 'Pastry…', true from bg;
 insert into recipe_reviews (meal_id, user_id, score, tip) select id, :'D', 5, 'add cocoa' from home_meals where name = 'Vegan chili';

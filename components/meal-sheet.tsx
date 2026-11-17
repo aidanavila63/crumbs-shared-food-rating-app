@@ -3,10 +3,14 @@
 // 📖 Read — a clean recipe to cook from (ingredients, steps, notes, how it's rated).
 // 🍳 Log  — "we made it today", your rating and note, everyone's ratings, the times you made it.
 // ✏️ Edit — name, kind, cuisine, ingredients (amount · measure · what), steps, link, photo, sharing.
-import { useState } from 'react'
+// Round 81: a recipe belongs to whoever added it. Only they edit it; members of the groups it's
+// shared with read, rate and log it. "Who can see it" picks the groups (and everyone on Crumbs).
+import { useEffect, useState } from 'react'
 import { BookOpen, ChefHat, Pencil, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
-import type { HomeMeal, Ingredient, Place, Profile } from '@/hooks/use-crumbs-data'
+import type { Group, HomeMeal, Ingredient, Place, Profile } from '@/hooks/use-crumbs-data'
+import { canEditMeal, sharedIn } from '@/lib/meal-sharing'
+import { isPersonal, orderSpaces } from '@/lib/spaces'
 import { dishAverage } from '@/lib/stats'
 import { haptic } from '@/lib/motion'
 import {
@@ -43,13 +47,16 @@ export function MealSheet({
   v4,
   userId,
   names,
+  members,
   groupId,
+  groups = [],
   supabase,
   demo,
   onClose,
   onUpdate,
   onCook,
   onDelete,
+  onRemoved,
   onRemoveCook,
 }: {
   meal: HomeMeal
@@ -59,17 +66,68 @@ export function MealSheet({
   names: Record<string, string>
   members: Profile[]
   groupId: string
+  /** your spaces, for "Who can see it" */
+  groups?: Group[]
   supabase: any
   demo: boolean
   onClose: () => void
   onUpdate: (meal: HomeMeal) => void
   onCook: () => void
   onDelete: () => void
+  /** taken out of this group (by its owner or an admin) */
+  onRemoved?: () => void
   /** take away one "we made it" entry logged by mistake */
   onRemoveCook: (cookId: string) => void
 }) {
   const hasRecipe = !!(meal.ingredients?.length || meal.recipe || meal.recipe_url)
+  const editable = demo || canEditMeal(meal, userId, groupId)
+  const fromElsewhere = !demo && sharedIn(meal, groupId)
+  const myRole = members.find((m) => m.id === userId)?.role
+  const canTakeOut = fromElsewhere && !editable && (myRole === 'owner' || myRole === 'admin')
   const [mode, setMode] = useState<Mode>(hasRecipe ? 'read' : 'log')
+  // Groups this recipe is shared with (only its owner sees the full list).
+  const [shares, setShares] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!editable || demo || !v4) return
+    let cancelled = false
+    supabase
+      .from('home_meal_shares')
+      .select('group_id')
+      .eq('meal_id', meal.id)
+      .then(({ data, error }: any) => {
+        if (!cancelled) setShares(error ? null : (data ?? []).map((r: any) => r.group_id))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editable, demo, v4, meal.id, supabase])
+  async function setShared(target: Group, on: boolean) {
+    const before = shares ?? []
+    setShares(on ? [...before, target.id] : before.filter((id) => id !== target.id))
+    if (demo) return
+    const { error } = await supabase.rpc('share_meal', {
+      meal: meal.id,
+      target_group: target.id,
+      shared: on,
+    })
+    if (error) {
+      setShares(before)
+      return toast.error(error.message)
+    }
+    haptic('success')
+    toast.success(on ? `Shared with ${target.name}` : `Taken out of ${target.name}`)
+  }
+  async function takeOut() {
+    if (demo) return onRemoved?.()
+    const { error } = await supabase.rpc('share_meal', {
+      meal: meal.id,
+      target_group: groupId,
+      shared: false,
+    })
+    if (error) return toast.error(error.message)
+    toast.success('Taken out of this group')
+    onRemoved?.()
+  }
   const mine = meal.home_meal_ratings.find((r) => r.user_id === userId)
   const [note, setNote] = useState(mine?.notes ?? '')
   const avg = mealAverage(meal)
@@ -158,11 +216,15 @@ export function MealSheet({
     if (error) toast.error(error.message)
   }
 
-  const modes: [Mode, string, React.ReactNode][] = [
-    ['read', 'Read', <BookOpen key="r" size={16} />],
-    ['log', 'Log', <ChefHat key="l" size={16} />],
-    ['edit', 'Edit', <Pencil key="e" size={16} />],
-  ]
+  const modes = (
+    [
+      ['read', 'Read', <BookOpen key="r" size={16} />],
+      ['log', 'Log', <ChefHat key="l" size={16} />],
+      ['edit', 'Edit', <Pencil key="e" size={16} />],
+    ] as [Mode, string, React.ReactNode][]
+  ).filter(([m]) => m !== 'edit' || editable)
+  const home = groups.find((g) => g.id === meal.group_id)
+  const shareable = orderSpaces(groups).filter((g) => g.id !== meal.group_id && !isPersonal(g))
   const steps = stepsOf(meal.recipe)
 
   return (
@@ -176,12 +238,22 @@ export function MealSheet({
               : ''}
           </p>
           <h2 className="font-serif text-3xl font-bold">{meal.name}</h2>
+          {fromElsewhere && (
+            <p className="text-sm text-muted-foreground">
+              Shared by {(meal.created_by && names[meal.created_by]) || 'a member'} · only they can
+              edit it
+            </p>
+          )}
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×
         </button>
       </div>
-      <div className="segmented segmented-3 mt-4" role="tablist" aria-label="Recipe mode">
+      <div
+        className={`segmented ${modes.length === 3 ? 'segmented-3' : ''} mt-4`}
+        role="tablist"
+        aria-label="Recipe mode"
+      >
         <span
           className="segmented-thumb"
           aria-hidden="true"
@@ -211,7 +283,9 @@ export function MealSheet({
         <div key="read" className="rise-panel mt-5 flex flex-col gap-5">
           {photo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img loading="lazy" decoding="async"
+            <img
+              loading="lazy"
+              decoding="async"
               src={photo}
               alt={meal.name}
               className="w-full rounded-2xl object-cover"
@@ -266,10 +340,17 @@ export function MealSheet({
           {!hasRecipe && !meal.notes && (
             <div className="surface-soft flex flex-col items-start gap-2 text-sm">
               No recipe written down yet.
-              <button className="secondary !min-h-10 text-sm" onClick={() => setMode('edit')}>
-                <Pencil size={14} /> Add the recipe
-              </button>
+              {editable && (
+                <button className="secondary !min-h-10 text-sm" onClick={() => setMode('edit')}>
+                  <Pencil size={14} /> Add the recipe
+                </button>
+              )}
             </div>
+          )}
+          {canTakeOut && (
+            <button className="secondary text-sm" onClick={takeOut}>
+              Take it out of this group
+            </button>
           )}
         </div>
       )}
@@ -279,28 +360,30 @@ export function MealSheet({
           <button className="primary" onClick={onCook}>
             🍳 We made it today
           </button>
-          <div className="chip-row">
-            {(['Cooked', 'Want to cook'] as const).map((item) => (
-              <button
-                key={item}
-                aria-pressed={meal.status === item}
-                className={`chip ${meal.status === item ? 'chip-active' : ''}`}
-                onClick={() => save({ status: item })}
-              >
-                {item}
-              </button>
-            ))}
-            {(['again', 'never'] as const).map((kind) => (
-              <button
-                key={kind}
-                aria-pressed={meal.verdict === kind}
-                className={`chip ${meal.verdict === kind ? 'chip-active' : ''}`}
-                onClick={() => save({ verdict: meal.verdict === kind ? null : kind })}
-              >
-                {kind === 'again' ? '👍 Make again' : '👎 Never again'}
-              </button>
-            ))}
-          </div>
+          {editable && (
+            <div className="chip-row">
+              {(['Cooked', 'Want to cook'] as const).map((item) => (
+                <button
+                  key={item}
+                  aria-pressed={meal.status === item}
+                  className={`chip ${meal.status === item ? 'chip-active' : ''}`}
+                  onClick={() => save({ status: item })}
+                >
+                  {item}
+                </button>
+              ))}
+              {(['again', 'never'] as const).map((kind) => (
+                <button
+                  key={kind}
+                  aria-pressed={meal.verdict === kind}
+                  className={`chip ${meal.verdict === kind ? 'chip-active' : ''}`}
+                  onClick={() => save({ verdict: meal.verdict === kind ? null : kind })}
+                >
+                  {kind === 'again' ? '👍 Make again' : '👎 Never again'}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm text-muted-foreground">Group average</p>
@@ -559,6 +642,34 @@ export function MealSheet({
               </button>
             ))}
           </div>
+          {v4 && !demo && shares !== null && (
+            <div className="flex flex-col gap-2">
+              <span className="font-semibold">Who can see it</span>
+              <span className="text-sm text-muted-foreground">
+                It’s your recipe{home ? ` and lives in ${home.name}` : ''}. Groups you share it with
+                see the same recipe (your edits show there too) and can rate it and log when they
+                make it.
+              </span>
+              {shareable.map((g) => (
+                <div key={g.id} className="settings-row">
+                  <span className="font-semibold">
+                    {g.emoji ? `${g.emoji} ` : ''}
+                    {g.name}
+                  </span>
+                  <Switch
+                    label={`Share with ${g.name}`}
+                    checked={shares.includes(g.id)}
+                    onChange={(on) => setShared(g, on)}
+                  />
+                </div>
+              ))}
+              {!shareable.length && (
+                <span className="text-sm text-muted-foreground">
+                  You’re not in any groups yet, so it stays just yours.
+                </span>
+              )}
+            </div>
+          )}
           {v4 && (
             <div className="settings-row">
               <span>

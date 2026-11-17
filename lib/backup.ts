@@ -31,6 +31,7 @@ export const BACKUP_TABLES = [
   'list_places',
   'list_shares',
   'home_meals',
+  'home_meal_shares',
   'home_meal_ratings',
   'home_meal_cooks',
   'recipe_saves',

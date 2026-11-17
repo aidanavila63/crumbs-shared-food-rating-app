@@ -6,7 +6,7 @@
 insert into auth.users (id, email) values (:'F', 'f@example.com'), (:'G', 'g@example.com') on conflict do nothing;
 insert into profiles (id, display_name) values (:'F', 'Fay'), (:'G', 'Gus') on conflict do nothing;
 update feature_flags set state = 'admin' where key = 'start_groups';
-create temp table ig as select id, join_code from groups where created_by = :'B' limit 1;
+create temp table ig as select id, join_code from groups where created_by = :'B' and not is_personal limit 1;
 grant select on ig to anon, authenticated;
 
 -- Signed out: the page shows the group but not who's in it or any codes.

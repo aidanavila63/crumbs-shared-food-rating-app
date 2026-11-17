@@ -3,7 +3,7 @@
 \set B '00000000-0000-0000-0000-00000000000b'
 \set C '00000000-0000-0000-0000-00000000000c'
 \set D '00000000-0000-0000-0000-00000000000d'
-create temp table pg as select id from groups where created_by = :'B' limit 1;
+create temp table pg as select id from groups where created_by = :'B' and not is_personal limit 1;
 grant select on pg to authenticated;
 -- Private by default: nobody else finds it.
 begin; set local role authenticated; set local request.jwt.claim.sub = :'C';

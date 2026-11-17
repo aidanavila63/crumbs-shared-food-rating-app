@@ -1426,7 +1426,7 @@ export function PlaceSheet({
           />
           {v4 && userId && <PrivateNote note={privateNote} />}
         </div>
-        {(groups.length > 1 || demo) && (
+        {(groups.length > 1 || demo || !!me?.profile_public) && (
           <OtherGroups
             place={place}
             groups={groups}

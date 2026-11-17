@@ -9,6 +9,7 @@ import { cacheGroup, cachedGroup, isNetworkError, isOffline, readCachedGroup } f
 import { MAX_PLACES_LIVE, mergePlaces, placeOfChange } from '@/lib/live-places'
 import { withPrivateSpends, type PrivateSpend } from '@/lib/private-spend'
 import { orderSpaces } from '@/lib/spaces'
+import { withSharedMeals } from '@/lib/meal-sharing'
 
 export type Status = 'Been' | 'Want to try'
 export type Rating = {
@@ -185,6 +186,9 @@ export type Profile = {
   share_ratings?: 'group' | 'all' | 'ask'
   /** Round 80 (#20): the amounts on visits I log stay mine (still counted in anonymous totals) */
   private_spend?: boolean | null
+  /** your own row only: is your public profile on, and its @handle */
+  profile_public?: boolean | null
+  handle?: string | null
   /** #135 guests can look but not change anything */
   role?: 'owner' | 'admin' | 'member' | 'guest' | null
   /** #190 when they joined this group */
@@ -457,6 +461,7 @@ export function useCrumbsData() {
       myPlaces,
       sharedSpots,
       mySpends,
+      sharedMeals,
     ] = await Promise.all([
         supabase
           .from('places')
@@ -484,6 +489,13 @@ export function useCrumbsData() {
         supabase.from('group_locations').select('id,group_id,name,lat,lng,km,created_by').eq('group_id', group.id).order('created_at'),
         // Round 80: your own private amounts (none, or missing before 20261119_round80.sql)
         supabase.from('private_spends').select('visit_id,amount').eq('user_id', user.id),
+        // Round 81: recipes people shared into this group (they live in their owner's My Crumbs)
+        supabase
+          .from('home_meal_shares')
+          .select(
+            'home_meals(*,home_meal_ratings(user_id,score,notes),home_meal_cooks(id,meal_id,cooked_on,cooked_by))',
+          )
+          .eq('group_id', group.id),
       ])
     if (placesError) throw placesError
     if (listsError) throw listsError
@@ -516,7 +528,13 @@ export function useCrumbsData() {
     setGroupLocations(sharedSpots.error ? [] : ((sharedSpots.data ?? []) as GroupLocation[]))
     setLocationsReady(!sharedSpots.error)
     setV4(!meals.error)
-    setHomeMeals(meals.error ? [] : ((meals.data ?? []) as HomeMeal[]))
+    const allMeals = meals.error
+      ? []
+      : withSharedMeals(
+          (meals.data ?? []) as HomeMeal[],
+          sharedMeals.error ? [] : ((sharedMeals.data ?? []) as unknown as { home_meals: HomeMeal | null }[]),
+        )
+    setHomeMeals(allMeals)
     setMembers(profileRows)
     privateSpends.current = mySpends.error ? [] : ((mySpends.data ?? []) as PrivateSpend[])
     setPlaces(
@@ -532,7 +550,7 @@ export function useCrumbsData() {
       places: placeRows ?? [],
       lists: listRows ?? [],
       members: profileRows,
-      homeMeals: meals.error ? [] : (meals.data ?? []),
+      homeMeals: allMeals,
       v4: !meals.error,
     })
     loadedOnce.current = true
@@ -723,6 +741,11 @@ export function useCrumbsData() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'home_meals', filter: `group_id=eq.${group.id}` },
+        () => scheduleLoad(null),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'home_meal_shares', filter: `group_id=eq.${group.id}` },
         () => scheduleLoad(null),
       )
       .on(

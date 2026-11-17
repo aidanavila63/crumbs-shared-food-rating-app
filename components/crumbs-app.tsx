@@ -1208,6 +1208,7 @@ function CrumbsShell() {
                     meals={data.homeMeals}
                     setMeals={data.setHomeMeals}
                     groupId={data.group.id}
+                    groups={data.groups}
                     userId={userId}
                     names={names}
                     members={data.members}

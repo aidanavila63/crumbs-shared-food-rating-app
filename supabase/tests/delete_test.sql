@@ -1,10 +1,10 @@
 \set ON_ERROR_STOP 0
 select 'before', g.name, g.created_by, (select count(*) from places where group_id=g.id) places from groups g;
 begin; set local role authenticated; set local request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
-select 'export keys', (select array_agg(k) from jsonb_object_keys(public.export_group((select id from groups limit 1))) k);
+select 'export keys', (select array_agg(k) from jsonb_object_keys(public.export_group((select id from groups where not is_personal limit 1))) k);
 commit;
 begin; set local role authenticated; set local request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
-select 'C export other group (should fail)', public.export_group((select id from groups limit 1));
+select 'C export other group (should fail)', public.export_group((select id from groups where not is_personal limit 1));
 rollback;
 -- C makes a solo group then deletes account
 begin; set local role authenticated; set local request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';

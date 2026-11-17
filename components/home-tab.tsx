@@ -4,7 +4,7 @@ import { track } from '@/lib/analytics'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowUpDown, ChefHat, ChevronDown, Dices, Plus, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
-import type { HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
+import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { lastCooked, mealAverage } from '@/lib/meals'
 import { MealSheet } from './meal-sheet'
 import { RecipeFinder, SavedRecipes } from './public-recipes'
@@ -24,6 +24,7 @@ export function HomeTab({
   meals,
   setMeals,
   groupId,
+  groups = [],
   userId,
   names,
   members,
@@ -37,6 +38,8 @@ export function HomeTab({
   meals: HomeMeal[]
   setMeals: (update: (current: HomeMeal[]) => HomeMeal[]) => void
   groupId: string
+  /** Round 81: your spaces, for a recipe's "Who can see it" */
+  groups?: Group[]
   userId?: string
   names: Record<string, string>
   members: Profile[]
@@ -465,9 +468,15 @@ export function HomeTab({
           names={names}
           members={members}
           groupId={groupId}
+          groups={groups}
           supabase={supabase}
           demo={demo}
           onClose={() => setOpenId(null)}
+          onRemoved={() => {
+            const removed = open.id
+            setOpenId(null)
+            setMeals((current) => current.filter((m) => m.id !== removed))
+          }}
           onUpdate={(next) =>
             setMeals((current) => current.map((m) => (m.id === next.id ? next : m)))
           }

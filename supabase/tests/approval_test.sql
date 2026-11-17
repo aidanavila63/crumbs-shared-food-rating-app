@@ -14,7 +14,7 @@ update profiles set access = 'approved' where id in (:'A', :'B');
 insert into auth.users (id, email) values (:'H', 'h@example.com'), (:'I', 'i@example.com'), (:'J', 'j@example.com')
   on conflict do nothing;
 insert into profiles (id, display_name) values (:'H', 'Hal'), (:'I', 'Ivy'), (:'J', 'Jo') on conflict do nothing;
-create temp table ap as select id, join_code from groups where created_by = :'B' limit 1;
+create temp table ap as select id, join_code from groups where created_by = :'B' and not is_personal limit 1;
 grant select on ap to anon, authenticated;
 update groups set invite_approval = false where id = (select id from ap);
 
