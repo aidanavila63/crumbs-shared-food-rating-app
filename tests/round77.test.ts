@@ -48,3 +48,29 @@ test('when the owner leaves, admins come first and guests never take over', () =
   ]
   assert.deepEqual(heirs(members, 'o').map((m) => m.id), ['a', 'm'])
 })
+
+import { isSensitive, withoutReported } from '../lib/good-to-know.ts'
+test('a reported allergen or diet detail is hidden until checked; other reports are not', () => {
+  const facts = [
+    { label: 'Gluten-free options', key: 'gluten_free_options' },
+    { label: 'Patio', key: 'patio' },
+  ]
+  const { shown, hidden } = withoutReported(facts, [
+    { detail: 'gluten_free_options', sensitive: true },
+    { detail: 'patio', sensitive: false },
+  ])
+  assert.deepEqual(shown.map((f) => f.label), ['Patio'])
+  assert.equal(hidden, 1)
+  assert.equal(isSensitive('gluten_free_options'), true)
+  assert.equal(isSensitive('hours'), false)
+})
+
+import { movedTo } from '../lib/session-cookie.ts'
+test('the old address sends people to the new one, live site only', () => {
+  const old = new URL('https://crumbs-shared-food-rating-app.vercel.app/r/toronto/pho?x=1')
+  assert.equal(movedTo(old, 'https://crumbs.example', 'production'), 'https://crumbs.example/r/toronto/pho?x=1')
+  assert.equal(movedTo(old, 'https://crumbs.example', 'preview'), null)
+  assert.equal(movedTo(old, '', 'production'), null)
+  assert.equal(movedTo(new URL('https://crumbs.example/'), 'https://crumbs.example', 'production'), null)
+  assert.equal(movedTo(new URL('https://x.vercel.app/api/daily'), 'https://crumbs.example', 'production'), null)
+})

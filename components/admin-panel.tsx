@@ -14,7 +14,7 @@ import { monthPace } from '@/lib/limits'
 import { Switch } from './switch'
 import { askConfirm } from '@/lib/ask'
 import { AccessRequestsCard } from './access-requests'
-import { JobsCard, LaunchNumbersCard, NoticeCard, PhotosCard } from './admin-extra'
+import { JobsCard, LaunchNumbersCard, NoticeCard, PhotosCard, QuietCard, ReportsCard } from './admin-extra'
 import { buildLabel } from './site-notice'
 
 type Flag = { key: string; state: 'off' | 'admin' | 'everyone'; note: string | null }
@@ -26,7 +26,7 @@ type ClientError = {
   created_at: string
   source?: 'app' | 'server'
 }
-type Waiting = { id: string; email: string; created_at: string }
+type Waiting = { id: string; email: string; created_at: string; invited_at?: string | null }
 
 const STATES: Flag['state'][] = ['off', 'admin', 'everyone']
 const LABELS: Record<string, string> = {
@@ -375,7 +375,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         .limit(40),
       supabase
         .from('waitlist')
-        .select('id,email,created_at')
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(200),
     ])
@@ -410,6 +410,24 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       setFlags(before)
       toast.error(error.message)
     }
+  }
+
+  async function inviteFromWaitlist(item: Waiting) {
+    if (demo) return toast('Needs the real database')
+    const response = await fetch('/api/invite-waitlist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entry: item.id }),
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) return toast.error(body.error || 'Could not invite')
+    setWaitlist((current) =>
+      current.map((w) => (w.id === item.id ? { ...w, invited_at: new Date().toISOString() } : w)),
+    )
+    if (body.sent) return toast.success(`Invitation emailed to ${item.email}`)
+    // No email sender yet: the message to send yourself.
+    await navigator.clipboard?.writeText(`${body.subject}\n\n${body.body}`).catch(() => {})
+    toast.success(`${item.email} will be let in on arrival. The invitation is copied — paste it into an email to them.`, { duration: 8000 })
   }
 
   async function remove(table: string, id: string | number, after: () => void) {
@@ -523,6 +541,7 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
           [
             ['admin-launch', 'Launch numbers'],
             ['admin-access', 'Access requests'],
+            ['admin-reports', 'Reports'],
             ['admin-waitlist', 'Waitlist'],
             ['admin-notice', 'Notice and pause'],
             ['admin-budgets', 'Spending guard'],
@@ -552,9 +571,13 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
       </nav>
       <div id="admin-launch" className="scroll-mt-16">
         <LaunchNumbersCard supabase={supabase} demo={demo} />
+        <QuietCard supabase={supabase} demo={demo} />
       </div>
       <div id="admin-access" className="scroll-mt-16">
         <AccessRequestsCard supabase={supabase} demo={demo} full />
+      </div>
+      <div id="admin-reports" className="scroll-mt-16">
+        <ReportsCard supabase={supabase} demo={demo} />
       </div>
       <div id="admin-notice" className="scroll-mt-16">
         <NoticeCard supabase={supabase} demo={demo} />
@@ -704,10 +727,19 @@ export function AdminPanel({ supabase, demo }: { supabase: any; demo: boolean })
         {waitlist.length === 0 && <p className="text-sm text-muted-foreground">No one yet.</p>}
         {waitlist.map((item) => (
           <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 truncate">{item.email}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {timeAgo(item.created_at)}
+            <span className="min-w-0 truncate">
+              {item.email}
+              <span className="block text-xs text-muted-foreground">
+                {timeAgo(item.created_at)}
+                {item.invited_at ? ' · invited, let in when they sign in' : ''}
+              </span>
             </span>
+            {/* Third pass #18: let them in from here; the email goes out once email is set up */}
+            {!item.invited_at && (
+              <button className="secondary shrink-0 !min-h-9 !px-3 text-xs" onClick={() => inviteFromWaitlist(item)}>
+                Invite
+              </button>
+            )}
           </div>
         ))}
       </section>
@@ -1465,7 +1497,7 @@ function DataHealthCard({ supabase, demo }: { supabase: any; demo: boolean }) {
  * "was that file run?" has an answer on screen. The newest file the app expects is named here:
  * bump it whenever a new SQL file ships.
  */
-const NEWEST_SQL = '20261116_round77'
+const NEWEST_SQL = '20261117_round78'
 function MigrationsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
   const [rows, setRows] = useState<{ name: string; ran: boolean; ran_at: string | null }[] | null>(null)
   const [missing, setMissing] = useState(false)

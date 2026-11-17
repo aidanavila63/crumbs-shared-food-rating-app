@@ -532,3 +532,84 @@ export function PhotosCard({ supabase, demo }: { supabase: any; demo: boolean })
     </section>
   )
 }
+
+type Report = {
+  id: string
+  restaurant_id: string
+  restaurant: string
+  detail: string
+  sensitive: boolean
+  note: string | null
+  by: string | null
+  created_at: string
+}
+
+/** Round 78: reported restaurant details. Diet/allergen ones first: they're hidden until answered. */
+export function ReportsCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [reports, setReports] = useState<Report[] | null>(null)
+  const [missing, setMissing] = useState(false)
+  const load = useCallback(async () => {
+    if (demo) return setReports([])
+    const { data, error } = await supabase.rpc('admin_reports')
+    if (error) return setMissing(true)
+    setReports(data ?? [])
+  }, [demo, supabase])
+  useEffect(() => {
+    load()
+  }, [load])
+  async function resolve(report: Report, outcome: 'fixed' | 'dismissed') {
+    const { error } = await supabase.rpc('resolve_report', { report: report.id, outcome })
+    if (error) return toast.error(error.message)
+    setReports((current) => (current ?? []).filter((r) => !(r.restaurant_id === report.restaurant_id && r.detail === report.detail)))
+  }
+  return (
+    <section className="surface settings-card">
+      <h3 className="settings-heading">Reports{reports?.length ? ` (${reports.length})` : ''}</h3>
+      {missing && <p className="text-sm text-muted-foreground">{NEEDS_SQL}</p>}
+      {reports && !reports.length && <p className="text-sm text-muted-foreground">Nothing reported.</p>}
+      {reports?.map((r) => (
+        <div key={r.id} className="surface-soft flex flex-col gap-2 text-sm">
+          <p>
+            {r.sensitive && <span className="mr-1 rounded bg-amber-100 px-1 text-xs text-amber-900">hidden until answered</span>}
+            <strong>{r.restaurant}</strong> · {r.detail.replace(/_/g, ' ')}
+            {r.note ? ` — “${r.note}”` : ''}
+            <span className="block text-xs text-muted-foreground">
+              {timeAgo(r.created_at)}
+              {r.by ? ` by ${r.by}` : ''}
+            </span>
+          </p>
+          <div className="flex gap-2">
+            <button className="secondary !min-h-9 flex-1 text-xs" onClick={() => resolve(r, 'dismissed')}>
+              It’s right (show it again)
+            </button>
+            <button className="primary !min-h-9 flex-1 text-xs" onClick={() => resolve(r, 'fixed')}>
+              Fixed it
+            </button>
+          </div>
+        </div>
+      ))}
+      <p className="text-xs text-muted-foreground">
+        “Fixed it” means you corrected the detail (or removed it) on the restaurant. Both answers
+        close every report on that detail.
+      </p>
+    </section>
+  )
+}
+
+/** Round 78: hibernation numbers (nothing is deleted for being quiet). */
+export function QuietCard({ supabase, demo }: { supabase: any; demo: boolean }) {
+  const [q, setQ] = useState<{ quiet_people: number; quiet_groups: number; seen_this_week: number } | null>(null)
+  useEffect(() => {
+    if (demo) return
+    supabase.rpc('admin_quiet_groups').then(({ data, error }: any) => !error && setQ(data))
+  }, [demo, supabase])
+  if (!q) return null
+  return (
+    <p className="text-sm">
+      <strong>{q.seen_this_week}</strong> people opened Crumbs this week. Quiet for 12 months:{' '}
+      <strong>{q.quiet_people}</strong> people (their phones’ push keys and error records are
+      cleared by the daily job; nothing they wrote is touched) and <strong>{q.quiet_groups}</strong>{' '}
+      groups (photo shrinking waits until warning emails can be sent).
+    </p>
+  )
+}

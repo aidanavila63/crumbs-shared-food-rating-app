@@ -13,6 +13,7 @@ import { claimsOpen } from '@/lib/restaurants'
 import { ClaimForm } from './claim-form'
 import { SignInForm } from './sign-in-form'
 import type { PublicRestaurant } from '@/lib/public-page'
+import { LegalLinks } from '@/components/legal-page'
 
 const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 
@@ -64,6 +65,13 @@ export function PublicRestaurantView({ data }: { data: PublicRestaurant }) {
         <p className="font-semibold">Crumbs is a shared food map for you and your people.</p>
         <p className="mt-1 text-muted-foreground">Rate places together, keep a want-to-try list, decide where to eat.</p>
         <Link className="primary mt-3 w-full" href="/">Open Crumbs</Link>
+        {/* Aidan, Nov 17: say plainly that Crumbs is a go-between, not the restaurant. */}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Crumbs isn’t connected to this restaurant. Details and scores come from members and the
+          owner (where it says so) and aren’t checked — always check with the restaurant, especially
+          for allergies.
+        </p>
+        <LegalLinks className="mt-3" />
       </footer>
       <Toaster position="top-center" richColors />
     </main>

@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, X } from 'lucide-react'
-import { ATTRS, knownFacts, type AttrKey, type AttrSummary } from '@/lib/good-to-know'
+import { ATTRS, isSensitive, knownFacts, withoutReported, type AttrKey, type AttrSummary } from '@/lib/good-to-know'
+import { ReportDetail } from './report-detail'
 import { photoUrl } from '@/lib/photos'
 import { haptic } from '@/lib/motion'
 import { PhotoButton } from './photo-button'
@@ -86,10 +87,12 @@ export function GoodToKnow({
   const [adding, setAdding] = useState<Tip['kind'] | null>(null)
   const [text, setText] = useState('')
   const [photo, setPhoto] = useState<string | null>(null)
+  // Round 78: details waiting for a look after someone reported them
+  const [reported, setReported] = useState<{ detail: string; sensitive: boolean }[]>([])
 
   const load = useCallback(async () => {
     if (demo) return
-    const [{ data: s }, { data: t }] = await Promise.all([
+    const [{ data: s }, { data: t }, { data: r }] = await Promise.all([
       supabase.rpc('restaurant_attrs', { target: restaurantId }),
       supabase
         .from('restaurant_tips')
@@ -97,9 +100,14 @@ export function GoodToKnow({
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
         .limit(30),
+      supabase.rpc('reported_details', { target: restaurantId }).then(
+        (x: any) => x,
+        () => ({ data: [] }),
+      ),
     ])
     if (s) setSummary(s)
     setTips(t ?? [])
+    setReported(Array.isArray(r) ? r : [])
   }, [demo, restaurantId, supabase])
   useEffect(() => {
     const timer = setTimeout(load, 0)
@@ -191,7 +199,9 @@ export function GoodToKnow({
     if (!demo) await supabase.from('restaurant_tips').delete().eq('id', tip.id)
   }
 
-  const facts = knownFacts(summary)
+  const all = knownFacts(summary)
+  const { shown: facts, hidden: hiddenFacts } = withoutReported(all, reported)
+  const dietShown = facts.some((f) => f.key && isSensitive(f.key))
   const storefront = tips.find((t) => t.kind === 'storefront' && t.photo_path)
   // Deals most people say are gone are hidden.
   const shown = tips.filter((t) => {
@@ -239,6 +249,19 @@ export function GoodToKnow({
             Nothing confirmed yet — been here? Tap “Add what you know”.
           </p>
         )
+      )}
+      {/* Round 78: the allergen line beside diet details, and reported ones held back */}
+      {dietShown && (
+        <p className="text-xs text-muted-foreground">
+          Diet labels come from members, aren’t checked and are only a convenience. Always check
+          with the restaurant, especially for allergies.
+        </p>
+      )}
+      {hiddenFacts > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {hiddenFacts} diet detail{hiddenFacts === 1 ? ' was' : 's were'} reported as wrong and
+          {hiddenFacts === 1 ? ' is' : ' are'} hidden until it’s checked.
+        </p>
       )}
       {notes.map(({ kind, list }) =>
         list.map((tip) => {
@@ -397,6 +420,13 @@ export function GoodToKnow({
           </p>
         </div>
       )}
+      <ReportDetail
+        restaurantId={restaurantId}
+        facts={facts}
+        supabase={supabase}
+        demo={demo}
+        onReported={load}
+      />
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { PreferencesCard } from './preferences-card'
 import { NotificationsToggle } from './notifications-toggle'
 import { LocationSwitchRow } from './location-setting'
 import { YourDataCard } from './your-data-card'
+import { LegalLinks } from './legal-page'
 import { ImportPlaces } from './import-places'
 import { Overlay } from './overlay'
 import { Guidebook, Walkthrough } from './guidebook'
@@ -398,6 +399,7 @@ export function SettingsPanel({
       >
         Sign out on every device
       </button>
+      <LegalLinks />
       <p className="text-center text-xs text-muted-foreground">Crumbs version {buildLabel()}</p>
     </div>
   )

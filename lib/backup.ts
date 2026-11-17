@@ -72,6 +72,8 @@ export const BACKUP_TABLES = [
   'crumbs_migrations',
   'deleted_items', // Recently deleted places and lists (30 days)
   'site_settings', // Admin notice banner and pause switch
+  'detail_reports', // Round 78: reported restaurant details (Admin → Reports)
+  'preapproved_emails', // Round 78: waitlist emails invited (let in on arrival)
 ] as const
 
 /** Left out on purpose: they rebuild themselves, or (push keys) are no use once restored. */

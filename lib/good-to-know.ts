@@ -167,14 +167,14 @@ export type AttrSummary = {
 /** What to show for everyone: confirmed facts (warnings first), then group-noticed dealbreakers. */
 export function knownFacts(summary: AttrSummary | null) {
   if (!summary) return []
-  const out: { label: string; emoji: string; warn: boolean; owner: boolean }[] = []
+  const out: { label: string; emoji: string; warn: boolean; owner: boolean; key?: AttrKey }[] = []
   for (const a of ATTRS) {
     const s = summary.attrs[a.key]
     if (!s || s.verdict === null || s.verdict === undefined) continue
     if (s.verdict)
-      out.push({ label: a.yes, emoji: a.emoji, warn: !!a.warn, owner: s.owner !== null })
+      out.push({ label: a.yes, emoji: a.emoji, warn: !!a.warn, owner: s.owner !== null, key: a.key })
     else if (a.no)
-      out.push({ label: a.no, emoji: a.emoji, warn: a.key !== 'licensed', owner: s.owner !== null })
+      out.push({ label: a.no, emoji: a.emoji, warn: a.key !== 'licensed', owner: s.owner !== null, key: a.key })
   }
   const g = summary.groups
   // #209 dealbreakers several groups noted on their own copies (never says which groups)
@@ -206,4 +206,16 @@ export function menuAgeMonths(
     .at(-1)
   if (!newest) return null
   return Math.floor((now.getTime() - new Date(newest).getTime()) / (30.44 * 864e5))
+}
+
+/** Round 78: details that matter for allergies and diets. Reported ones are hidden until an admin
+ * has looked, and every one shown carries the "confirm with the restaurant" line. */
+export const SENSITIVE_ATTRS: AttrKey[] = ['vegan_options', 'gluten_free_options', 'halal_options']
+export const isSensitive = (detail: string) =>
+  SENSITIVE_ATTRS.includes(detail as AttrKey) || /^dish:.*:(diet|allergen|gluten|vegan|vegetarian|halal|nut)/.test(detail)
+
+/** Facts to show, minus sensitive ones somebody reported (waiting for a look). */
+export function withoutReported<T extends { key?: string }>(facts: T[], reported: { detail: string; sensitive: boolean }[]) {
+  const hidden = new Set(reported.filter((r) => r.sensitive).map((r) => r.detail))
+  return { shown: facts.filter((f) => !f.key || !hidden.has(f.key)), hidden: facts.filter((f) => f.key && hidden.has(f.key)).length }
 }

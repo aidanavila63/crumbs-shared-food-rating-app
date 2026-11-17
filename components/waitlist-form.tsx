@@ -133,7 +133,11 @@ export function WaitlistForm() {
         {state === 'busy' ? 'Adding you…' : 'Join the waitlist'}
       </button>
       <p className="text-xs text-muted-foreground">
-        Just your email, only used to let you in. No spam.
+        We’ll email you once, when a spot opens, and then take your address off the list. Nothing
+        else.{' '}
+        <a href="/privacy" className="underline">
+          Privacy
+        </a>
       </p>
     </form>
   )

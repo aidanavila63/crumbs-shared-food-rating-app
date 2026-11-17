@@ -4,7 +4,8 @@
 //  #141 reminds people about plans coming up (needs push keys),
 //  #214 in the last 3 days of a month, reads queued menu PDFs with leftover AI allowance,
 //  Part three: puts the usual hours back where special (holiday/seasonal) hours have ended,
-//  Round 77: empties "Recently deleted" of anything older than 30 days.
+//  Round 77: empties "Recently deleted" of anything older than 30 days,
+//  Round 78: hibernation (see the chore at the end).
 // Round 77 (E23): one chore failing no longer stops the rest (each has its own try), the run is
 // recorded (Admin → Last runs), and the weekly backup has its own scheduled job (vercel.json →
 // /api/backup, Mondays) so a slow day can't squeeze it out.
@@ -90,6 +91,14 @@ async function handleGET(request: Request) {
     // E30: website and menu reads older than 90 days are dropped (read again when needed).
     await chore('caches_trimmed', async () => {
       const { data, error } = await db.rpc('trim_read_caches')
+      if (error) throw new Error(error.message)
+      return data
+    })
+
+    // Round 78: hibernation — 12 months without opening Crumbs clears an account's push keys,
+    // error records and usage counters (nothing the person wrote).
+    await chore('hibernated', async () => {
+      const { data, error } = await db.rpc('hibernate_quiet_accounts')
       if (error) throw new Error(error.message)
       return data
     })

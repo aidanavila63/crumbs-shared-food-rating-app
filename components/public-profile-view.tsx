@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { Wordmark } from './wordmark'
 import { cityLabel, restaurantPath, type PublicProfile } from '@/lib/public-page'
 import type { Place } from '@/hooks/use-crumbs-data'
+import { LegalLinks } from '@/components/legal-page'
 
 const OsmMap = dynamic(() => import('./osm-map').then((m) => m.OsmMap), { ssr: false })
 
@@ -160,6 +161,7 @@ export function PublicProfileView({ profile }: { profile: PublicProfile | null }
       <footer className="mt-2 rounded-3xl bg-muted p-4 text-center text-sm">
         <p className="font-semibold">Keep your own food map on Crumbs.</p>
         <Link className="primary mt-3 w-full" href="/">Open Crumbs</Link>
+        <LegalLinks className="mt-3" />
       </footer>
     </main>
   )

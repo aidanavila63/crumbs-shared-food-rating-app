@@ -1,9 +1,15 @@
 import { updateSession } from '@/lib/supabase/proxy'
 import { NextResponse, type NextRequest } from 'next/server'
 import { cleanCode, invitePath, isJoinCode } from '@/lib/invite'
-import { hasSession } from '@/lib/session-cookie'
+import { hasSession, movedTo } from '@/lib/session-cookie'
 
 export async function proxy(request: NextRequest) {
+  // Third pass #15 (Round 78): after the move to Crumbs' own address (NEXT_PUBLIC_SITE_URL), the
+  // old …vercel.app address sends people there, same page. Only on the live site (previews keep
+  // their own addresses), and never for the scheduled jobs.
+  const moved = movedTo(request.nextUrl, process.env.NEXT_PUBLIC_SITE_URL, process.env.VERCEL_ENV)
+  if (moved) return NextResponse.redirect(moved, 308)
+
   // Old invite links (…/?join=CODE) open the invite page like new ones.
   const join = cleanCode(request.nextUrl.searchParams.get('join'))
   if (request.nextUrl.pathname === '/' && isJoinCode(join))

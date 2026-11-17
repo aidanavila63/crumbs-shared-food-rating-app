@@ -38,6 +38,7 @@ import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
 import { cleanCode, invitePath, isJoinCode, pendingInvite } from '@/lib/invite'
 import { SiteNotice } from './site-notice'
+import { ConsentScreen, useConsentNeeded } from './consent-screen'
 import { FromPicker } from './from-picker'
 import { useGrow } from '@/lib/use-grow'
 import { resolveFrom, saveFrom, savedFrom, type FromChoice } from '@/lib/anchor'
@@ -64,6 +65,7 @@ import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
 import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
 import { areaChoices, groupAnchor } from '@/lib/areas'
+import { LegalLinks } from '@/components/legal-page'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -284,6 +286,13 @@ function CrumbsShell() {
   }, [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const userId = data.user?.id
+  // Round 78: agree to the Terms and Privacy Policy once (and again when they change).
+  const consent = useConsentNeeded(data.supabase, userId, data.demo)
+  // Round 78 (hibernation): the account counts as active; at most once a day.
+  useEffect(() => {
+    if (!userId || data.demo) return
+    data.supabase.rpc('seen_today').then(() => {}, () => {})
+  }, [userId, data.demo, data.supabase])
   const me = data.members.find((member) => member.id === userId) ?? null
   const blind = !!me?.blind_ratings
   // With blind ratings on, everything you look at is a copy with your partner's scores hidden
@@ -761,8 +770,17 @@ function CrumbsShell() {
           >
             What is Crumbs?
           </button>
+          <LegalLinks className="mt-4" />
         </div>
       </main>
+    )
+  if (consent.needed)
+    return (
+      <ConsentScreen
+        supabase={data.supabase}
+        onDone={consent.done}
+        onSignOut={() => data.supabase.auth.signOut()}
+      />
     )
   if (!data.groupsLoaded)
     return (

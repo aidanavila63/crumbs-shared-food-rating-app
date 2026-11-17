@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { claimRestaurant } from '@/lib/restaurants'
 import { track } from '@/lib/analytics'
+import Link from 'next/link'
+import { OWNER_TERMS_VERSION } from '@/lib/legal-text'
 
 /** #100 "Own or manage this place?" — a request an admin checks before the owner gets control. */
 export function ClaimForm({
@@ -25,6 +27,7 @@ export function ClaimForm({
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ contact: '', job: '', mail: '', tel: '', evidence: '' })
+  const [ownerTerms, setOwnerTerms] = useState(false)
   const set = (k: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm({ ...form, [k]: event.target.value })
   if (sent)
@@ -92,17 +95,37 @@ export function ClaimForm({
         value={form.evidence}
         onChange={set('evidence')}
       />
+      {/* Round 78: the owner terms are ticked with the claim and stored with it. */}
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1 shrink-0"
+          checked={ownerTerms}
+          onChange={(event) => setOwnerTerms(event.target.checked)}
+        />
+        <span>
+          I run this restaurant (or may act for it) and I agree to the{' '}
+          <Link href="/owner-terms" target="_blank" className="text-primary underline">
+            terms for restaurant owners
+          </Link>
+          . I can’t see who rated it, and ratings can’t be changed or bought.
+        </span>
+      </label>
       <div className="flex gap-2">
         <button className="secondary !min-h-10 text-sm" onClick={() => setOpen(false)}>
           Cancel
         </button>
         <button
           className="primary !min-h-10 flex-1 text-sm"
-          disabled={busy || !form.contact.trim() || (!form.mail.trim() && !form.tel.trim())}
+          disabled={busy || !ownerTerms || !form.contact.trim() || (!form.mail.trim() && !form.tel.trim())}
           onClick={async () => {
             setBusy(true)
             try {
               await claimRestaurant(supabase, restaurantId, form, direct)
+              // Stored with the claim (ignored before the Round 78 SQL).
+              await supabase
+                .rpc('accept_owner_terms', { target: restaurantId, version: OWNER_TERMS_VERSION })
+                .then(() => {}, () => {})
               track('claim_sent')
               setSent(true)
             } catch (error: any) {

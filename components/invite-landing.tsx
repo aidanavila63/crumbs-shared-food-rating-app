@@ -7,6 +7,7 @@ import { clearJoinCode, invitePath, inviter, rememberInvite, rememberInviter } f
 import { haptic } from '@/lib/motion'
 import { Wordmark } from './wordmark'
 import { SignInForm } from './sign-in-form'
+import { LegalLinks } from '@/components/legal-page'
 
 export type InvitePreview = {
   name: string
@@ -329,6 +330,7 @@ export function InviteLanding({
             </Link>
           </p>
         )}
+        <LegalLinks className="mt-4" />
       </div>
     </main>
   )

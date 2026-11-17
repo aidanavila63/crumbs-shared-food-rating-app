@@ -476,3 +476,18 @@ button.chip:active {
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 25%, transparent);
   font-weight: 700;
 }
+
+/* Round 78: the Terms, Privacy and Credits pages */
+.legal-table th,
+.legal-table td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.legal-table th {
+  background: color-mix(in oklab, var(--primary) 8%, transparent);
+}
+.legal-text code {
+  font-size: 0.85em;
+}

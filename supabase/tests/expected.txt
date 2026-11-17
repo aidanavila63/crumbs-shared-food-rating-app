@@ -36,3 +36,4 @@ owner_booking_test 3
 seasonal_hours_test 2
 audit_fixes_test 4
 round77_test 12
+round78_test 6

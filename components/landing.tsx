@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Wordmark } from '@/components/wordmark'
 import { WaitlistForm } from '@/components/waitlist-form'
 import { ExpiredLinkRedirect } from '@/components/expired-link-redirect'
+import { LegalLinks } from '@/components/legal-page'
 
 const FEATURES = [
   ['📍', 'Your own food map', 'Every place you’ve been and want to try, with your scores, notes and photos. Yours first — it works with nobody else in it.'],
@@ -110,6 +111,7 @@ export function Landing({ onSignIn }: { onSignIn?: () => void }) {
             hand like everyone else. Opening it just means you land in their group afterwards.
           </p>
           {signIn('Sign in', 'underline')}
+          <LegalLinks className="mt-2" />
         </footer>
       </div>
     </main>
