@@ -3,16 +3,16 @@ import { overlapText, tasteOverlap } from '@/lib/taste-overlap'
 import { settingsOf, type Scale } from '@/lib/ratings'
 import { useState } from 'react'
 import type { Group, Place, Profile } from '@/hooks/use-crumbs-data'
-import { haptic, useCountUp } from '@/lib/motion'
+import { useCountUp } from '@/lib/motion'
 import type { HomeMeal } from '@/hooks/use-crumbs-data'
 import { ActivityFeed, MemoriesCard } from './group-feed'
-import { OwnerTag } from './restaurant-profile'
 import { photoUrl } from '@/lib/photos'
 import { tasteProfile } from '@/lib/catch-up'
 import { oneEmoji } from '@/lib/group-look'
 import { JoinRequestsCard } from './join-requests'
 import { AccessRequestsCard } from './access-requests'
-import { LeaveGroup, RecentlyDeleted } from './group-ownership'
+import { RecentlyDeleted } from './group-ownership'
+import { UnderlineTabs } from './underline-tabs'
 
 function Stat({ value, label }: { value: number; label: string }) {
   const shown = useCountUp(value)
@@ -27,14 +27,11 @@ function Stat({ value, label }: { value: number; label: string }) {
 /** Everything about the group: invite, how you're doing together, members, switching, leaving. */
 export function GroupTab({
   group,
-  groups,
   places = [],
   members = [],
   userId,
   supabase,
   demo = false,
-  onGroup,
-  onLeft,
   view,
   meals = [],
   names = {},
@@ -63,6 +60,7 @@ export function GroupTab({
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
   const canManage = myRole === 'owner' || myRole === 'admin'
   const [openMember, setOpenMember] = useState<string | null>(null)
+  const [section, setSection] = useState<'activity' | 'members' | 'memories'>('activity')
   const cover = photoUrl(group.cover_path)
   return (
     <section className="stagger flex flex-col gap-4">
@@ -79,119 +77,113 @@ export function GroupTab({
       {canManage && v4 && (
         <JoinRequestsCard group={group} supabase={supabase} demo={demo} onReload={onReload} />
       )}
-      <MemoriesCard places={view ?? places} meals={meals} onSelect={onSelect} />
-      <TasteOverlapCard places={view ?? places} names={names} userId={userId} scale={settingsOf(group).scale} />
-      <ActivityFeed
-        places={view ?? places}
-        meals={meals}
-        names={names}
-        userId={userId}
-        onSelect={onSelect}
+      {/* D5 (Round 83): Activity · Members · Memories. Leave group is in the ⋯ menu at the top. */}
+      <UnderlineTabs
+        label="Group"
+        value={section}
+        onChange={setSection}
+        tabs={[
+          { id: 'activity', label: 'Activity' },
+          { id: 'members', label: 'Members', count: group.is_personal ? undefined : members.length },
+          { id: 'memories', label: 'Memories' },
+        ]}
       />
-      <div className="surface">
-        <h2 className="font-serif text-2xl font-bold">
-          {group.is_personal ? 'So far' : 'Together so far'}
-        </h2>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          <Stat value={places.length} label="places" />
-          <Stat value={places.filter((place) => place.status === 'Been').length} label="been" />
-          <Stat
-            value={places.filter((place) => place.status === 'Want to try').length}
-            label="to try"
+      {section === 'activity' && (
+        <div key="activity" className="rise-panel flex flex-col gap-4">
+          <ActivityFeed
+            places={view ?? places}
+            meals={meals}
+            names={names}
+            userId={userId}
+            onSelect={onSelect}
+          />
+          {v4 && (
+            <RecentlyDeleted
+              group={group}
+              supabase={supabase}
+              demo={demo}
+              canEmpty={canManage}
+              canRestore={myRole !== 'guest'}
+              names={names}
+              onRestored={onReload}
+            />
+          )}
+        </div>
+      )}
+      {section === 'members' && (
+        <div key="members" className="rise-panel flex flex-col gap-4">
+          {group.is_personal ? (
+            <div className="surface">
+              <h2 className="font-serif text-2xl font-bold">Just for you</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Nobody else can see or join My Crumbs. To share a place, open it and use{' '}
+                <strong>Also save to…</strong> to put it in one of your groups (your scores go
+                with it, never your notes).
+              </p>
+            </div>
+          ) : (
+            <div className="surface flex flex-col">
+              {members.map((member) => {
+                const count = places.filter((place) =>
+                  place.place_ratings.some((rating) => rating.user_id === member.id),
+                ).length
+                const tag =
+                  member.id === group.created_by
+                    ? 'owner'
+                    : member.role === 'admin'
+                      ? 'admin'
+                      : member.role === 'guest'
+                        ? 'guest'
+                        : member.restaurant_owner
+                          ? 'restaurant owner'
+                          : null
+                return (
+                  <div className="member-row" key={member.id}>
+                    <button
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      aria-expanded={openMember === member.id}
+                      onClick={() => setOpenMember(openMember === member.id ? null : member.id)}
+                    >
+                      <span className="min-w-0 truncate">
+                        <strong>{member.display_name}</strong>
+                        {member.id === userId ? ' (you)' : ''}
+                        {tag && <span className="tag ml-2">{tag}</span>}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {count} rating{count === 1 ? '' : 's'}
+                      </span>
+                    </button>
+                    {openMember === member.id && <TasteProfile places={places} member={member} />}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <TasteOverlapCard
+            places={view ?? places}
+            names={names}
+            userId={userId}
+            scale={settingsOf(group).scale}
           />
         </div>
-      </div>
-      {!group.is_personal && (
-      <div className="surface">
-        <h2 className="font-serif text-2xl font-bold">Members</h2>
-        <div className="mt-3 flex flex-col gap-2">
-          {members.map((member) => {
-            const count = places.filter((place) =>
-              place.place_ratings.some((rating) => rating.user_id === member.id),
-            ).length
-            return (
-              <div className="surface-soft flex flex-col gap-2" key={member.id}>
-                <button
-                  className="flex w-full items-center justify-between gap-3 text-left"
-                  aria-expanded={openMember === member.id}
-                  onClick={() => setOpenMember(openMember === member.id ? null : member.id)}
-                >
-                  <span>
-                    <strong>{member.display_name}</strong>
-                    {member.id === userId ? ' (you)' : ''}
-                    {member.restaurant_owner && (
-                      <span className="ml-2 align-middle">
-                        <OwnerTag />
-                      </span>
-                    )}
-                    {member.id === group.created_by ? (
-                      <span className="tag ml-2">owner</span>
-                    ) : member.role === 'admin' ? (
-                      <span className="tag ml-2">admin</span>
-                    ) : member.role === 'guest' ? (
-                      <span className="tag ml-2">👀 guest</span>
-                    ) : null}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {count} rating{count === 1 ? '' : 's'} ›
-                  </span>
-                </button>
-                {openMember === member.id && <TasteProfile places={places} member={member} />}
-              </div>
-            )
-          })}
-        </div>
-      </div>
       )}
-      {group.is_personal && (
-        <div className="surface">
-          <h2 className="font-serif text-2xl font-bold">🔒 Just for you</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Nobody else can see or join My Crumbs. To share a place, open it and use{' '}
-            <strong>Also save to…</strong> to put it in one of your groups (your scores go with it,
-            never your notes).
-          </p>
-        </div>
-      )}
-      {groups.length > 1 && (
-        <div className="surface">
-          <h2 className="font-serif text-2xl font-bold">Switch group</h2>
-          <div className="mt-3 flex flex-col gap-2">
-            {groups.map((item) => (
-              <button
-                className={`surface-soft text-left ${item.id === group.id ? 'ring-2 ring-primary' : ''}`}
-                key={item.id}
-                onClick={() => {
-                  haptic('select')
-                  onGroup(item)
-                }}
-              >
-                {item.name}
-              </button>
-            ))}
+      {section === 'memories' && (
+        <div key="memories" className="rise-panel flex flex-col gap-4">
+          <MemoriesCard places={view ?? places} meals={meals} onSelect={onSelect} />
+          <div className="surface">
+            <h2 className="font-serif text-2xl font-bold">
+              {group.is_personal ? 'So far' : 'Together so far'}
+            </h2>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <Stat value={places.length} label="places" />
+              <Stat value={places.filter((place) => place.status === 'Been').length} label="been" />
+              <Stat
+                value={places.filter((place) => place.status === 'Want to try').length}
+                label="to try"
+              />
+            </div>
           </div>
         </div>
-      )}
-      {v4 && (
-        <RecentlyDeleted
-          group={group}
-          supabase={supabase}
-          demo={demo}
-          canEmpty={canManage}
-          canRestore={myRole !== 'guest'}
-          names={names}
-          onRestored={onReload}
-        />
-      )}
-      {!group.is_personal && (
-      <LeaveGroup
-        group={group}
-        members={members}
-        userId={userId}
-        supabase={supabase}
-        demo={demo}
-        onLeft={onLeft}
-      />
       )}
     </section>
   )

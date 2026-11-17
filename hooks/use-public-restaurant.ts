@@ -4,7 +4,7 @@
 // update yet — in all of those the place sheet just keeps its old layout.
 import { useEffect, useMemo, useState } from 'react'
 import type { PublicRestaurant } from '@/lib/public-page'
-import { DEMO_RESTAURANT } from '@/lib/public-demo'
+import { demoRestaurantFor } from '@/lib/public-demo'
 
 // Last answer per place, so opening the same place again shows the page straight away.
 const seen = new Map<string, PublicRestaurant | null>()
@@ -15,9 +15,12 @@ export function usePublicRestaurant({
   name,
   supabase,
   demo,
+  own,
 }: {
   restaurantId?: string | null
   name: string
+  /** demo only: the place's own facts (D8) */
+  own?: { cuisine?: string | null; price_level?: number | null; address?: string | null }
   supabase: any
   demo: boolean
 }) {
@@ -42,7 +45,16 @@ export function usePublicRestaurant({
       live = false
     }
   }, [restaurantId, supabase, demo])
-  const demoData = useMemo(() => (demo ? { ...DEMO_RESTAURANT, name } : null), [demo, name])
+  const ownCuisine = own?.cuisine
+  const ownPrice = own?.price_level
+  const ownAddress = own?.address
+  const demoData = useMemo(
+    () =>
+      demo
+        ? demoRestaurantFor({ name, cuisine: ownCuisine, price_level: ownPrice, address: ownAddress })
+        : null,
+    [demo, name, ownCuisine, ownPrice, ownAddress],
+  )
   if (demo) return demoData
   if (!restaurantId) return null
   if (fetched && fetched.id === restaurantId) return fetched.data

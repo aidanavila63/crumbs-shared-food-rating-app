@@ -1,11 +1,10 @@
 'use client'
 import { memo } from 'react'
 import { useShowScore } from './score-input'
-import { MapPin, Pin } from 'lucide-react'
+import { Pin } from 'lucide-react'
 import { average5 } from '@/lib/ratings'
 import { basedOn } from '@/lib/based-on'
 import type { Place } from '@/hooks/use-crumbs-data'
-import { RatingStars } from './rating-stars'
 import { isClosedForever, normaliseFacts, openStatus, placeWarnings } from '@/lib/place-info'
 import { distanceKm } from '@/lib/stats'
 import type { Profile } from '@/hooks/use-crumbs-data'
@@ -16,7 +15,6 @@ export function placeAverage(place: Place) {
 /** Memoised: a realtime change to one place doesn't redraw every card in the list. */
 export const PlaceCard = memo(function PlaceCard({
   place,
-  names = {},
   members = [],
   home = null,
   hidden = false,
@@ -38,94 +36,68 @@ export const PlaceCard = memo(function PlaceCard({
     home && place.latitude !== null && place.longitude !== null
       ? distanceKm(home, { lat: place.latitude, lng: place.longitude })
       : null
+  // D2 (Round 83): a plain row like "Most-loved dishes" on restaurant pages — name and one line
+  // of facts on the left, the score on the right (nothing when unrated); everyone's ratings,
+  // stars and status live on the place page.
+  const facts = [
+    place.cuisine,
+    place.price_level ? '$'.repeat(place.price_level) : null,
+    away !== null ? (away < 1 ? `${Math.round(away * 1000)} m` : `${away.toFixed(1)} km`) : null,
+  ].filter(Boolean)
+  const closed = isClosedForever(place)
   return (
     <button
       type="button"
       onClick={() => onSelect(place)}
-      className="surface place-card flex w-full flex-col gap-3 text-left"
+      className="place-row text-left"
       aria-label={`Open ${place.name}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-serif text-2xl font-bold leading-tight break-words">{place.name}</h3>
-            {place.pinned && (
-              <Pin size={16} className="shrink-0 text-primary" fill="currentColor" aria-label="Pinned" />
-            )}
-          </div>
-          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-            <MapPin size={14} className="shrink-0" />
-            <span className="truncate">{place.formatted_address || 'Address not added'}</span>
-          </p>
-          {(isClosedForever(place) || hours || away !== null) && (
-            <p className="mt-1 text-sm font-semibold">
-              {isClosedForever(place) ? (
-                <span className="text-destructive">⚠ Permanently closed</span>
-              ) : (
-                hours && <span className={hours.soon ? 'text-[#b7791f]' : hours.open ? 'text-[#2f7d4f]' : 'text-muted-foreground'}>{hours.soon ? '◐' : hours.open ? '●' : '○'} {hours.text}</span>
-              )}
-              {away !== null && (
-                <span className="font-normal text-muted-foreground">
-                  {!isClosedForever(place) && hours ? ' · ' : ''}
-                  {away < 1 ? `${Math.round(away * 1000)} m` : `${away.toFixed(1)} km`} from home
-                </span>
-              )}
-            </p>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-serif text-lg font-bold leading-tight">{place.name}</span>
+          {place.pinned && (
+            <Pin
+              size={14}
+              className="shrink-0 text-primary"
+              fill="currentColor"
+              aria-label="Pinned"
+            />
           )}
-          {(place.cuisine || place.price_level) && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {[place.cuisine, place.price_level ? '$'.repeat(place.price_level) : null]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
+          {place.status === 'Want to try' && (
+            <span className="tag-outline shrink-0">Want to try</span>
           )}
-        </div>
+        </span>
+        <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+          {closed ? (
+            <span className="font-semibold text-destructive">Permanently closed</span>
+          ) : hours ? (
+            <span
+              className={`font-semibold ${hours.soon ? 'text-[#b7791f]' : hours.open ? 'text-[#2f7d4f]' : ''}`}
+            >
+              {hours.text}
+            </span>
+          ) : null}
+          {(closed || hours) && facts.length ? ' · ' : ''}
+          {facts.join(' · ') || (!closed && !hours ? place.formatted_address || '' : '')}
+        </span>
+        {warnings.length > 0 && (
+          <span className="mt-0.5 block truncate text-xs font-semibold text-destructive">
+            ⚠ {warnings.map((w) => `${w.label} (${w.who.join(', ')})`).join(' · ')}
+          </span>
+        )}
+        {hidden && (
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Rate it to see everyone’s scores
+          </span>
+        )}
+      </span>
+      {average > 0 && (
         <span className="flex shrink-0 flex-col items-end">
-          <strong className="font-serif text-3xl leading-8 text-primary">{show(average)}</strong>
+          <strong className="font-serif text-2xl leading-7 text-primary">{show(average)}</strong>
           {counted && (
-            <span className="text-[0.7rem] text-muted-foreground">
-              {counted.split(' · ')[0]}
-            </span>
+            <span className="text-[0.7rem] text-muted-foreground">{counted.split(' · ')[0]}</span>
           )}
         </span>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className={`chip ${place.status === 'Been' ? 'chip-active' : ''}`}>
-          {place.status === 'Been' && place.visited_on
-            ? `Been · ${new Date(`${place.visited_on}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`
-            : place.status}
-        </span>
-        <RatingStars value={Math.round(average)} />
-      </div>
-      {hidden && (
-        <p className="text-sm text-muted-foreground">🙈 Blind ratings on. Rate it to see each other’s scores.</p>
-      )}
-      {warnings.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {warnings.map((warning) => (
-            <span className="tag text-destructive" key={warning.label}>
-              ⚠ {warning.label} · {warning.who.join(', ')} avoids
-            </span>
-          ))}
-        </div>
-      )}
-      {place.place_ratings.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          {place.place_ratings.map((rating) => (
-            <span className="surface-soft !px-3 !py-1" key={rating.user_id}>
-              <strong>{(names[rating.user_id] ?? 'Someone').split(' ')[0]}</strong> {rating.score}★
-            </span>
-          ))}
-        </div>
-      )}
-      {place.tags?.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {place.tags.map((tag) => (
-            <span className="tag" key={tag}>
-              {tag}
-            </span>
-          ))}
-        </div>
       )}
     </button>
   )

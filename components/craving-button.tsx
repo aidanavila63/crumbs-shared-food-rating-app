@@ -1,4 +1,5 @@
 'use client'
+import { Soup } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { notifyMates } from '@/lib/push'
@@ -30,7 +31,7 @@ export function CravingButton({ groupId, className = '' }: { groupId: string; cl
           setOpen(true)
         }}
       >
-        🍜 I’m craving…
+        <Soup size={16} aria-hidden="true" /> I’m craving…
       </button>
       {open && (
         <Overlay label="I'm craving" title="I’m craving…" onClose={() => setOpen(false)}>

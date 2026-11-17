@@ -369,7 +369,7 @@ export function MapTab({
           pin. Open one and tap <strong>Find on map</strong>.
         </p>
       )}
-      <div ref={frame} className="relative overflow-hidden rounded-[28px]">
+      <div ref={frame} className="map-frame relative overflow-hidden rounded-[28px]">
         <div className="chip-row absolute left-3 right-3 top-3 z-10">
           {['All', 'Been', 'Want to try', 'Pinned'].map((item) => (
             <button
@@ -391,8 +391,8 @@ export function MapTab({
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Show</p>
               <div className="chip-row mt-1">
                 {[
-                  [false, '📍 Pins'],
-                  [true, '🔥 Where we eat most'],
+                  [false, 'Pins'],
+                  [true, 'Where we eat most'],
                 ].map(([value, label]) => (
                   <button
                     key={String(value)}
@@ -596,7 +596,7 @@ export function MapTab({
               setSpotId(null)
             }}
           >
-            🔭 {spots.length} new spot{spots.length === 1 ? '' : 's'} <X size={14} className="ml-1" />
+            <Telescope size={14} className="mr-1" aria-hidden="true" /> {spots.length} new spot{spots.length === 1 ? '' : 's'} <X size={14} className="ml-1" />
           </button>
         )}
         {spot && !preview && (

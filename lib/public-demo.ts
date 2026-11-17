@@ -77,3 +77,28 @@ export const DEMO_PROFILE: PublicProfile = {
   ],
   dishes: [{ dish: 'Beef pho', restaurant: 'Lantern Pho', city: 'etobicoke', slug: 'lantern-pho' }],
 }
+
+/**
+ * D8 (Round 83): demo mode shows the sample restaurant's shared page for every place; it used to
+ * show the sample's cuisine, price, area, dishes and menu on places that aren't pho shops. Now the
+ * place's own cuisine, price and address are used, and the sample's dishes, menu and "known for"
+ * only appear on a place of the same cuisine.
+ */
+export function demoRestaurantFor(own: {
+  name: string
+  cuisine?: string | null
+  price_level?: number | null
+  address?: string | null
+}): PublicRestaurant {
+  const same = (own.cuisine ?? '').toLowerCase() === (DEMO_RESTAURANT.cuisine ?? '').toLowerCase()
+  return {
+    ...DEMO_RESTAURANT,
+    name: own.name,
+    cuisine: own.cuisine ?? null,
+    price_level: own.price_level ?? null,
+    address: own.address ?? null,
+    city: null,
+    slug: null,
+    ...(same ? {} : { top_dishes: [], menu: [], known_for: [], dish_of_week: null }),
+  }
+}

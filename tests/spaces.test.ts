@@ -52,3 +52,15 @@ test('your private amounts go back on your own visits only', () => {
   assert.equal(out[1], places[1])
   assert.equal(withPrivateSpends(places as any, null), places)
 })
+
+test('a group emoji is any one emoji from the keyboard', async () => {
+  const { singleEmoji } = await import('../lib/group-look.ts')
+  assert.equal(singleEmoji('🍜'), '🍜')
+  assert.equal(singleEmoji(' 🇨🇦 '), '🇨🇦')
+  assert.equal(singleEmoji('👨‍👩‍👧‍👦'), '👨‍👩‍👧‍👦')
+  assert.equal(singleEmoji('👍🏽'), '👍🏽')
+  assert.equal(singleEmoji('1️⃣'), '1️⃣')
+  assert.equal(singleEmoji('🍜🍣'), null)
+  assert.equal(singleEmoji('a'), null)
+  assert.equal(singleEmoji(''), null)
+})

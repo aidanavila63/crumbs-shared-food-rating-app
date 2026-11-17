@@ -1,8 +1,20 @@
 'use client'
-// Small buttons next to the group name: 👋 invite people (code, link, QR) and ⚙️ group settings
-// (owner and admins only). They open on their own pages so the Group tab stays about the group.
+// D1 (Round 83): one ⋯ button next to the group name opens the group menu: invite people (code,
+// link, QR), group locations, group settings (owner and admins), switch group, leave group. Each
+// opens on its own page so the Group tab stays about the group.
 import { useEffect, useState } from 'react'
-import { Copy, Link2, MapPin, QrCode, Settings, Share2, UserPlus } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ChevronRight,
+  Copy,
+  Link2,
+  MapPin,
+  MoreHorizontal,
+  QrCode,
+  Settings,
+  Share2,
+  UserPlus,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import type { Area, Group, GroupLocation, Place, Profile } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
@@ -11,6 +23,7 @@ import { Overlay } from './overlay'
 import { GroupSettingsCard } from './group-settings'
 import { GroupLocationsCard } from './group-locations'
 import { SharePosterCard } from './share-poster'
+import { LeaveGroup } from './group-ownership'
 
 export function GroupActions({
   group,
@@ -26,7 +39,13 @@ export function GroupActions({
   myAreas,
   places,
   onLocations,
+  onSwitch,
+  onLeft,
 }: {
+  /** open the group switcher */
+  onSwitch: () => void
+  /** you left (or deleted) the group */
+  onLeft?: (groupId: string) => void
   /** Round 75: the group's shared locations (hidden until the database has them) */
   locations: GroupLocation[]
   locationsReady: boolean
@@ -44,13 +63,13 @@ export function GroupActions({
 }) {
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
   const canManage = myRole === 'owner' || myRole === 'admin'
-  const [open, setOpen] = useState<'invite' | 'settings' | 'locations' | null>(null)
+  const [open, setOpen] = useState<'menu' | 'invite' | 'settings' | 'locations' | null>(null)
   const [showQr, setShowQr] = useState(true)
   const [qr, setQr] = useState<string | null>(null)
   // Crumbs-style QR (plum dots, cookie in the middle, crumb trail). The QR library is only downloaded when
   // someone asks for the code.
   useEffect(() => {
-    if (!open || !showQr) return
+    if (open !== 'invite' || !showQr) return
     let cancelled = false
     import('@/lib/brand-qr')
       .then(({ brandQrSvg, svgDataUrl }) =>
@@ -89,41 +108,58 @@ export function GroupActions({
 
   return (
     <span className="group-actions">
-      {myRole !== 'guest' && !group.is_personal && (
-        <button
-          className="icon-btn group-action-btn"
-          aria-label="Invite people"
-          onClick={() => {
-            haptic('tap')
-            setOpen('invite')
-          }}
-        >
-          <UserPlus size={18} />
-        </button>
-      )}
-      {locationsReady && (
-        <button
-          className="icon-btn group-action-btn"
-          aria-label="Group locations"
-          onClick={() => {
-            haptic('tap')
-            setOpen('locations')
-          }}
-        >
-          <MapPin size={18} />
-        </button>
-      )}
-      {canManage && (
-        <button
-          className="icon-btn group-action-btn"
-          aria-label="Group settings"
-          onClick={() => {
-            haptic('tap')
-            setOpen('settings')
-          }}
-        >
-          <Settings size={18} />
-        </button>
+      <button
+        className="icon-btn group-action-btn"
+        aria-label="Group menu"
+        aria-haspopup="dialog"
+        onClick={() => {
+          haptic('tap')
+          setOpen('menu')
+        }}
+      >
+        <MoreHorizontal size={20} />
+      </button>
+      {open === 'menu' && (
+        <Overlay label="Group menu" title={group.name} onClose={() => setOpen(null)}>
+          <div className="flex flex-col gap-3">
+            <div className="menu-list surface">
+              {myRole !== 'guest' && !group.is_personal && (
+                <MenuRow icon={<UserPlus size={18} />} label="Invite people" onClick={() => setOpen('invite')} />
+              )}
+              {locationsReady && (
+                <MenuRow icon={<MapPin size={18} />} label="Group locations" onClick={() => setOpen('locations')} />
+              )}
+              {canManage && (
+                <MenuRow
+                  icon={<Settings size={18} />}
+                  label={group.is_personal ? 'Settings for this space' : 'Group settings'}
+                  onClick={() => setOpen('settings')}
+                />
+              )}
+              <MenuRow
+                icon={<ArrowLeftRight size={18} />}
+                label="Switch, start or join a group"
+                onClick={() => {
+                  setOpen(null)
+                  onSwitch()
+                }}
+              />
+            </div>
+            {!group.is_personal && (
+              <LeaveGroup
+                group={group}
+                members={members}
+                userId={userId}
+                supabase={supabase}
+                demo={demo}
+                onLeft={(id) => {
+                  setOpen(null)
+                  onLeft?.(id)
+                }}
+              />
+            )}
+          </div>
+        </Overlay>
       )}
       {open === 'invite' && (
         <Overlay label="Invite people" title="Invite people" onClose={() => setOpen(null)}>
@@ -223,5 +259,24 @@ export function GroupActions({
         </Overlay>
       )}
     </span>
+  )
+}
+
+function MenuRow({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="menu-row"
+      onClick={() => {
+        haptic('tap')
+        onClick()
+      }}
+    >
+      <span className="text-primary" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="flex-1 text-left font-semibold">{label}</span>
+      <ChevronRight size={18} className="text-muted-foreground" aria-hidden="true" />
+    </button>
   )
 }

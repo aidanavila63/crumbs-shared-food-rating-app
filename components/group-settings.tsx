@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { GroupBadge, BadgeDrawing } from './group-badge'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, GroupSettings, Profile } from '@/hooks/use-crumbs-data'
@@ -10,14 +11,11 @@ import { PhotoButton } from './photo-button'
 import { JOIN_MODES } from './group-switcher'
 import { askConfirm } from '@/lib/ask'
 import { inviteLink } from '@/lib/invite'
+import { EMOJI_SETS, singleEmoji } from '@/lib/group-look'
+import { CRUMBS_BADGES, badgeValue } from '@/lib/group-badges'
 
 // One emoji per group, picked from a list (free typing let two squeeze in and get cut off).
-export const GROUP_EMOJIS = [
-  '🍜', '🍣', '🍕', '🌮', '🍔', '🥟', '🍝', '🥗', '🍱', '🥙', '🍛', '🍲', '🥘', '🍤', '🍗', '🥩',
-  '🌯', '🥪', '🍳', '🥞', '🧇', '🥐', '🥯', '🍩', '🍰', '🧁', '🍦', '🍪', '🍫', '🍿', '🍓', '🍑',
-  '🥑', '🌶️', '🧄', '🧀', '🍞', '🥨', '☕', '🧋', '🍵', '🍷', '🍺', '🍹', '🥂', '🍽️', '🥢', '🔥',
-  '❤️', '💕', '⭐', '✨', '🎉', '🏠', '🗺️', '✈️', '🌍', '🏙️', '🌴', '🐻', '🐱', '🐶', '🦊', '😋',
-]
+export const GROUP_EMOJIS = EMOJI_SETS.flatMap((set) => set.emoji)
 
 const COLORS = ['#7b2d5b', '#b23a26', '#1f5f8b', '#2f6b4a', '#8f5a06', '#4b3f8f']
 const SCALES: { id: Scale; label: string }[] = [
@@ -227,7 +225,7 @@ export function GroupSettingsCard({
                 aria-expanded={picking}
                 onClick={() => setPicking(!picking)}
               >
-                {group.emoji || '＋'}
+                {group.emoji ? <GroupBadge group={group} size={22} /> : '＋'}
               </button>
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Group colour">
                 {COLORS.map((color) => (
@@ -247,34 +245,15 @@ export function GroupSettingsCard({
               </div>
             </div>
             {picking && (
-              <div className="emoji-grid" role="radiogroup" aria-label="Pick the group emoji">
-                {GROUP_EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    role="radio"
-                    aria-checked={group.emoji === e}
-                    className={group.emoji === e ? 'emoji-on' : ''}
-                    onClick={() => {
-                      haptic('select')
-                      save({ emoji: e })
-                      setPicking(false)
-                    }}
-                  >
-                    {e}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="emoji-none"
-                  onClick={() => {
-                    save({ emoji: null })
-                    setPicking(false)
-                  }}
-                >
-                  None
-                </button>
-              </div>
+              <EmojiPicker
+                value={group.emoji ?? null}
+                color={group.color ?? null}
+                onPick={(e) => {
+                  haptic('select')
+                  save({ emoji: e })
+                  setPicking(false)
+                }}
+              />
             )}
             <span className="text-sm text-muted-foreground">Cover photo (top of the Group tab)</span>
             <PhotoButton
@@ -530,5 +509,88 @@ export function GroupSettingsCard({
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * Round 83: the group emoji. Sets to tap, or type any one emoji from the phone's keyboard (the
+ * emoji keyboard opens from the field; anything that isn't a single emoji is refused).
+ */
+function EmojiPicker({
+  value,
+  color,
+  onPick,
+}: {
+  value: string | null
+  color: string | null
+  onPick: (emoji: string | null) => void
+}) {
+  const [typed, setTyped] = useState('')
+  const one = singleEmoji(typed)
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2">
+        <input
+          className="field text-center text-2xl"
+          aria-label="Type any emoji"
+          placeholder="Type any emoji"
+          inputMode="text"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value.slice(-40))}
+          onKeyDown={(event) => event.key === 'Enter' && one && onPick(one)}
+        />
+        <button
+          type="button"
+          className="primary shrink-0"
+          disabled={!one}
+          onClick={() => one && onPick(one)}
+        >
+          Use it
+        </button>
+      </div>
+      {typed.trim() && !one && (
+        <p className="text-sm text-muted-foreground">Just one emoji, please (no letters).</p>
+      )}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-semibold text-muted-foreground uppercase">Crumbs originals</span>
+        <div className="badge-grid" role="radiogroup" aria-label="Crumbs badges">
+          {CRUMBS_BADGES.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-label={b.label}
+              aria-checked={value === badgeValue(b.id)}
+              style={{ background: color ?? 'var(--primary)' }}
+              onClick={() => onPick(badgeValue(b.id))}
+            >
+              <BadgeDrawing badge={b} size={22} />
+            </button>
+          ))}
+        </div>
+      </div>
+      {EMOJI_SETS.map((set) => (
+        <div key={set.label} className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted-foreground uppercase">{set.label}</span>
+          <div className="emoji-grid" role="radiogroup" aria-label={`${set.label} emoji`}>
+            {set.emoji.map((e) => (
+              <button
+                key={e}
+                type="button"
+                role="radio"
+                aria-checked={value === e}
+                className={value === e ? 'emoji-on' : ''}
+                onClick={() => onPick(e)}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <button type="button" className="emoji-none self-start" onClick={() => onPick(null)}>
+        No emoji
+      </button>
+    </div>
   )
 }

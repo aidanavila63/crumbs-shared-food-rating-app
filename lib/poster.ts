@@ -5,6 +5,8 @@
 //
 // Instagram covers roughly the top and bottom 250 px of a story with its own buttons, so everything
 // that matters (wordmark, headline, QR, what-to-do line) sits between y = 230 and y = 1670.
+import { oneEmoji } from './group-look.ts'
+
 
 export const POSTER_W = 1080
 export const POSTER_H = 1920
@@ -207,7 +209,7 @@ export function groupPoster(group: {
   return {
     eyebrow: 'You’re invited to',
     title: group.name,
-    badge: group.emoji || '🍽️',
+    badge: oneEmoji(group.emoji) || '🍽️',
     badgeColor: group.color,
     caption: 'Scan to join our group',
     sub: `or use code ${group.join_code}`,

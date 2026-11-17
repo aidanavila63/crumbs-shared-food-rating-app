@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { oneEmoji } from '@/lib/group-look'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase'
@@ -207,7 +208,7 @@ export function InviteLanding({
             aria-hidden="true"
             style={preview.color ? { background: preview.color } : undefined}
           >
-            {preview.emoji || '🍽️'}
+            {oneEmoji(preview.emoji) || '🍽️'}
           </span>
           <p className="text-sm font-semibold text-muted-foreground">You’re invited to</p>
           <h1 className="font-serif text-4xl font-bold leading-tight">{preview.name}</h1>

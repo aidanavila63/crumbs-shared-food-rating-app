@@ -2,11 +2,11 @@
 // Your groups in one place: switch between them, start a new one, join with a code, or find a
 // public group. Opened from the group name at the top of the app or under your name in Profile.
 import { useEffect, useState } from 'react'
+import { GroupBadge } from './group-badge'
 import { Check, Lock, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group } from '@/hooks/use-crumbs-data'
 import { haptic } from '@/lib/motion'
-import { oneEmoji } from '@/lib/group-look'
 import { cleanCode, invitePath, isJoinCode } from '@/lib/invite'
 import { Overlay } from './overlay'
 import { isPersonal, orderSpaces } from '@/lib/spaces'
@@ -253,13 +253,7 @@ export function GroupSwitcher({
                   onSwitch(g)
                 }}
               >
-                <span
-                  className="group-badge"
-                  style={{ background: g.color ?? undefined }}
-                  aria-hidden="true"
-                >
-                  {oneEmoji(g.emoji) ?? g.name.slice(0, 1).toUpperCase()}
-                </span>
+                <GroupBadge group={g} />
                 <span className="min-w-0 flex-1 truncate font-serif text-xl font-bold">
                   {g.name}
                 </span>
@@ -399,13 +393,7 @@ export function GroupSwitcher({
               found.map((g) => (
                 <div key={g.id} className="surface flex flex-col gap-2">
                   <div className="flex items-center gap-3">
-                    <span
-                      className="group-badge"
-                      style={{ background: g.color ?? undefined }}
-                      aria-hidden="true"
-                    >
-                      {oneEmoji(g.emoji) ?? g.name.slice(0, 1).toUpperCase()}
-                    </span>
+                    <GroupBadge group={g} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-serif text-xl font-bold">{g.name}</span>
                       <span className="block text-xs text-muted-foreground">

@@ -21,7 +21,7 @@ async function step(name, fn) {
 
 await step('home loads', async () => {
   await page.goto(url, { waitUntil: 'networkidle' })
-  await page.getByText('Your shared food map').waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Group menu' }).waitFor({ timeout: 15000 })
   await page.waitForTimeout(2000) // let the page finish waking up before tapping
   // In dev the framework's corner badge sits over the first tab; it isn't there in a real build.
   await page.evaluate(() => document.querySelector('nextjs-portal')?.remove())

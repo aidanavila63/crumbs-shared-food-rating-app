@@ -1,4 +1,5 @@
 'use client'
+import { House, RefreshCw, Star, ThumbsDown, ThumbsUp, UtensilsCrossed } from 'lucide-react'
 import { track } from '@/lib/analytics'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -165,7 +166,7 @@ function DishRow({
             className={`chip chip-sm ${dish.verdict === kind ? 'chip-active' : ''}`}
             onClick={() => onMeta({ verdict: dish.verdict === kind ? null : kind })}
           >
-            {kind === 'again' ? '👍 Order again' : '👎 Never again'}
+            {kind === 'again' ? <><ThumbsUp size={14} aria-hidden="true" /> Order again</> : <><ThumbsDown size={14} aria-hidden="true" /> Never again</>}
           </button>
         ))}
         {tags.map((item) => (
@@ -271,11 +272,11 @@ function DishRow({
               className={`chip chip-sm ${dish.wishlist ? 'chip-active' : ''}`}
               onClick={() => onMeta({ wishlist: !dish.wishlist })}
             >
-              ⭐ Want to try
+              <Star size={14} aria-hidden="true" /> Want to try
             </button>
             {onMakeAtHome && (
               <button className="chip chip-sm" onClick={onMakeAtHome}>
-                🏠 Make it at home
+                <House size={14} aria-hidden="true" /> Make it at home
               </button>
             )}
           </div>
@@ -344,9 +345,9 @@ const COURSE_LABEL: Record<(typeof COURSES)[number], string> = {
   drink: 'Drinks',
 }
 const RETURN = [
-  { id: 'yes', label: '👍 Would go back' },
-  { id: 'maybe', label: '🤷 Maybe' },
-  { id: 'no', label: '👎 Once was enough' },
+  { id: 'yes', label: 'Would go back' },
+  { id: 'maybe', label: 'Maybe' },
+  { id: 'no', label: 'Once was enough' },
 ] as const
 
 export function PlaceSheet({
@@ -457,6 +458,7 @@ export function PlaceSheet({
     name: place.name,
     supabase,
     demo,
+    own: { cuisine: place.cuisine, price_level: place.price_level, address: place.formatted_address },
   })
   const maybeClosed = useMaybeClosed(supabase, place.restaurant_id, demo)
   const [editInfo, setEditInfo] = useState<boolean | 'hours'>(false)
@@ -1043,7 +1045,7 @@ export function PlaceSheet({
               className="text-sm font-semibold text-primary underline"
               onClick={() => setPlanBOpen(true)}
             >
-              Closed or full? 🔁 Plan B
+              Closed or full? <RefreshCw size={14} className="inline" aria-hidden="true" /> Plan B
             </button>
           )}
           {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
@@ -1157,7 +1159,7 @@ export function PlaceSheet({
               className="mt-1 self-start text-sm font-semibold text-primary underline"
               onClick={() => setTableOpen(true)}
             >
-              🍽️ Order for the table
+              <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
             </button>
           </div>
         )}
@@ -1446,7 +1448,7 @@ export function PlaceSheet({
                 className="text-sm font-semibold text-primary underline"
                 onClick={() => setTableOpen(true)}
               >
-                🍽️ Order for the table
+                <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
               </button>
             )}
             {menuImport && (

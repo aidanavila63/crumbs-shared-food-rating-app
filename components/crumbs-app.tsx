@@ -1,5 +1,6 @@
 'use client'
 import { identify, resetAnalytics, track } from '@/lib/analytics'
+import { GroupBadge } from './group-badge'
 import dynamic from 'next/dynamic'
 import {
   useCallback,
@@ -20,8 +21,7 @@ import {
   Users,
   UtensilsCrossed,
   X,
-  ArrowUpDown,
-  MapPin,
+  Lock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Wordmark } from './wordmark'
@@ -44,7 +44,8 @@ import { useGrow } from '@/lib/use-grow'
 import { resolveFrom, saveFrom, savedFrom, type FromChoice } from '@/lib/anchor'
 import { SignInForm } from './sign-in-form'
 import { Landing } from './landing'
-import { StatusFilter } from './status-filter'
+import { UnderlineTabs } from './underline-tabs'
+import { FilterPill, FilterSheet } from './places-filter'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
@@ -66,7 +67,7 @@ import { settingsOf } from '@/lib/ratings'
 import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
 import { areaChoices, groupAnchor } from '@/lib/areas'
 import { LegalLinks } from '@/components/legal-page'
-import { orderSpaces, spaceKicker } from '@/lib/spaces'
+import { orderSpaces } from '@/lib/spaces'
 
 // Screens and sheets load on demand (then all get fetched quietly once the app is idle),
 // so the first paint only carries the Places list.
@@ -109,7 +110,7 @@ const Walkthrough = dynamic(() => import('./guidebook').then((m) => m.Walkthroug
 const tabs = [
   { id: 'Places', label: 'Places', icon: UtensilsCrossed },
   { id: 'Map', label: 'Map', icon: MapIcon },
-  { id: 'Decide', label: 'Decide & Plan', icon: Dices },
+  { id: 'Decide', label: 'Decide', icon: Dices },
   { id: 'Group', label: 'Group', icon: Users },
 ] as const
 type Tab = (typeof tabs)[number]['id']
@@ -196,6 +197,13 @@ function CrumbsShell() {
   useMotionPrefs() // applies the Animations setting to the page
   // Start on Places (same as the server render), then go back to the tab you were on.
   const [tab, setTabState] = useState<Tab>('Places')
+  // D6 (Round 83): on the Map tab the page doesn't scroll or bounce — only the map moves.
+  useEffect(() => {
+    if (tab !== 'Map') return
+    window.scrollTo(0, 0)
+    document.documentElement.classList.add('map-locked')
+    return () => document.documentElement.classList.remove('map-locked')
+  }, [tab])
   const [direction, setDirection] = useState<'left' | 'right'>('right')
   const [placesView, setPlacesView] = useState<'places' | 'lists' | 'home'>('places')
   useLayoutEffect(() => {
@@ -362,7 +370,7 @@ function CrumbsShell() {
         setOtherPlaces(
           (rows ?? []).map((p: Place) => {
             const g = others.find((x) => x.id === p.group_id)
-            return { ...p, name: `${g?.emoji ?? '👥'} ${p.name}` }
+            return { ...p, name: `${oneEmoji(g?.emoji) ?? '👥'} ${p.name}` }
           }),
         )
       })
@@ -396,6 +404,7 @@ function CrumbsShell() {
   }, [tripList, data.places])
   const setSelected = useCallback((place: Place | null) => setSelectedId(place?.id ?? null), [])
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
+  const [filtering, setFiltering] = useState(false)
   const [quickLog, setQuickLog] = useState(false)
   // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
   const here = useUserLocation(sort === 'Nearest', { ask: true })
@@ -934,7 +943,7 @@ function CrumbsShell() {
             <section key={w.group_id} className="surface" role="status">
               <p className="invite-waiting">
                 <span className="invite-dot" aria-hidden="true" />
-                Waiting to be let into {w.emoji ? `${w.emoji} ` : ''}
+                Waiting to be let into {oneEmoji(w.emoji) ? `${oneEmoji(w.emoji)} ` : ''}
                 {w.name}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -1051,69 +1060,53 @@ function CrumbsShell() {
     <ScaleContext.Provider value={data.v4 ? settingsOf(data.group).scale : '5'}>
     <main className="min-h-screen bg-background pb-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <header className="flex items-center justify-between py-5">
-          <Wordmark height={38} />
+        {/* D1 (Round 83): one compact line — badge, group name (switch / start / join), ⋯ menu, you. */}
+        <header className="app-header">
+          <button
+            type="button"
+            className="app-header-group"
+            aria-label={`${data.group.name} — switch, create or join a group`}
+            onClick={() => {
+              haptic('tap')
+              setSwitching(true)
+            }}
+          >
+            <GroupBadge group={data.group} size={18} />
+            <span className="app-header-name font-serif font-bold">{data.group.name}</span>
+            {data.group.is_personal && (
+              <Lock size={15} className="shrink-0 text-muted-foreground" aria-label="Only you" />
+            )}
+            <ChevronDown size={20} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+          </button>
+          <GroupActions
+            group={data.group}
+            members={data.members}
+            userId={userId}
+            supabase={data.supabase}
+            demo={data.demo}
+            v4={data.v4}
+            onGroup={(group) => {
+              data.setGroup(group)
+              data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
+            }}
+            onReload={() => {
+              data.load().catch(() => {})
+            }}
+            locations={data.groupLocations}
+            locationsReady={data.locationsReady}
+            myAreas={me?.areas ?? []}
+            places={data.places}
+            onLocations={data.setGroupLocations}
+            onSwitch={() => setSwitching(true)}
+            onLeft={(id) => {
+              const rest = data.groups.filter((g) => g.id !== id)
+              data.setGroups(rest)
+              data.setGroup(rest[0] ?? null)
+            }}
+          />
           <ProfileButton profile={me} onClick={() => setHub(['menu'])} />
         </header>
         <SiteNotice supabase={data.supabase} demo={data.demo} />
-        {/* The group name is the group switcher: switch, start a new group, join, find one. */}
-        <div className="mb-5 flex items-center gap-2">
-        <button
-          type="button"
-          className="group-title min-w-0 flex-1"
-          aria-label={`${data.group.name} — switch, create or join a group`}
-          onClick={() => {
-            haptic('tap')
-            setSwitching(true)
-          }}
-        >
-          <span className="text-sm text-muted-foreground">{spaceKicker(data.group)}</span>
-          <span className="group-name-row font-serif font-bold">
-            {oneEmoji(data.group.emoji) && (
-              <span
-                className="group-badge"
-                style={{ background: data.group.color ?? undefined }}
-                aria-hidden="true"
-              >
-                {oneEmoji(data.group.emoji)}
-              </span>
-            )}
-            {/* Long names drop a size and wrap onto a second line instead of running under the buttons. */}
-            <span
-              className={`group-name ${
-                data.group.name.length > 22
-                  ? 'text-xl'
-                  : data.group.name.length > 14
-                    ? 'text-2xl'
-                    : 'text-3xl'
-              }`}
-            >
-              {data.group.name}
-            </span>
-            <ChevronDown size={22} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-          </span>
-        </button>
-        <GroupActions
-          group={data.group}
-          members={data.members}
-          userId={userId}
-          supabase={data.supabase}
-          demo={data.demo}
-          v4={data.v4}
-          onGroup={(group) => {
-            data.setGroup(group)
-            data.setGroups((current) => current.map((item) => (item.id === group.id ? group : item)))
-          }}
-          onReload={() => {
-            data.load().catch(() => {})
-          }}
-          locations={data.groupLocations}
-          locationsReady={data.locationsReady}
-          myAreas={me?.areas ?? []}
-          places={data.places}
-          onLocations={data.setGroupLocations}
-        />
-        </div>
         {switching && (
           <GroupSwitcher
             group={data.group}
@@ -1175,33 +1168,16 @@ function CrumbsShell() {
         <div key={tab} className={`tab-pane tab-from-${direction}`}>
           {tab === 'Places' && (
             <section className="flex flex-col gap-4">
-              <div
-                className={`segmented ${views.length === 3 ? 'segmented-3' : ''}`}
-                role="tablist"
-                aria-label="Places, lists or home cooking"
-              >
-                <span
-                  className="segmented-thumb"
-                  aria-hidden="true"
-                  style={{ transform: `translateX(${Math.max(0, views.indexOf(placesView)) * 100}%)` }}
-                />
-                {views.map((view) => (
-                  <button
-                    key={view}
-                    role="tab"
-                    aria-selected={placesView === view}
-                    className={placesView === view ? 'segmented-active' : ''}
-                    onClick={() => {
-                      if (view === placesView) return
-                      haptic('tap')
-                      setSubDirection(views.indexOf(view) > views.indexOf(placesView) ? 'right' : 'left')
-                      setPlacesView(view)
-                    }}
-                  >
-                    {view === 'places' ? 'Places' : view === 'lists' ? 'Lists' : 'Home'}
-                  </button>
-                ))}
-              </div>
+              {/* D3 (Round 83): underline tabs */}
+              <UnderlineTabs
+                label="Places, lists or home cooking"
+                value={placesView}
+                tabs={views.map((v) => ({ id: v, label: v === 'places' ? 'Places' : v === 'lists' ? 'Lists' : 'Home' }))}
+                onChange={(view) => {
+                  setSubDirection(views.indexOf(view) > views.indexOf(placesView) ? 'right' : 'left')
+                  setPlacesView(view)
+                }}
+              />
               {placesView === 'home' && views.includes('home') ? (
                 <div key="home" className={`tab-pane tab-from-${subDirection}`}>
                   <HomeTab
@@ -1352,81 +1328,42 @@ function CrumbsShell() {
                       )}
                     </div>
                   )}
-                  <StatusFilter
-                    items={STATUSES}
-                    display={(item) => (item === 'Pinned' ? '📌 Pinned' : item)}
-                    value={filter}
-                    counts={!data.loading && data.places.length > 0 ? counts : null}
-                    onChange={(item) => {
-                      if (item !== filter) haptic('select')
-                      setFilter(item)
-                    }}
+                  {/* D3 (Round 83, #309): one Filter pill; what's on shows as chips */}
+                  <FilterPill
+                    active={(filter !== 'All' ? 1 : 0) + (sort !== 'Newest' ? 1 : 0) + (areaChoice ? 1 : 0)}
+                    onOpen={() => setFiltering(true)}
+                    chips={[
+                      ...(filter !== 'All'
+                        ? [{ key: 'status', label: filter, onClear: () => setFilter('All') }]
+                        : []),
+                      ...(sort !== 'Newest'
+                        ? [{ key: 'sort', label: sort, onClear: () => setSort('Newest') }]
+                        : []),
+                      ...(areaChoice
+                        ? [{ key: 'area', label: `Near ${areaChoice.name}`, onClear: () => setAreaName(null) }]
+                        : []),
+                    ]}
                   />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="pick-pill">
-                      <ArrowUpDown size={15} aria-hidden="true" />
-                      <span aria-hidden="true">{sort}</span>
-                      <select
-                        aria-label="Sort by"
-                        value={sort}
-                        onChange={(event) => {
-                          haptic('select')
-                          setSort(event.target.value as typeof sort)
-                        }}
-                      >
-                        {(['Newest', 'Top rated', 'Nearest', 'A–Z'] as const).map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={15} aria-hidden="true" />
-                    </label>
-                    {areaOptions.length > 0 && (
-                      <label className={`pick-pill ${areaChoice ? 'pick-pill-on' : ''}`}>
-                        <MapPin size={15} aria-hidden="true" />
-                        <span aria-hidden="true">{areaChoice ? `Near ${areaChoice.name}` : 'Anywhere'}</span>
-                        <select
-                          aria-label="Area"
-                          value={areaChoice?.key ?? ''}
-                          onChange={(event) => {
-                            haptic('select')
-                            setAreaName(event.target.value || null)
-                          }}
-                        >
-                          <option value="">Anywhere</option>
-                          {areaOptions.some((choice) => choice.shared) && (
-                            <optgroup label={data.group.name}>
-                              {areaOptions
-                                .filter((choice) => choice.shared)
-                                .map((choice) => (
-                                  <option key={choice.key} value={choice.key}>
-                                    Near {choice.name}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          )}
-                          {areaOptions.some((choice) => !choice.shared) && (
-                            <optgroup label="Only you 🔒">
-                              {areaOptions
-                                .filter((choice) => !choice.shared)
-                                .map((choice) => (
-                                  <option key={choice.key} value={choice.key}>
-                                    Near {choice.name}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          )}
-                        </select>
-                        <ChevronDown size={15} aria-hidden="true" />
-                      </label>
-                    )}
-                    {filtersOn && (
-                      <button type="button" className="text-sm font-semibold text-primary" onClick={clearFilters}>
-                        Reset
-                      </button>
-                    )}
-                  </div>
+                  {filtering && (
+                    <FilterSheet
+                      statuses={STATUSES}
+                      status={filter}
+                      counts={!data.loading && data.places.length > 0 ? counts : null}
+                      onStatus={setFilter}
+                      sorts={SORTS}
+                      sort={sort}
+                      onSort={setSort}
+                      areas={areaOptions.map((choice) => ({ key: choice.key, name: choice.name, shared: choice.shared }))}
+                      area={areaChoice?.key ?? null}
+                      onArea={setAreaName}
+                      groupName={data.group.name}
+                      onClose={() => setFiltering(false)}
+                      onReset={() => {
+                        clearFilters()
+                        setSort('Newest')
+                      }}
+                    />
+                  )}
                   {sort === 'Nearest' && !origin && (
                     <p className="text-xs text-muted-foreground">
                       Finding you… If location is blocked, see{' '}
@@ -1451,7 +1388,7 @@ function CrumbsShell() {
                       <div className="skeleton h-28" />
                     </div>
                   ) : filtered.length ? (
-                    <div className="stagger place-list flex flex-col gap-4">
+                    <div className="place-list place-rows surface">
                       {shownPlaces.map((place) => (
                         <PlaceCard
                           key={place.id}
@@ -1517,10 +1454,12 @@ function CrumbsShell() {
                     aria-pressed={allGroups}
                     onClick={() => setAllGroups(!allGroups)}
                   >
-                    👥 All my groups
+                    <Users size={14} className="inline" aria-hidden="true" /> All my groups
                   </button>
                 </div>
               )}
+              {/* D6 (Round 83): edge to edge; the page itself is locked while the Map tab is open */}
+              <div className="map-bleed">
               <MapTab
                 places={mapPlaces}
                 anchor={anchor}
@@ -1556,6 +1495,7 @@ function CrumbsShell() {
                   }
                 }}
               />
+              </div>
             </>
           )}
           {tab === 'Decide' && (
@@ -1824,3 +1764,4 @@ function CrumbsShell() {
 
 /** All · Been · Want to try · Pinned (the bar itself lives in status-filter.tsx). */
 const STATUSES = ['All', 'Been', 'Want to try', 'Pinned'] as const
+const SORTS = ['Newest', 'Top rated', 'Nearest', 'A–Z'] as const

@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
+import { oneEmoji } from '@/lib/group-look'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import { BarChart3, Gift, Globe2, Link2, Settings, ShieldCheck, Store, Trophy } from 'lucide-react'
@@ -225,7 +226,7 @@ export function ProfileHub({
                   aria-label={`${group.name} — switch, create or join a group`}
                   onClick={onGroups}
                 >
-                  {group.emoji ? `${group.emoji} ` : ''}
+                  {oneEmoji(group.emoji) ? `${oneEmoji(group.emoji)} ` : ''}
                   {group.name} <ChevronDown size={14} />
                 </button>
               ) : (

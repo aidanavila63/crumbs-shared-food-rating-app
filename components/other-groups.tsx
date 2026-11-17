@@ -5,6 +5,7 @@
 // Round 80 (solo-first): "Also save to…" puts the place in another of your spaces (My Crumbs or
 // a group) in one tap, with your scores.
 import { useEffect, useState } from 'react'
+import { oneEmoji } from '@/lib/group-look'
 import { toast } from 'sonner'
 import type { Group, Place, Profile, Rating } from '@/hooks/use-crumbs-data'
 import { average5, formatScore, type Scale } from '@/lib/ratings'
@@ -114,7 +115,7 @@ export function OtherGroups({
 
   const nameOf = (id: string) => {
     const g = others.find((x) => x.id === id)
-    return g ? `${isPersonal(g) ? '🔒 ' : g.emoji ? `${g.emoji} ` : ''}${g.name}` : null
+    return g ? `${isPersonal(g) ? '🔒 ' : oneEmoji(g.emoji) ? `${oneEmoji(g.emoji)} ` : ''}${g.name}` : null
   }
 
   /** Also save to…: copy this place (and your scores) into another of your spaces. */

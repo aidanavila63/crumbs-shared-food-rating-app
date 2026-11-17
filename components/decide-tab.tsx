@@ -1,7 +1,7 @@
 'use client'
 import { useShowScore } from './score-input'
 import { useEffect, useMemo, useState } from 'react'
-import { Dices, Sparkles } from 'lucide-react'
+import { Dices, Footprints, Heart, Sparkles, Telescope, Timer } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Place, PlaceVisit, Profile } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
@@ -28,6 +28,7 @@ import { pickLearning } from '@/lib/decide-more'
 import { QuickDecide } from './quick-decide'
 import { locate, openLocationSetup } from '@/lib/location'
 import { DishFinder } from './dish-finder'
+import { UnderlineTabs } from './underline-tabs'
 
 type Idea = { title: string; why: string }
 
@@ -242,6 +243,9 @@ export function DecideTab({
     }
   }
 
+  const [allPicks, setAllPicks] = useState(false)
+  const [allFavs, setAllFavs] = useState(false)
+  const [section, setSection] = useState<'decide' | 'plan' | 'foryou'>('decide')
   return (
     <section className="stagger flex flex-col gap-4">
       <div>
@@ -249,6 +253,19 @@ export function DecideTab({
         <h2 className="font-serif text-3xl font-bold">Decide &amp; Plan</h2>
         {nearSlot && <div className="mt-2">{nearSlot}</div>}
       </div>
+      {/* D4 (Round 83): Decide · Plan · For you */}
+      <UnderlineTabs
+        label="Decide and plan"
+        value={section}
+        onChange={setSection}
+        tabs={[
+          { id: 'decide', label: 'Decide' },
+          { id: 'plan', label: 'Plan' },
+          { id: 'foryou', label: 'For you' },
+        ]}
+      />
+      {section === 'decide' && (
+      <>
 
       <button className="primary" onClick={onSurprise}>
         <Dices size={20} /> Surprise us
@@ -261,7 +278,7 @@ export function DecideTab({
             setQuick(true)
           }}
         >
-          ⏱️ Decide in 60s
+          <Timer size={16} aria-hidden="true" /> Decide in 60s
         </button>
         <CravingButton groupId={groupId} className="!px-3 text-sm" />
       </div>
@@ -305,7 +322,7 @@ export function DecideTab({
             }}
           >
             <span className="category-emoji" aria-hidden="true">
-              💘
+              <Heart size={26} />
             </span>
             <span className="min-w-0">
               <span className="block font-serif text-2xl font-bold">Decide together</span>
@@ -323,18 +340,24 @@ export function DecideTab({
             }}
           >
             <span className="category-emoji" aria-hidden="true">
-              🚶
+              <Footprints size={24} />
             </span>
             <span className="block font-bold">Food crawl</span>
           </button>
           <button className="category-card" onClick={openDiscover}>
             <span className="category-emoji" aria-hidden="true">
-              🔭
+              <Telescope size={24} />
             </span>
             <span className="block font-bold">Discover nearby</span>
           </button>
         </div>
       )}
+      {/* U1 (Round 82): find a dish across Crumbs */}
+      <DishFinder supabase={supabase} demo={demo} />
+      </>
+      )}
+      {section === 'plan' && (
+      <>
       {decide?.enabled && (
         <PlansCard
           store={decide}
@@ -390,7 +413,21 @@ export function DecideTab({
           names={names}
         />
       )}
-
+      <ChallengesCard places={allPlaces} />
+      {(decide?.enabled || demo) && groupId && (
+        <GroupGoalsCard
+          groupId={groupId}
+          places={allPlaces}
+          meals={meals}
+          supabase={supabase}
+          demo={demo}
+          year={new Date().getFullYear()}
+        />
+      )}
+      </>
+      )}
+      {section === 'foryou' && (
+      <>
       {!places.length && (
         <div className="empty">
           <Sparkles className="mx-auto text-primary" />
@@ -415,7 +452,7 @@ export function DecideTab({
 
       {whileAgo.length > 0 && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">🕰️ Been a while</span>
+          <h3 className="card-heading">Been a while</h3>
           {whileAgo.slice(0, 3).map(({ place, last }) => (
             <button
               key={place.id}
@@ -436,7 +473,7 @@ export function DecideTab({
 
       {gems.length > 0 && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">💎 Hidden gem{gems.length > 1 ? 's' : ''}</span>
+          <h3 className="card-heading">Hidden gem{gems.length > 1 ? 's' : ''}</h3>
           {gems.slice(0, 2).map((place) => {
             const saved = gemCounts?.saved[place.restaurant_id!] ?? 1
             return (
@@ -462,8 +499,8 @@ export function DecideTab({
 
       {insights.picks.length > 0 && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">Next up from your list</span>
-          {insights.picks.map((place) => (
+          <h3 className="card-heading">Next up from your list</h3>
+          {(allPicks ? insights.picks : insights.picks.slice(0, 3)).map((place) => (
             <button
               key={place.id}
               className="surface-soft text-left"
@@ -477,6 +514,11 @@ export function DecideTab({
               </p>
             </button>
           ))}
+          {insights.picks.length > 3 && (
+            <button className="see-all" onClick={() => setAllPicks((v) => !v)}>
+              {allPicks ? 'Show less' : `See all ${insights.picks.length}`}
+            </button>
+          )}
         </div>
       )}
 
@@ -494,8 +536,8 @@ export function DecideTab({
 
       {insights.favourites.length > 0 && (
         <div className="surface flex flex-col gap-3">
-          <span className="tag w-fit">Group favourites</span>
-          {insights.favourites.map((place) => (
+          <h3 className="card-heading">Group favourites</h3>
+          {(allFavs ? insights.favourites : insights.favourites.slice(0, 3)).map((place) => (
             <button
               key={place.id}
               className="surface-soft flex items-center justify-between text-left"
@@ -505,15 +547,17 @@ export function DecideTab({
               <span className="font-serif text-xl text-primary">{show(placeAverage(place))}</span>
             </button>
           ))}
+          {insights.favourites.length > 3 && (
+            <button className="see-all" onClick={() => setAllFavs((v) => !v)}>
+              {allFavs ? 'Show less' : `See all ${insights.favourites.length}`}
+            </button>
+          )}
         </div>
       )}
 
-      {/* U1 (Round 82): find a dish across Crumbs */}
-      <DishFinder supabase={supabase} demo={demo} />
-
       {insights.topCuisines.length > 0 && (
         <div className="surface">
-          <span className="tag">Your tastes</span>
+          <h3 className="card-heading">Your tastes</h3>
           <p className="mt-3 text-sm">
             You lean towards{' '}
             <strong>{insights.topCuisines.map((item) => item.cuisine).join(', ')}</strong>.
@@ -523,7 +567,7 @@ export function DecideTab({
 
       {insights.disagreements.length > 0 && (
         <div className="surface">
-          <span className="tag">Hot takes</span>
+          <h3 className="card-heading">Hot takes</h3>
           <p className="mt-3 text-sm">
             You disagree on{' '}
             <strong>{insights.disagreements.map((place) => place.name).join(', ')}</strong>.
@@ -531,23 +575,11 @@ export function DecideTab({
         </div>
       )}
 
-      <ChallengesCard places={allPlaces} />
-      {(decide?.enabled || demo) && groupId && (
-        <GroupGoalsCard
-          groupId={groupId}
-          places={allPlaces}
-          meals={meals}
-          supabase={supabase}
-          demo={demo}
-          year={new Date().getFullYear()}
-        />
-      )}
-
       {aiIdeas && (
         <div className="surface flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <span className="tag">AI ideas</span>
+              <h3 className="card-heading">AI ideas</h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 Cuisines and dishes to try next. These are ideas, not verified restaurants.
               </p>
@@ -570,6 +602,8 @@ export function DecideTab({
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
       {page === 'together' && decide && (
         <Overlay label="Decide together" title="Decide together" onClose={() => setPage(null)}>

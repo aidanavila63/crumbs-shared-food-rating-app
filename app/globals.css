@@ -2375,3 +2375,234 @@ html[data-motion='off'] .wrap-emoji { animation: none; }
   width: 38px;
   height: 38px;
 }
+
+/* ================= Round 83: design pass ================= */
+.group-badge {
+  color: #fff;
+  font-family: var(--font-serif, serif);
+  font-weight: 700;
+}
+.group-badge-drawn svg {
+  display: block;
+}
+/* D1 one compact header line: badge + name (opens the switcher), ⋯ group menu, you. */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(14px + env(safe-area-inset-top)) 0 12px;
+}
+.app-header-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.app-header-group:active {
+  opacity: 0.7;
+}
+.app-header-group .group-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 1.1rem;
+}
+.app-header-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  text-align: left;
+  font-weight: 600;
+}
+.menu-row + .menu-row {
+  border-top: 1px solid var(--border);
+}
+.menu-row:active {
+  background: var(--muted);
+}
+.menu-row svg:first-child {
+  color: var(--primary);
+}
+/* Crumbs' own badges in the emoji picker */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+}
+.badge-grid button {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: 12px;
+  color: #fff;
+  border: 2px solid transparent;
+}
+.badge-grid button[aria-checked='true'] {
+  border-color: var(--foreground);
+}
+/* D3 underline tabs */
+.utabs {
+  position: relative;
+  display: flex;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.utabs::-webkit-scrollbar {
+  display: none;
+}
+.utab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 2px;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  transition: color 0.2s ease;
+}
+.utab-on {
+  color: var(--foreground);
+}
+.utab-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.utab-bar {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--primary);
+  transition:
+    transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .utab-bar {
+    transition: none;
+  }
+}
+/* D5 member rows: name, one tag, ratings count */
+.member-row {
+  padding: 12px 0;
+}
+.member-row + .member-row {
+  border-top: 1px solid var(--border);
+}
+/* D3 Filter pill + active filter chips */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+/* D2 plain place rows */
+.place-rows {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.place-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 0;
+  transition: opacity 0.15s ease;
+}
+.place-row + .place-row {
+  border-top: 1px solid var(--border);
+}
+.place-row:active {
+  opacity: 0.6;
+}
+.tag-outline {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+/* D4 plain card headings and "See all" */
+.card-heading {
+  font-family: var(--font-serif, serif);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.see-all {
+  align-self: flex-start;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.category-emoji svg {
+  display: block;
+}
+/* D6 the Map tab: edge to edge, and the page stays put (no scrolling, no rubber-banding, no
+   pull-to-refresh); only the map moves, when dragged inside it. */
+html.map-locked,
+html.map-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  height: 100%;
+}
+html.map-locked body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+.map-bleed {
+  margin-inline: -1rem;
+}
+@media (min-width: 640px) {
+  .map-bleed {
+    margin-inline: -2rem;
+  }
+}
+.map-bleed .map-fit {
+  border-radius: 0;
+}
+.map-bleed .map-frame {
+  border-radius: 0;
+}
