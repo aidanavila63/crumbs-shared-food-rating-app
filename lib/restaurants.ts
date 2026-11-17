@@ -8,6 +8,9 @@ export type Restaurant = {
   id: string
   source_key: string
   name: string
+  /** O10: the name in its own language, and other names it goes by (set by the owner) */
+  name_local?: string | null
+  aka?: string[] | null
   formatted_address: string | null
   latitude: number | null
   longitude: number | null

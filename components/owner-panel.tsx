@@ -437,6 +437,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
           </span>
         </div>
       </section>
+      <OwnerNames restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
 
       <OwnerSpecialHours
         restaurantId={r.id}
@@ -458,6 +459,83 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
     </div>
+  )
+}
+
+/** O10 (Round 82): the restaurant's name in its own language and other names people search for. */
+function OwnerNames({
+  restaurant,
+  supabase,
+  demo,
+  onSaved,
+}: {
+  restaurant: Restaurant
+  supabase: any
+  demo: boolean
+  onSaved: () => void
+}) {
+  const [local, setLocal] = useState(restaurant.name_local ?? '')
+  const [aka, setAka] = useState((restaurant.aka ?? []).join(', '))
+  const [busy, setBusy] = useState(false)
+  const others = aka
+    .split(',')
+    .map((n) => n.trim())
+    .filter(Boolean)
+  const dirty =
+    local.trim() !== (restaurant.name_local ?? '') ||
+    others.join('|') !== (restaurant.aka ?? []).join('|')
+  async function save() {
+    if (demo) return toast.success('Names saved')
+    setBusy(true)
+    const { error } = await supabase.rpc('set_restaurant_names', {
+      target: restaurant.id,
+      local_name: local.trim() || null,
+      other_names: others,
+    })
+    setBusy(false)
+    if (error)
+      return toast.error(
+        /set_restaurant_names|schema cache|PGRST202/i.test(error.message ?? '')
+          ? 'Other names aren’t switched on yet'
+          : error.message,
+      )
+    haptic('success')
+    toast.success('Names saved — people can find you by them now')
+    onSaved()
+  }
+  return (
+    <section className="surface flex flex-col gap-2">
+      <h3 className="font-serif text-xl font-bold">Other names</h3>
+      <p className="text-sm text-muted-foreground">
+        Your name in its own language shows under the name on your page. Both, and any other names
+        people know you by, work in Crumbs search.
+      </p>
+      <label className="text-sm font-semibold" htmlFor="owner-name-local">
+        Name in its own language
+      </label>
+      <input
+        id="owner-name-local"
+        className="field"
+        maxLength={160}
+        placeholder="e.g. 蘭州拉麵"
+        value={local}
+        onChange={(event) => setLocal(event.target.value)}
+      />
+      <label className="text-sm font-semibold" htmlFor="owner-aka">
+        Also known as (commas between names, up to 8)
+      </label>
+      <input
+        id="owner-aka"
+        className="field"
+        maxLength={700}
+        placeholder="e.g. Lanzhou Noodle, The noodle place"
+        value={aka}
+        onChange={(event) => setAka(event.target.value)}
+      />
+      <button className="primary" disabled={!dirty || busy || others.length > 8} onClick={save}>
+        {busy ? 'Saving…' : others.length > 8 ? 'Up to 8 other names' : 'Save names'}
+      </button>
+    </section>
   )
 }
 

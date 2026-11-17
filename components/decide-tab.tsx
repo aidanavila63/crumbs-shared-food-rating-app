@@ -27,6 +27,7 @@ import { mealTimeAt } from '@/lib/visit-rating'
 import { pickLearning } from '@/lib/decide-more'
 import { QuickDecide } from './quick-decide'
 import { locate, openLocationSetup } from '@/lib/location'
+import { DishFinder } from './dish-finder'
 
 type Idea = { title: string; why: string }
 
@@ -506,6 +507,9 @@ export function DecideTab({
           ))}
         </div>
       )}
+
+      {/* U1 (Round 82): find a dish across Crumbs */}
+      <DishFinder supabase={supabase} demo={demo} />
 
       {insights.topCuisines.length > 0 && (
         <div className="surface">

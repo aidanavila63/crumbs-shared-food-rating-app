@@ -132,6 +132,14 @@ export function RestaurantPage({
             </span>
           )}
         </h1>
+        {data.name_local && data.name_local !== data.name && (
+          <p className="mt-1 font-serif text-xl">
+            {data.name_local}
+          </p>
+        )}
+        {!!data.aka?.length && (
+          <p className="mt-1 text-sm text-muted-foreground">Also known as {data.aka.join(' · ')}</p>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">{metaLine(data) || 'On Crumbs'}</p>
         {closed && <p className="mt-2 text-sm font-semibold text-destructive">Permanently closed</p>}
         {!closed && data.maybe_closed && (

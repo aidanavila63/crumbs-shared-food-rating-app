@@ -9,6 +9,9 @@ import type { Hours } from './place-info.ts'
 export type PublicRestaurant = {
   id: string
   name: string
+  /** O10 (Round 82): the name in its own language, other names it goes by */
+  name_local?: string | null
+  aka?: string[] | null
   city: string | null
   slug: string | null
   claimed: boolean
