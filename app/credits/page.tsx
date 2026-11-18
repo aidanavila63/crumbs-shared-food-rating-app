@@ -16,6 +16,7 @@ Crumbs is built by Aidan Avila in Toronto with the help of a lot of other people
 ### Map and place data
 
 - **OpenStreetMap** — place details, search and "what's nearby" come partly from [OpenStreetMap](https://www.openstreetmap.org/copyright), © OpenStreetMap contributors, available under the Open Database Licence (ODbL). The fallback map uses OpenStreetMap's tiles.
+- **Overture Maps Foundation** — many restaurants in the Greater Toronto Area (names, addresses, phone numbers, websites, kinds of food) come from [Overture Maps](https://overturemaps.org) places data, available under the Community Data License Agreement – Permissive 2.0 (CDLA-Permissive-2.0). Overture gathers it from Meta, Microsoft, Foursquare Open Source Places (Apache 2.0), AllThePlaces (CC0) and others.
 - **Photon** by Komoot — search over OpenStreetMap data ([photon.komoot.io](https://photon.komoot.io)).
 - **Nominatim** and **Overpass** — OpenStreetMap's address lookup and data queries.
 - **Google Maps Platform** — the main map and some place search. Google's own credit shows on the map. Some place details still come from Google; Crumbs is replacing them with open data and what members add.

@@ -36,6 +36,14 @@ import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
 import { OwnerBooking, OwnerInsights, OwnerPosts, OwnerPoster, OwnerSpecialHours } from './owner-extras'
 import { OwnerMenuPdf } from './menu-pdf'
+import {
+  OwnerBigChange,
+  OwnerPriceChange,
+  OwnerTableQr,
+  OwnerTags,
+  OwnerTaps,
+  useOwnerTools,
+} from './owner-tools'
 
 const FIELDS: FactField[] = ['address', 'hours', 'phone', 'website', 'cuisine', 'status']
 const LABEL: Partial<Record<FactField, string>> = {
@@ -103,6 +111,7 @@ const demoRestaurant = (): Restaurant =>
     details_checked_at: null,
     places_count: 14,
     owner_verified: true,
+    owner_tags: ['Family-run', 'Since 2009'],
     sources: {
       address: 'owner',
       hours: 'owner',
@@ -254,6 +263,8 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
     demo ? { visits: 31, groups: 9, per_head: 26, takeout_share: 40 } : null,
   )
   const [editing, setEditing] = useState<FactField | null>(null)
+  // Round 89: tap counts and the page's link (for the table QR)
+  const tools = useOwnerTools(supabase, id, demo)
 
   async function reload() {
     if (demo) return
@@ -354,6 +365,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       </div>
 
       <OwnerInsights restaurantId={r.id} supabase={supabase} demo={demo} />
+      <OwnerTaps tools={tools} />
       <OwnerPosts restaurantId={r.id} supabase={supabase} demo={demo} />
       {suggestions.length > 0 && (
         <section className="surface flex flex-col gap-2">
@@ -438,6 +450,13 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         </div>
       </section>
       <OwnerNames restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
+      <OwnerTags
+        key={(r.owner_tags ?? []).join('|')}
+        restaurant={r}
+        supabase={supabase}
+        demo={demo}
+        onSaved={reload}
+      />
 
       <OwnerSpecialHours
         restaurantId={r.id}
@@ -455,9 +474,19 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         onMenu={setMenu}
         onChanged={reload}
       />
+      <OwnerPriceChange
+        restaurantId={id}
+        menu={menu}
+        supabase={supabase}
+        demo={demo}
+        onMenu={setMenu}
+        onChanged={reload}
+      />
       <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
+      <OwnerTableQr name={r.name} tools={tools} />
       <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
+      <OwnerBigChange restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
     </div>
   )
 }

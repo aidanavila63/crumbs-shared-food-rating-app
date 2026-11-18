@@ -311,69 +311,87 @@ export function OwnerInsights({
 
 /** #212 "Find us on Crumbs" poster: a QR code that adds your restaurant to the scanner's group.
  *  Brand look: cookie-cream page, the Crumbs wordmark, Fredoka lettering, the Crumbs QR (plum dots, cookie + crumbs). */
+/** Draws a printable A-size poster (brand look) with a QR code and downloads it as a PNG. */
+export async function downloadPoster(o: {
+  link: string
+  name: string
+  title: string
+  line1: string
+  line2: string
+  qrLabel: string
+  file: string
+}) {
+  const [{ brandQrSvg, svgDataUrl }, { wordmarkSvg }] = await Promise.all([
+    import('@/lib/brand-qr'),
+    import('./wordmark'),
+  ])
+  const load = (src: string) =>
+    new Promise<HTMLImageElement>((ok, bad) => {
+      const img = new Image()
+      img.onload = () => ok(img)
+      img.onerror = bad
+      img.src = src
+    })
+  const fam =
+    getComputedStyle(document.body).getPropertyValue('--font-fredoka').trim() ||
+    'Fredoka, system-ui, sans-serif'
+  const [qr, word] = await Promise.all([
+    brandQrSvg(o.link, { size: 1000, label: o.qrLabel }).then((svg) => load(svgDataUrl(svg))),
+    load(svgDataUrl(wordmarkSvg())),
+    ...['400', '500', '600'].map((w) => document.fonts.load(`${w} 48px ${fam}`).catch(() => [])),
+  ])
+  const W = 1240
+  const H = 1754
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#FBF4E8'
+  ctx.fillRect(0, 0, W, H)
+  // wordmark leads
+  const ww = 600
+  const wh = ww / (word.naturalWidth / word.naturalHeight || 4.87)
+  ctx.drawImage(word, (W - ww) / 2, 110, ww, wh)
+  const line = (text: string, weight: number, px: number, y: number, color: string, maxW = 1080) => {
+    let size = px
+    ctx.font = `${weight} ${size}px ${fam}`
+    while (ctx.measureText(text).width > maxW && size > 28) {
+      size -= 2
+      ctx.font = `${weight} ${size}px ${fam}`
+    }
+    ctx.fillStyle = color
+    ctx.textAlign = 'center'
+    ctx.fillText(text, W / 2, y)
+  }
+  line(o.name.slice(0, 40), 600, 92, 110 + wh + 150, '#1C2A23')
+  line(o.title, 500, 50, 110 + wh + 228, '#7B2D5B')
+  const q = 860
+  const qy = 110 + wh + 290
+  ctx.drawImage(qr, (W - q) / 2, qy, q, q)
+  line(o.line1, 500, 54, qy + q + 110, '#1C2A23')
+  line(o.line2, 400, 40, qy + q + 175, '#5F6E65')
+  const a = document.createElement('a')
+  a.href = canvas.toDataURL('image/png')
+  a.download = `${o.name.replace(/[^\w -]/g, '').trim() || 'crumbs'}-${o.file}.png`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 export function OwnerPoster({ restaurantId, name }: { restaurantId: string; name: string }) {
   const [busy, setBusy] = useState(false)
   async function make() {
     setBusy(true)
     try {
-      const link = `${siteOrigin()}/?add=${restaurantId}`
-      const [{ brandQrSvg, svgDataUrl }, { wordmarkSvg }] = await Promise.all([
-        import('@/lib/brand-qr'),
-        import('./wordmark'),
-      ])
-      const load = (src: string) =>
-        new Promise<HTMLImageElement>((ok, bad) => {
-          const img = new Image()
-          img.onload = () => ok(img)
-          img.onerror = bad
-          img.src = src
-        })
-      const fam =
-        getComputedStyle(document.body).getPropertyValue('--font-fredoka').trim() ||
-        'Fredoka, system-ui, sans-serif'
-      const [qr, word] = await Promise.all([
-        brandQrSvg(link, { size: 1000, label: `QR code that adds ${name} on Crumbs` }).then((svg) =>
-          load(svgDataUrl(svg)),
-        ),
-        load(svgDataUrl(wordmarkSvg())),
-        ...['400', '500', '600'].map((w) => document.fonts.load(`${w} 48px ${fam}`).catch(() => [])),
-      ])
-      const W = 1240
-      const H = 1754
-      const canvas = document.createElement('canvas')
-      canvas.width = W
-      canvas.height = H
-      const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#FBF4E8'
-      ctx.fillRect(0, 0, W, H)
-      // wordmark leads
-      const ww = 600
-      const wh = ww / (word.naturalWidth / word.naturalHeight || 4.87)
-      ctx.drawImage(word, (W - ww) / 2, 110, ww, wh)
-      const line = (text: string, weight: number, px: number, y: number, color: string, maxW = 1080) => {
-        let size = px
-        ctx.font = `${weight} ${size}px ${fam}`
-        while (ctx.measureText(text).width > maxW && size > 28) {
-          size -= 2
-          ctx.font = `${weight} ${size}px ${fam}`
-        }
-        ctx.fillStyle = color
-        ctx.textAlign = 'center'
-        ctx.fillText(text, W / 2, y)
-      }
-      line(name.slice(0, 40), 600, 92, 110 + wh + 150, '#1C2A23')
-      line('Find us on Crumbs', 500, 50, 110 + wh + 228, '#7B2D5B')
-      const q = 860
-      const qy = 110 + wh + 290
-      ctx.drawImage(qr, (W - q) / 2, qy, q, q)
-      line('Scan to save us to your group,', 500, 54, qy + q + 110, '#1C2A23')
-      line('rate your favourite dishes and see our specials.', 400, 40, qy + q + 175, '#5F6E65')
-      const a = document.createElement('a')
-      a.href = canvas.toDataURL('image/png')
-      a.download = `${name.replace(/[^\w -]/g, '').trim() || 'crumbs'}-poster.png`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
+      await downloadPoster({
+        link: `${siteOrigin()}/?add=${restaurantId}`,
+        name,
+        title: 'Find us on Crumbs',
+        line1: 'Scan to save us to your group,',
+        line2: 'rate your favourite dishes and see our specials.',
+        qrLabel: `QR code that adds ${name} on Crumbs`,
+        file: 'poster',
+      })
       haptic('success')
     } catch {
       toast.error('Could not make the poster')

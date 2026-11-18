@@ -641,9 +641,9 @@ export function OvertureCard({ supabase, demo }: { supabase: any; demo: boolean 
   async function merge() {
     setBusy(true)
     let total = { linked: 0, added: 0 }
-    // A few batches per tap, each a short database call.
-    for (let i = 0; i < 5; i += 1) {
-      const { data, error } = await supabase.rpc('merge_overture', { batch: 2000 })
+    // Several batches per tap, each a short database call (well under Supabase's time limit).
+    for (let i = 0; i < 10; i += 1) {
+      const { data, error } = await supabase.rpc('merge_overture', { batch: 1000 })
       if (error) {
         toast.error(error.message)
         break

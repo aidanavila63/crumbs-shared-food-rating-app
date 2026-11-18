@@ -59,6 +59,10 @@ export type PublicRestaurant = {
   good_to_know: Record<string, { verdict: boolean; owner: boolean | null }>
   tips: { kind: 'entrance' | 'parking' | 'storefront'; body: string | null; photo_path: string | null }[]
   posts: { kind: string; title: string; body: string | null; ends_on: string | null }[]
+  /** O14 (Round 89): the owner's own tags, shown as "Owner says" */
+  owner_tags?: string[] | null
+  /** O7 (Round 89): "we moved / have a new name / closed" (shown for 90 days, or while closed) */
+  owner_notice?: unknown
 }
 
 export type PublicProfile = {

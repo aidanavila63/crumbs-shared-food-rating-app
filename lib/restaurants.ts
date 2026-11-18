@@ -39,6 +39,9 @@ export type Restaurant = {
   osm_checked_at?: string | null
   /** An approved owner manages this page ("Verified by Owner"). */
   owner_verified?: boolean
+  /** Round 89: "Owner says" tags and the owner's "big change" notice */
+  owner_tags?: string[] | null
+  owner_notice?: unknown
 }
 
 export type FactField =

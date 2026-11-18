@@ -1,4 +1,4 @@
-// Round 79: puts overture-gta-food.csv (from gta-food.sql) into public.overture_places, 500 rows
+// Round 79: puts overture-gta-food.csv (from gta_food.py) into public.overture_places, 500 rows
 // at a time, then the Admin → Overture card (or merge_overture) merges them into restaurants.
 // Usage: NEXT_PUBLIC_SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/overture/load.mjs overture-gta-food.csv
 // Safe to run again (rows are upserted by Overture id; already-merged rows are left as they are).

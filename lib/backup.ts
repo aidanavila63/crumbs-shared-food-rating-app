@@ -33,6 +33,7 @@ export const BACKUP_TABLES = [
   'home_meals',
   'home_meal_shares',
   'shopping_items',
+  'restaurant_taps', // Round 89: owners' tap counts per day
   'home_meal_ratings',
   'home_meal_cooks',
   'recipe_saves',
@@ -88,6 +89,7 @@ export const NOT_BACKED_UP = [
   'client_errors', // the last 500 app errors
   'rate_counters', // this hour's write counts per person (rate limits)
   'job_runs', // when the scheduled jobs last ran (kept 60 days)
+  'restaurant_tap_seen', // Round 89: who already tapped today (hashed, kept two days)
   'overture_places', // Round 79: the Overture import's holding table (load it again from Overture)
 ] as const
 

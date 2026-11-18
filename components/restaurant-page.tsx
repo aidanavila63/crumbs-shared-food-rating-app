@@ -34,6 +34,8 @@ import {
   type PublicRestaurant,
 } from '@/lib/public-page'
 import { siteOrigin } from '@/lib/site'
+import { countTap } from '@/lib/taps'
+import { noticeHeadline, readNotice, type TapKind } from '@/lib/owner-tools'
 
 const TABS = ['Overview', 'Menu', 'Photos', 'Info'] as const
 const COURSE: Record<string, string> = {
@@ -90,7 +92,14 @@ export function RestaurantPage({
       }
     } catch {}
   }
-  const tile = (icon: React.ReactNode, label: string, props: { href?: string; onClick?: () => void }) => {
+  // O3 (Round 89): owner-verified pages count taps (totals only, for the owner)
+  const tap = (kind: TapKind) => countTap(data.id, kind, data.claimed)
+  const notice = readNotice(data.owner_notice)
+  const tile = (
+    icon: React.ReactNode,
+    label: string,
+    props: { href?: string; onClick?: () => void; tap?: TapKind },
+  ) => {
     const inner = (
       <>
         <span className="grid size-12 place-items-center rounded-2xl border border-border bg-muted text-primary">
@@ -101,7 +110,14 @@ export function RestaurantPage({
     )
     const cls = 'flex flex-col items-center text-center'
     return props.href ? (
-      <a key={label} className={cls} href={props.href} target={props.href.startsWith('tel:') ? undefined : '_blank'} rel="noopener noreferrer">
+      <a
+        key={label}
+        className={cls}
+        href={props.href}
+        target={props.href.startsWith('tel:') ? undefined : '_blank'}
+        rel="noopener noreferrer"
+        onClick={props.tap ? () => tap(props.tap!) : undefined}
+      >
         {inner}
       </a>
     ) : (
@@ -141,6 +157,15 @@ export function RestaurantPage({
           <p className="mt-1 text-sm text-muted-foreground">Also known as {data.aka.join(' · ')}</p>
         )}
         <p className="mt-1 text-sm text-muted-foreground">{metaLine(data) || 'On Crumbs'}</p>
+        {notice && (
+          <div className="mt-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+            <p>
+              <strong>📣 {noticeHeadline(notice, data.name, data.address)}</strong>
+            </p>
+            {notice.text && <p className="mt-0.5">“{notice.text}”</p>}
+            <p className="mt-0.5 text-xs text-muted-foreground">From the owner</p>
+          </div>
+        )}
         {closed && <p className="mt-2 text-sm font-semibold text-destructive">Permanently closed</p>}
         {!closed && data.maybe_closed && (
           <p className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
@@ -188,15 +213,24 @@ export function RestaurantPage({
       </div>
 
       <nav className={`grid ${reserve ? 'grid-cols-6' : 'grid-cols-5'} gap-1.5`} aria-label="Quick actions">
-        {tile(<Phone className="size-5" />, 'Call', tel ? { href: tel } : { onClick: () => toast('No phone number yet') })}
-        {reserve && tile(<CalendarCheck className="size-5" />, 'Reserve', { href: reserve })}
-        {tile(<Globe className="size-5" />, 'Website', site ? { href: site } : { onClick: () => toast('No website yet') })}
-        {tile(<MapPin className="size-5" />, 'Directions', { href: directionsUrl(data) })}
+        {tile(<Phone className="size-5" />, 'Call', tel ? { href: tel, tap: 'call' } : { onClick: () => toast('No phone number yet') })}
+        {reserve && tile(<CalendarCheck className="size-5" />, 'Reserve', { href: reserve, tap: 'book' })}
+        {tile(<Globe className="size-5" />, 'Website', site ? { href: site, tap: 'website' } : { onClick: () => toast('No website yet') })}
+        {tile(<MapPin className="size-5" />, 'Directions', { href: directionsUrl(data), tap: 'directions' })}
         {tile(<Share2 className="size-5" />, 'Share', { onClick: share })}
         {tile(<MoreHorizontal className="size-5" />, 'More', { onClick: () => setMore(true) })}
       </nav>
 
-      <StatusFilter items={tabs} value={tab} counts={null} onChange={setTab} label="Page sections" />
+      <StatusFilter
+        items={tabs}
+        value={tab}
+        counts={null}
+        onChange={(next) => {
+          if (next === 'Menu') tap('menu')
+          setTab(next)
+        }}
+        label="Page sections"
+      />
 
       {tab === 'Overview' && <Overview data={data} />}
       {tab === 'Menu' && <MenuTab data={data} />}
@@ -233,7 +267,7 @@ function Overview({ data }: { data: PublicRestaurant }) {
   const spend = spendLine(data.spend)
   const photos = data.tips.filter((t) => t.photo_path)
   const nothing =
-    !data.rating && !data.top_dishes.length && !chips.length && !busy && !spend && !data.posts.length
+    !data.rating && !data.top_dishes.length && !chips.length && !busy && !spend && !data.posts.length && !data.owner_tags?.length
   return (
     <div className="flex flex-col gap-4">
       {data.posts.length > 0 && (
@@ -246,6 +280,17 @@ function Overview({ data }: { data: PublicRestaurant }) {
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+      {!!data.owner_tags?.length && (
+        <Card title="Owner says">
+          <div className="flex flex-wrap gap-2">
+            {data.owner_tags.map((t) => (
+              <span key={t} className="tag">
+                {t}
+              </span>
+            ))}
+          </div>
         </Card>
       )}
       {data.known_for.length > 0 && (
@@ -349,7 +394,7 @@ function Overview({ data }: { data: PublicRestaurant }) {
   )
 }
 
-function MenuTab({ data }: { data: PublicRestaurant }) {
+export function MenuTab({ data }: { data: PublicRestaurant }) {
   const sections = menuSections(data.menu)
   if (!sections.length)
     return (
