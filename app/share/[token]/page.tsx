@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
+import { SaveListButton } from '@/components/save-list-button'
 
 export const metadata: Metadata = {
   title: 'Shared list · Crumbs',
@@ -27,6 +28,20 @@ type SharedPlace = {
   price_level: number | null
   status: string
   avg: number | null
+  /** U11 (Round 95) */
+  lat?: number | null
+  lng?: number | null
+  website?: string | null
+  maps_url?: string | null
+  city?: string | null
+  slug?: string | null
+}
+
+/** A map link for one place: its Google Maps link, or a search for it. */
+function directions(place: SharedPlace) {
+  if (place.maps_url) return place.maps_url
+  const q = place.lat != null && place.lng != null ? `${place.lat},${place.lng}` : `${place.name} ${place.address ?? ''}`
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q.trim())}`
 }
 
 export default async function SharedListPage({ params }: { params: Promise<{ token: string }> }) {
@@ -51,6 +66,10 @@ export default async function SharedListPage({ params }: { params: Promise<{ tok
       <h1 className="font-serif text-4xl font-bold">
         {list.emoji} {list.name}
       </h1>
+      {/* U11 (Round 95): copy it into your own Crumbs (signs you in first if needed) */}
+      {list.places.length > 0 && (
+        <SaveListButton token={token} />
+      )}
       {list.places.length === 0 && (
         <p className="text-muted-foreground">Nothing on this list yet.</p>
       )}
@@ -70,6 +89,21 @@ export default async function SharedListPage({ params }: { params: Promise<{ tok
               ]
                 .filter(Boolean)
                 .join(' · ')}
+            </p>
+            <p className="mt-2 flex flex-wrap gap-3 text-sm font-semibold">
+              <a className="text-primary underline" href={directions(place)} target="_blank" rel="noopener noreferrer">
+                Directions
+              </a>
+              {place.website && (
+                <a className="text-primary underline" href={place.website} target="_blank" rel="noopener noreferrer nofollow">
+                  Website
+                </a>
+              )}
+              {place.city && place.slug && (
+                <a className="text-primary underline" href={`/r/${place.city}/${place.slug}`}>
+                  On Crumbs
+                </a>
+              )}
             </p>
           </div>
           {place.avg !== null && (

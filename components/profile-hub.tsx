@@ -1,4 +1,5 @@
 'use client'
+import { ManagerInvites } from './owner-team'
 import { useMemo, useRef, useState } from 'react'
 import { listEmoji } from '@/lib/group-look'
 import dynamic from 'next/dynamic'
@@ -233,6 +234,8 @@ export function ProfileHub({
                 <p className="text-sm text-muted-foreground">{group.name}</p>
               )}
             </div>
+            {/* O6 (Round 95): invites to help run a restaurant page */}
+            <ManagerInvites supabase={settings.supabase} demo={settings.demo} />
             <div className="hub-grid">
               {buttons.map((button, index) => (
                 <button

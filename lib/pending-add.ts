@@ -26,3 +26,26 @@ export function takePendingAdd(now = Date.now()): string | null {
 }
 
 export const addLink = (restaurantId: string) => `/?add=${encodeURIComponent(restaurantId)}`
+
+// U11 (Round 95): the same for "Save to my Crumbs" on a shared list page (?addlist=<token>).
+const LIST_KEY = 'crumbs-pending-list'
+const TOKEN = /^[a-f0-9]{16,128}$/
+
+export function rememberPendingList(token: string) {
+  if (!TOKEN.test(token)) return
+  try {
+    localStorage.setItem(LIST_KEY, JSON.stringify({ token, at: Date.now() }))
+  } catch {}
+}
+
+export function takePendingList(now = Date.now()): string | null {
+  try {
+    const raw = localStorage.getItem(LIST_KEY)
+    if (!raw) return null
+    localStorage.removeItem(LIST_KEY)
+    const { token, at } = JSON.parse(raw) as { token: string; at: number }
+    return TOKEN.test(token) && now - at < HOUR ? token : null
+  } catch {
+    return null
+  }
+}

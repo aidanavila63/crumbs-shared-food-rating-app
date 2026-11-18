@@ -233,6 +233,8 @@ export type List = {
   trip_city?: string | null
   starts_on?: string | null
   ends_on?: string | null
+  /** U10 (Round 95): the trip's currency (ISO code, e.g. EUR) */
+  currency?: string | null
 }
 
 const demo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'

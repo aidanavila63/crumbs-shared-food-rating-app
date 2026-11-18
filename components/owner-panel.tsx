@@ -36,8 +36,11 @@ import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
 import { OwnerBooking, OwnerInsights, OwnerPosts, OwnerPoster, OwnerSpecialHours } from './owner-extras'
 import { OwnerMenuPdf } from './menu-pdf'
+import { OwnerTeam } from './owner-team'
+import { OwnerHeadsUps } from './plan-headsup'
 import {
   OwnerBigChange,
+  OwnerPastePrices,
   OwnerPriceChange,
   OwnerSiteBadge,
   OwnerTableQr,
@@ -350,7 +353,8 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
   if (!r) return <div className="skeleton h-40" />
   const utc = (r.opening_hours as Hours | null)?.utc ?? localUtcOffset()
   return (
-    <div className="stagger flex flex-col gap-4">
+    // O12 (Round 95): two columns on a computer (.owner-wide in polish.css)
+    <div className="owner-wide stagger flex flex-col gap-4">
       <div className="surface flex flex-col gap-1">
         <VerifiedBadge />
         <p className="text-sm text-muted-foreground">
@@ -367,6 +371,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
 
       <OwnerInsights restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerTaps tools={tools} />
+      <OwnerHeadsUps restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPosts restaurantId={r.id} supabase={supabase} demo={demo} />
       {suggestions.length > 0 && (
         <section className="surface flex flex-col gap-2">
@@ -483,12 +488,14 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
         onMenu={setMenu}
         onChanged={reload}
       />
+      <OwnerPastePrices restaurantId={id} menu={menu} supabase={supabase} demo={demo} onChanged={reload} />
       <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
-      <OwnerTableQr name={r.name} tools={tools} />
+      <OwnerTableQr name={r.name} tools={tools} restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
       <OwnerSiteBadge name={r.name} tools={tools} />
       <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
       <OwnerBigChange restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
+      <OwnerTeam restaurantId={r.id} name={r.name} supabase={supabase} demo={demo} onLeft={() => window.location.reload()} />
     </div>
   )
 }

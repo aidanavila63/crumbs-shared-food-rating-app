@@ -30,7 +30,8 @@ import { PlaceCard, placeAverage } from './place-card'
 import { WelcomeCard } from './welcome-card'
 import { MapsProvider } from './maps-provider'
 import { notifyMates } from '@/lib/push'
-import { takePendingAdd } from '@/lib/pending-add'
+import { takePendingAdd, takePendingList } from '@/lib/pending-add'
+import { askConfirm } from '@/lib/ask'
 import { HoursRefresher } from './place-hours'
 import { maskRatings, mergeMasked } from '@/lib/place-info'
 import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
@@ -782,6 +783,29 @@ function CrumbsShell() {
         } catch (error: any) {
           toast.error(error?.message || 'Could not add it')
         }
+      })()
+      return
+    }
+    // U11 (Round 95): "Save to my Crumbs" on a shared list page
+    const pendingList = takePendingList()
+    const addList = params.get('addlist') ?? pendingList
+    if (addList && /^[a-f0-9]{16,128}$/.test(addList)) {
+      params.delete('addlist')
+      const rest = params.toString()
+      window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+      if (data.demo) return
+      ;(async () => {
+        if (!(await askConfirm(`Save this list (and its places) to ${data.group!.name}?`, { confirm: 'Save' }))) return
+        const { data: copied, error } = await data.supabase.rpc('copy_shared_list', {
+          share_token: addList,
+          target_group: data.group!.id,
+        })
+        if (error)
+          return toast.error(/copy_shared_list|schema cache|PGRST202/i.test(error.message ?? '') ? 'Saving shared lists isn’t switched on yet' : error.message)
+        toast.success(
+          `Saved “${copied?.name ?? 'the list'}” — ${copied?.added ?? 0} new place${copied?.added === 1 ? '' : 's'}${copied?.reused ? `, ${copied.reused} you already had` : ''}`,
+        )
+        data.load().catch(() => {})
       })()
       return
     }
@@ -1780,6 +1804,11 @@ function CrumbsShell() {
           onMealAdded={(meal) => data.setHomeMeals([meal, ...data.homeMeals])}
           onOpenPlace={(p) => setSelected(p)}
           onPlaceAdded={(p) => data.setPlaces((current) => [p, ...current])}
+          onMerged={(otherId) => {
+            data.setPlaces((current) => current.filter((item) => item.id !== otherId))
+            setSelected(null)
+            if (!data.demo) data.load().catch(() => {})
+          }}
           onClose={() => setSelected(null)}
           onUpdate={(place) => {
             data.setPlaces(

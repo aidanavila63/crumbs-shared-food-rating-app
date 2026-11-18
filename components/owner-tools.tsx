@@ -23,6 +23,10 @@ import type { MenuDish, Restaurant } from '@/lib/restaurants'
 import { downloadPoster } from './owner-extras'
 import { findOnOsm } from './place-search'
 import { badgeSnippet } from '@/lib/site-badge'
+import { menuDishes } from '@/lib/ocr-parse'
+import { MENU_THEMES } from '@/lib/menu-themes'
+import { PhotoButton } from './photo-button'
+import { dishKey } from '@/lib/restaurants'
 
 const notReady = (error: any, fn: string) =>
   new RegExp(`${fn}|schema cache|PGRST202`, 'i').test(error?.message ?? '')
@@ -82,8 +86,37 @@ export function OwnerTaps({ tools }: { tools: OwnerTools | null }) {
 }
 
 /** O1: a poster for the tables — scanning it opens just your menu. */
-export function OwnerTableQr({ name, tools }: { name: string; tools: OwnerTools | null }) {
+export function OwnerTableQr({
+  name,
+  tools,
+  restaurant,
+  supabase,
+  demo,
+  onSaved,
+}: {
+  name: string
+  tools: OwnerTools | null
+  restaurant?: Restaurant
+  supabase?: any
+  demo?: boolean
+  onSaved?: () => void
+}) {
   const [busy, setBusy] = useState(false)
+  // O15 (Round 95): the menu's look and your logo
+  const [theme, setTheme] = useState<string>(restaurant?.menu_theme ?? 'crumbs')
+  const [logo, setLogo] = useState<string | null>(restaurant?.logo_path ?? null)
+  async function saveLook(nextTheme: string, nextLogo: string | null) {
+    setTheme(nextTheme)
+    setLogo(nextLogo)
+    if (demo || !restaurant) return true
+    const { error } = await supabase.rpc('owner_set_menu_look', { target: restaurant.id, theme: nextTheme, logo: nextLogo })
+    if (error) {
+      toast.error(/owner_set_menu_look|schema cache|PGRST202/i.test(error.message ?? '') ? 'Menu looks aren’t switched on yet' : error.message)
+      return false
+    }
+    onSaved?.()
+    return true
+  }
   if (!tools?.city || !tools.slug) return null
   const link = `${siteOrigin()}${restaurantPath(tools.city, tools.slug)}/menu`
   async function make() {
@@ -114,7 +147,46 @@ export function OwnerTableQr({ name, tools }: { name: string; tools: OwnerTools 
         A QR for your tables. Scanning it opens just your menu and your posts — no app, no sign-in.
         It shows the menu you keep below.
       </p>
-      <a className="text-sm font-semibold text-primary underline" href={link} target="_blank" rel="noopener noreferrer">
+      {restaurant && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-semibold">Look</p>
+          {(['Cuisine', 'Style'] as const).map((group) => (
+            <div key={group} className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={`${group} looks`}>
+              {MENU_THEMES.filter((t) => t.group === group).map((t) => (
+                <button
+                  key={t.id}
+                  role="radio"
+                  aria-checked={theme === t.id}
+                  className={`chip chip-sm ${theme === t.id ? 'chip-active' : ''}`}
+                  onClick={() => saveLook(t.id, logo)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mr-1 inline-block size-3 rounded-full border border-black/10"
+                    style={{ background: t.accent }}
+                  />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          <PhotoButton
+            path={logo}
+            folder={restaurant.id}
+            supabase={supabase}
+            demo={!!demo}
+            label="Your logo"
+            aspect={1}
+            onChange={(path) => saveLook(theme, path)}
+          />
+        </div>
+      )}
+      <a
+        className="text-sm font-semibold text-primary underline"
+        href={restaurant ? `${link}?look=${theme}` : link}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         See what diners see
       </a>
       <button className="secondary flex items-center justify-center gap-2" disabled={busy} onClick={make}>
@@ -541,6 +613,88 @@ export function OwnerPriceChange({
             </button>
             <button className="primary flex-1" disabled={!valid || !affected.length || busy} onClick={apply}>
               {busy ? 'Changing…' : `Change ${affected.length} price${affected.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** O5 (Round 95): paste a price list ("Steak frites 32" a line) — prices change on dishes already on
+ *  your menu, new ones are added. */
+export function OwnerPastePrices({
+  restaurantId,
+  menu,
+  supabase,
+  demo,
+  onChanged,
+}: {
+  restaurantId: string
+  menu: MenuDish[]
+  supabase: any
+  demo: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const lines = text.trim() ? menuDishes(text) : []
+  const known = new Map(menu.map((d) => [dishKey(d.name), d]))
+  const changes = lines.filter((l) => known.has(dishKey(l.name)))
+  const fresh = lines.filter((l) => !known.has(dishKey(l.name)))
+  async function apply() {
+    if (!lines.length) return
+    if (demo) return toast('Not available in demo mode')
+    setBusy(true)
+    const { data, error } = await supabase.rpc('owner_paste_prices', {
+      target: restaurantId,
+      items: lines.slice(0, 150).map((l) => ({ name: l.name, price: l.price === null ? null : String(l.price) })),
+    })
+    setBusy(false)
+    if (error)
+      return toast.error(/owner_paste_prices|schema cache|PGRST202/i.test(error.message ?? '') ? 'This isn’t switched on yet' : error.message)
+    haptic('success')
+    toast.success(`${data?.changed ?? changes.length} prices updated, ${data?.added ?? fresh.length} dishes added`)
+    setText('')
+    setOpen(false)
+    onChanged()
+  }
+  return (
+    <section className="surface flex flex-col gap-2">
+      <h3 className="font-serif text-xl font-bold">Paste a price list</h3>
+      {!open ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            One dish a line with its price (from your till, a spreadsheet or your website). Dishes already on your
+            menu get the new price; the rest are added.
+          </p>
+          <button className="secondary" onClick={() => setOpen(true)}>
+            Paste a list…
+          </button>
+        </>
+      ) : (
+        <>
+          <textarea
+            className="field"
+            rows={6}
+            aria-label="Price list"
+            placeholder={'Steak frites 32\nOnion soup ........ 12.50\nCrème brûlée $9'}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+          />
+          {lines.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Read {lines.length} line{lines.length === 1 ? '' : 's'}: {changes.length} price
+              {changes.length === 1 ? '' : 's'} to update, {fresh.length} new dish{fresh.length === 1 ? '' : 'es'}.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button className="secondary flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary flex-1" disabled={!lines.length || busy} onClick={apply}>
+              {busy ? 'Saving…' : 'Save prices'}
             </button>
           </div>
         </>

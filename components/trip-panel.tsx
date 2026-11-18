@@ -1,4 +1,5 @@
 'use client'
+import { CURRENCIES, money } from '@/lib/currency'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { List, Place } from '@/hooks/use-crumbs-data'
@@ -27,6 +28,7 @@ export function TripPanel({
   const [city, setCity] = useState(list.trip_city ?? '')
   const [starts, setStarts] = useState(list.starts_on ?? '')
   const [ends, setEnds] = useState(list.ends_on ?? '')
+  const [currency, setCurrency] = useState(list.currency ?? '')
   const summary = tripSummary(list, places)
 
   async function save(changes: Partial<List>) {
@@ -41,7 +43,13 @@ export function TripPanel({
   }
   const apply = async () => {
     if (starts && ends && ends < starts) return toast.error('The end date is before the start date')
-    await save({ trip_city: city.trim() || null, starts_on: starts || null, ends_on: ends || null })
+    await save({
+      trip_city: city.trim() || null,
+      starts_on: starts || null,
+      ends_on: ends || null,
+      // (only sent when set, so it works before the database has the column)
+      ...(currency || list.currency ? { currency: currency || null } : {}),
+    })
     setEditing(false)
   }
 
@@ -66,6 +74,17 @@ export function TripPanel({
             <input className="field mt-1" type="date" value={ends} onChange={(event) => setEnds(event.target.value)} />
           </label>
         </div>
+        <label className="text-xs text-muted-foreground">
+          Money on this trip in
+          <select className="field mt-1" value={currency} onChange={(event) => setCurrency(event.target.value)}>
+            <option value="">Canadian dollar (CAD)</option>
+            {CURRENCIES.filter(([code]) => code !== 'CAD').map(([code, label]) => (
+              <option key={code} value={code}>
+                {label} ({code})
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="flex gap-2">
           <button className="primary flex-1" onClick={apply}>
             Save trip
@@ -109,7 +128,7 @@ export function TripPanel({
           <p className="text-xs text-muted-foreground">places done</p>
         </div>
         <div className="surface !p-2">
-          <p className="font-serif text-2xl text-primary">${summary.spend.toFixed(summary.spend % 1 ? 2 : 0)}</p>
+          <p className="font-serif text-2xl text-primary">{money(summary.spend, list.currency)}</p>
           <p className="text-xs text-muted-foreground">spent</p>
         </div>
         <div className="surface !p-2">

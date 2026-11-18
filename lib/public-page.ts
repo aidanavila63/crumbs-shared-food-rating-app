@@ -63,6 +63,9 @@ export type PublicRestaurant = {
   owner_tags?: string[] | null
   /** O7 (Round 89): "we moved / have a new name / closed" (shown for 90 days, or while closed) */
   owner_notice?: unknown
+  /** O15 (Round 95) */
+  menu_theme?: string | null
+  logo_path?: string | null
 }
 
 export type PublicProfile = {

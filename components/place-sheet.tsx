@@ -43,6 +43,7 @@ import type { Hours } from '@/lib/place-info'
 import { useRestaurant } from '@/hooks/use-restaurant'
 import { usePublicRestaurant } from '@/hooks/use-public-restaurant'
 import { RestaurantPage } from './restaurant-page'
+import { MergePlaces } from './merge-places'
 import { ClaimForm } from './claim-form'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
@@ -374,11 +375,14 @@ export function PlaceSheet({
   onMealAdded,
   onOpenPlace,
   onPlaceAdded,
+  onMerged,
 }: {
   /** #189 open another place (Plan B) */
   onOpenPlace?: (place: Place) => void
   /** a place saved from Plan B's "not on your list yet" */
   onPlaceAdded?: (place: Place) => void
+  /** U13 (Round 95): another copy was merged into this place */
+  onMerged?: (otherId: string) => void
   /** #123 "Make it at home" made a home meal from a dish */
   onMealAdded?: (meal: HomeMeal) => void
   /** #19 AI menu photo reading (admin switch "menu_ai", admins only until switched on) */
@@ -1582,6 +1586,16 @@ export function PlaceSheet({
             </button>
           )}
         </div>
+        {onMerged && (
+          <MergePlaces
+            place={place}
+            places={allPlaces}
+            supabase={supabase}
+            demo={demo}
+            canMerge={(other) => mayDeletePlace(group, other, userId, me?.role)}
+            onMerged={onMerged}
+          />
+        )}
         {restaurant.enabled && restaurant.restaurant && (
           <button
             className="self-center text-xs text-muted-foreground underline"

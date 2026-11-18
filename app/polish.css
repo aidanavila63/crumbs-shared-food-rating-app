@@ -491,3 +491,24 @@ button.chip:active {
 .legal-text code {
   font-size: 0.85em;
 }
+
+/* O12 (Round 95): owner tools on a computer — a wider window, sections in two columns */
+@media (min-width: 1024px) {
+  .overlay-scroll:has(.owner-wide) {
+    max-width: 1180px;
+  }
+  .owner-wide {
+    display: block;
+    columns: 2;
+    column-gap: 20px;
+  }
+  .owner-wide > * {
+    break-inside: avoid;
+    margin-bottom: 16px;
+  }
+}
+
+/* O15 (Round 95): the table menu's heading font follows its look */
+.table-menu .font-serif {
+  font-family: var(--menu-font, inherit);
+}

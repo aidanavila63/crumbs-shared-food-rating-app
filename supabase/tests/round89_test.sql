@@ -117,7 +117,7 @@ commit;
 select 1 / (case when (select owner_notice is null from restaurants where id = :'r1') then 1 else 0 end) as cleared;
 -- an unclaimed page never shows tags or a notice
 update restaurants set owner_tags = array['Fake'], owner_notice = '{"kind": "closed"}' where id = :'r2';
-select 1 / (case when public.restaurant_owner_bits(:'r2') = '{"owner_tags": [], "owner_notice": null}'::jsonb then 1 else 0 end) as unclaimed_quiet;
+select 1 / (case when public.restaurant_owner_bits(:'r2') @> '{"owner_tags": [], "owner_notice": null}'::jsonb then 1 else 0 end) as unclaimed_quiet;
 
 -- tidy up
 delete from restaurant_slugs where restaurant_id in (:'r1', :'r2');

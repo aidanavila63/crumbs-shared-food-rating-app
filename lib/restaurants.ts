@@ -42,6 +42,9 @@ export type Restaurant = {
   /** Round 89: "Owner says" tags and the owner's "big change" notice */
   owner_tags?: string[] | null
   owner_notice?: unknown
+  /** O15 (Round 95): the table menu's look and the logo */
+  menu_theme?: string | null
+  logo_path?: string | null
 }
 
 export type FactField =

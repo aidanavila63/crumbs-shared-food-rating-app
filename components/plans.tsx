@@ -8,6 +8,7 @@ import type { DecideStore, Plan, Rsvp } from '@/hooks/use-decide'
 import { bookingText, didYouGo, goodPickAsks, planIcs } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
 import { DayPoll } from './day-poll'
+import { PlanHeadsUp } from './plan-headsup'
 import { PlanB } from './plan-b'
 import { askConfirm } from '@/lib/ask'
 
@@ -348,6 +349,8 @@ function PlanCard({
           )
         })}
       </div>
+      {/* O11 (Round 95): heads-up to the restaurant */}
+      <PlanHeadsUp plan={plan} restaurantId={place?.restaurant_id} supabase={store.supabase} demo={store.demo} />
       {/* U17 (Round 93): pick-a-day poll */}
       <DayPoll
         plan={plan}
