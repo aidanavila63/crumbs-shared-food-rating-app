@@ -1390,6 +1390,11 @@ export function PlaceSheet({
           onUpdate={onUpdate}
         />
         <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
+        {place.heard_from && (
+          <p className="text-sm text-muted-foreground">
+            Heard about it from: <span className="text-foreground">{place.heard_from}</span>
+          </p>
+        )}
         <div className="flex flex-col gap-2">
           <h3 className="font-serif text-xl font-bold">Ratings</h3>
           {place.place_ratings.length ? (

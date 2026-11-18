@@ -21,15 +21,18 @@ export function PlaceEditor({
   demo: boolean
   onUpdate: (place: Place) => void
 }) {
-  useWantGoogle()
+  const [open, setOpen] = useState(false)
+  // E27: Google only once the form is open (or the place still needs its map pin)
+  useWantGoogle(open || place.latitude === null)
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
-  const [open, setOpen] = useState(false)
   const [name, setName] = useState(place.name)
   const [address, setAddress] = useState(place.formatted_address ?? '')
   const [cuisine, setCuisine] = useState(place.cuisine ?? '')
   const [price, setPrice] = useState<number | null>(place.price_level)
   const [tags, setTags] = useState((place.tags ?? []).join(', '))
+  // U6 (Round 87)
+  const [heard, setHeard] = useState(place.heard_from ?? '')
   const [busy, setBusy] = useState(false)
   // Keep the form in step with the place (partner edits, "Find on Google") while it's closed.
   useEffect(() => {
@@ -39,7 +42,8 @@ export function PlaceEditor({
     setCuisine(place.cuisine ?? '')
     setPrice(place.price_level)
     setTags((place.tags ?? []).join(', '))
-  }, [open, place.name, place.formatted_address, place.cuisine, place.price_level, place.tags])
+    setHeard(place.heard_from ?? '')
+  }, [open, place.name, place.formatted_address, place.cuisine, place.price_level, place.tags, place.heard_from])
 
   async function patch(changes: Partial<Place>) {
     const next = { ...place, ...changes }
@@ -66,6 +70,8 @@ export function PlaceEditor({
         .split(',')
         .map((tag) => tag.trim())
         .filter(Boolean),
+      // only sent once it has a value or had one (older databases don't have the column yet)
+      ...(heard.trim() || place.heard_from ? { heard_from: heard.trim().slice(0, 200) || null } : {}),
     })
     setBusy(false)
     if (ok) {
@@ -185,6 +191,14 @@ export function PlaceEditor({
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="Tags, comma separated (date night, patio)"
+          />
+          <input
+            className="field"
+            aria-label="Where you heard about it"
+            maxLength={200}
+            value={heard}
+            onChange={(e) => setHeard(e.target.value)}
+            placeholder="Where you heard about it (Maya’s story, blogTO, a link…)"
           />
           <button className="primary" disabled={busy} onClick={save}>
             {busy ? 'Saving…' : 'Save details'}

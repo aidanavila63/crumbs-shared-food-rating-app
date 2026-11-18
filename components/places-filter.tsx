@@ -6,6 +6,8 @@ import { haptic } from '@/lib/motion'
 import { Overlay } from './overlay'
 
 export type AreaOption = { key: string; name: string; shared?: boolean }
+export type { OpenAt } from '@/lib/open-at'
+import type { OpenAt } from '@/lib/open-at'
 
 export function FilterPill({
   active,
@@ -62,6 +64,11 @@ export function FilterSheet<S extends string, O extends string>({
   groupName,
   onClose,
   onReset,
+  factOptions = [],
+  facts = [],
+  onFacts,
+  openAt = null,
+  onOpenAt,
 }: {
   statuses: readonly S[]
   status: S
@@ -76,6 +83,13 @@ export function FilterSheet<S extends string, O extends string>({
   groupName: string
   onClose: () => void
   onReset: () => void
+  /** U3: Good to know details confirmed for at least one place here */
+  factOptions?: { key: string; label: string }[]
+  facts?: string[]
+  onFacts?: (keys: string[]) => void
+  /** U16 */
+  openAt?: OpenAt
+  onOpenAt?: (choice: OpenAt) => void
 }) {
   const choice = (on: boolean, label: string, pick: () => void, count?: number) => (
     <button
@@ -136,6 +150,54 @@ export function FilterSheet<S extends string, O extends string>({
                 {mine.map((a) => choice(area === a.key, `Near ${a.name}`, () => onArea(a.key)))}
               </div>
             )}
+          </div>
+        )}
+        {onOpenAt && (
+          <div className="flex flex-col gap-2">
+            <h3 className="font-semibold">Open</h3>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Open">
+              {choice(!openAt, 'Any time', () => onOpenAt(null))}
+              {choice(openAt === 'now', 'Now', () => onOpenAt('now'))}
+              {choice(openAt === 'tonight', '7 tonight', () => onOpenAt('tonight'))}
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="shrink-0">Or at</span>
+              <input
+                type="datetime-local"
+                className="field"
+                aria-label="Open at a time you pick"
+                value={openAt && openAt !== 'now' && openAt !== 'tonight' ? openAt : ''}
+                onChange={(event) => onOpenAt(event.target.value || null)}
+              />
+            </label>
+            {openAt && (
+              <p className="text-xs text-muted-foreground">Places without hours on Crumbs are left out.</p>
+            )}
+          </div>
+        )}
+        {onFacts && factOptions.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <h3 className="font-semibold">Good to know</h3>
+            <div className="flex flex-wrap gap-2" aria-label="Good to know">
+              {factOptions.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={facts.includes(f.key)}
+                  className={`chip ${facts.includes(f.key) ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    haptic('select')
+                    onFacts(facts.includes(f.key) ? facts.filter((k) => k !== f.key) : [...facts, f.key])
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Only details people confirmed (2 agreeing, or the owner). Always check with the restaurant
+              about allergies and diets.
+            </p>
           </div>
         )}
         <button type="button" className="primary" onClick={onClose}>

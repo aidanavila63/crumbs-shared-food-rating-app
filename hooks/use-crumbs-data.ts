@@ -68,6 +68,8 @@ export type Dish = {
   dish_ratings: Rating[]
 }
 export type Place = {
+  /** U6 (Round 87): where someone heard about it */
+  heard_from?: string | null
   id: string
   group_id: string
   name: string
@@ -179,7 +181,8 @@ export type Profile = {
   is_admin?: boolean | null
   /** trusted by an admin to build Crumbs' data: answers count straight away */
   is_builder?: boolean | null
-  notify?: Record<string, boolean> | null
+  /** on/off per kind, plus Round 87's muted: group ids and quiet: { from, to } hours */
+  notify?: Record<string, any> | null
   /** Runs a restaurant page as its verified owner (which one is never shown). */
   restaurant_owner?: boolean | null
   /** #47 copy my ratings to my other groups that saved the same place */

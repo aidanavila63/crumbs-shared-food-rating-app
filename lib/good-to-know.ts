@@ -19,6 +19,17 @@ export type AttrKey =
   | 'gluten_free_options'
   | 'halal_options'
   | 'parking_lot'
+  // Round 87 (U4)
+  | 'vegetarian_options'
+  | 'kosher_options'
+  | 'dog_friendly'
+  | 'wifi'
+  | 'outlets'
+  | 'tvs'
+  | 'big_groups'
+  | 'good_solo'
+  | 'takeout'
+  | 'delivery'
 
 export type Attr = {
   key: AttrKey
@@ -144,6 +155,23 @@ export const ATTRS: Attr[] = [
     emoji: '🅿️',
     group: 'Parking',
   },
+  // Round 87 (U4): more questions people asked for
+  {
+    key: 'vegetarian_options',
+    yes: 'Vegetarian options',
+    question: 'Good vegetarian options?',
+    emoji: '🥦',
+    group: 'Diet options',
+  },
+  { key: 'kosher_options', yes: 'Kosher options', question: 'Kosher options?', emoji: '✡️', group: 'Diet options' },
+  { key: 'dog_friendly', yes: 'Dogs welcome', question: 'Dogs welcome (patio counts)?', emoji: '🐕', group: 'Vibe & drinks' },
+  { key: 'wifi', yes: 'Wi-Fi', question: 'Free Wi-Fi?', emoji: '📶', group: 'Hanging out' },
+  { key: 'outlets', yes: 'Plugs to charge', question: 'Plugs to charge a phone or laptop?', emoji: '🔌', group: 'Hanging out' },
+  { key: 'tvs', yes: 'Games on TV', question: 'TVs showing games?', emoji: '📺', group: 'Hanging out' },
+  { key: 'big_groups', yes: 'Good for big groups', question: 'Good for a group of 8 or more?', emoji: '👥', group: 'Booking' },
+  { key: 'good_solo', yes: 'Good on your own', question: 'Comfortable eating alone (bar seats, counter)?', emoji: '🙋', group: 'Hanging out' },
+  { key: 'takeout', yes: 'Takeout', no: 'No takeout', question: 'Takeout?', emoji: '🥡', group: 'Getting food' },
+  { key: 'delivery', yes: 'Delivers', question: 'Delivers?', emoji: '🛵', group: 'Getting food' },
 ]
 
 export type AttrState = {
@@ -210,7 +238,53 @@ export function menuAgeMonths(
 
 /** Round 78: details that matter for allergies and diets. Reported ones are hidden until an admin
  * has looked, and every one shown carries the "confirm with the restaurant" line. */
-export const SENSITIVE_ATTRS: AttrKey[] = ['vegan_options', 'gluten_free_options', 'halal_options']
+export const SENSITIVE_ATTRS: AttrKey[] = [
+  'vegan_options',
+  'gluten_free_options',
+  'halal_options',
+  'vegetarian_options',
+  'kosher_options',
+]
+
+/** U3 (Round 87): the details worth filtering a list by (the rest are shown, not filtered on). */
+export const FILTER_ATTRS: AttrKey[] = [
+  'patio',
+  'takes_bookings',
+  'walk_ins',
+  'big_groups',
+  'good_solo',
+  'step_free',
+  'accessible_washroom',
+  'kids_menu',
+  'high_chairs',
+  'vegetarian_options',
+  'vegan_options',
+  'gluten_free_options',
+  'halal_options',
+  'kosher_options',
+  'dog_friendly',
+  'late_night',
+  'licensed',
+  'byob',
+  'wifi',
+  'outlets',
+  'tvs',
+  'takeout',
+  'delivery',
+  'parking_lot',
+]
+
+/** Places whose restaurant has every one of these confirmed (U3). */
+export function hasAllFacts(
+  restaurantId: string | null | undefined,
+  wanted: string[],
+  facts: Record<string, string[]> | null,
+) {
+  if (!wanted.length) return true
+  if (!restaurantId || !facts) return false
+  const got = facts[restaurantId] ?? []
+  return wanted.every((key) => got.includes(key))
+}
 export const isSensitive = (detail: string) =>
   SENSITIVE_ATTRS.includes(detail as AttrKey) || /^dish:.*:(diet|allergen|gluten|vegan|vegetarian|halal|nut)/.test(detail)
 

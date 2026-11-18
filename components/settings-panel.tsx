@@ -82,8 +82,11 @@ export function SettingsPanel({
   const [weatherOn, setWeatherOn] = useState(weatherNudgesOn)
   const [feedback, setFeedback] = useState('')
   const notify = profile?.notify ?? {}
+  const muted: string[] = Array.isArray(notify.muted) ? notify.muted : []
+  const quiet: { from: number; to: number } | null =
+    notify.quiet && typeof notify.quiet === 'object' && Number.isFinite(notify.quiet.from) ? notify.quiet : null
 
-  async function setNotify(key: string, on: boolean) {
+  async function setNotify(key: string, on: unknown) {
     if (!userId) return
     const next = { ...notify, [key]: on }
     onProfile({ notify: next })
@@ -317,6 +320,67 @@ export function SettingsPanel({
               />
             </div>
           ))}
+          {/* U5 (Round 87): mute this group, quiet hours */}
+          <div className="settings-row">
+            <span>
+              <span className="font-semibold">Mute {group.name}</span>
+              <span className="block text-sm text-muted-foreground">
+                Nothing from this group on your phone. You’ll still see everything in the app.
+              </span>
+            </span>
+            <Switch
+              label={`Mute ${group.name}`}
+              checked={muted.includes(group.id)}
+              onChange={(on) =>
+                setNotify('muted', on ? [...new Set([...muted, group.id])] : muted.filter((id) => id !== group.id))
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <span>
+              <span className="font-semibold">Quiet hours</span>
+              <span className="block text-sm text-muted-foreground">
+                No notifications between these times (Toronto time).
+              </span>
+            </span>
+            <div className="flex items-center gap-2 text-sm">
+              <select
+                className="field"
+                aria-label="Quiet from"
+                value={quiet ? String(quiet.from) : ''}
+                onChange={(event) =>
+                  setNotify(
+                    'quiet',
+                    event.target.value === '' ? null : { from: Number(event.target.value), to: quiet?.to ?? 7 },
+                  )
+                }
+              >
+                <option value="">Off</option>
+                {HOURS.map((h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+              {quiet && (
+                <>
+                  <span>to</span>
+                  <select
+                    className="field"
+                    aria-label="Quiet until"
+                    value={String(quiet.to)}
+                    onChange={(event) => setNotify('quiet', { from: quiet.from, to: Number(event.target.value) })}
+                  >
+                    {HOURS.map((h) => (
+                      <option key={h} value={h}>
+                        {hourLabel(h)}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -404,3 +468,6 @@ export function SettingsPanel({
     </div>
   )
 }
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`

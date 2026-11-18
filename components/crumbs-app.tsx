@@ -32,7 +32,7 @@ import { MapsProvider } from './maps-provider'
 import { notifyMates } from '@/lib/push'
 import { takePendingAdd } from '@/lib/pending-add'
 import { HoursRefresher } from './place-hours'
-import { maskRatings, mergeMasked } from '@/lib/place-info'
+import { maskRatings, mergeMasked, openStatus } from '@/lib/place-info'
 import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
@@ -45,7 +45,11 @@ import { resolveFrom, saveFrom, savedFrom, type FromChoice } from '@/lib/anchor'
 import { SignInForm } from './sign-in-form'
 import { Landing } from './landing'
 import { UnderlineTabs } from './underline-tabs'
+import { YoureHere } from './youre-here'
+import { WhatsNew } from './whats-new'
 import { FilterPill, FilterSheet } from './places-filter'
+import { openAtDate, openAtLabel, type OpenAt } from '@/lib/open-at'
+import { ATTRS, FILTER_ATTRS, hasAllFacts } from '@/lib/good-to-know'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
 import { ScaleContext } from './score-input'
@@ -405,6 +409,21 @@ function CrumbsShell() {
   const setSelected = useCallback((place: Place | null) => setSelectedId(place?.id ?? null), [])
   const [sort, setSort] = useState<'Newest' | 'Top rated' | 'Nearest' | 'A–Z'>('Newest')
   const [filtering, setFiltering] = useState(false)
+  // U3 / U16 (Round 87): filter by Good to know details and by "open at"
+  const [factKeys, setFactKeys] = useState<string[]>([])
+  const [openAt, setOpenAt] = useState<OpenAt>(null)
+  const [spaceFacts, setSpaceFacts] = useState<Record<string, string[]> | null>(null)
+  useEffect(() => {
+    const groupId = data.group?.id
+    if (!groupId || data.demo) return
+    let cancelled = false
+    data.supabase.rpc('space_facts', { target_group: groupId }).then(({ data: facts, error }: any) => {
+      if (!cancelled) setSpaceFacts(error ? null : (facts ?? {}))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data.group?.id, data.demo, data.supabase])
   const [quickLog, setQuickLog] = useState(false)
   // Only asks for location once you pick "Nearest"; falls back to the Home saved in Settings.
   const here = useUserLocation(sort === 'Nearest', { ask: true })
@@ -516,11 +535,14 @@ function CrumbsShell() {
   }, [view, area, deferredQuery, haystacks, inFilter])
   const filtered = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase()
+    const when = openAtDate(openAt)
     const list = view.filter(
       (place) =>
         (!area || inArea(place, area)) &&
         inFilter(place, filter) &&
-        (!needle || (haystacks.get(place.id) ?? '').includes(needle)),
+        (!needle || (haystacks.get(place.id) ?? '').includes(needle)) &&
+        hasAllFacts(place.restaurant_id, factKeys, spaceFacts) &&
+        (!when || openStatus(place.opening_hours, when)?.open === true),
     )
     if (sort === 'Top rated') {
       const score = new Map(list.map((place) => [place.id, placeAverage(place)]))
@@ -535,7 +557,7 @@ function CrumbsShell() {
       return [...list].sort((a, b) => km(a) - km(b))
     }
     return list
-  }, [view, filter, deferredQuery, sort, origin, area, haystacks, inFilter])
+  }, [view, filter, deferredQuery, sort, origin, area, haystacks, inFilter, factKeys, spaceFacts, openAt])
   // E10 (Round 77): long lists draw 60 cards at a time as you scroll.
   const { shown: shownPlaces, more: morePlaces, sentinel: moreSentinel, showAll: showAllPlaces } =
     useGrow(filtered)
@@ -551,12 +573,22 @@ function CrumbsShell() {
         ids.add(real.id)
     return ids
   }, [blind, data.places, userId])
-  const filtersOn = filter !== 'All' || !!areaChoice || query.trim() !== ''
+  const filtersOn =
+    filter !== 'All' || !!areaChoice || query.trim() !== '' || factKeys.length > 0 || !!openAt
+  const factOptions = useMemo(() => {
+    const seen = new Set(Object.values(spaceFacts ?? {}).flat())
+    return FILTER_ATTRS.filter((key) => seen.has(key) || factKeys.includes(key)).map((key) => ({
+      key,
+      label: ATTRS.find((a) => a.key === key)?.yes ?? key,
+    }))
+  }, [spaceFacts, factKeys])
   function clearFilters() {
     haptic('tap')
     setQuery('')
     setFilter('All')
     setAreaName(null)
+    setFactKeys([])
+    setOpenAt(null)
   }
   // Round 80 (#22): first run asks "just me" or "with other people". Just me makes My Crumbs, a
   // private space for one — open to anyone who's been let in, invite or not.
@@ -1216,6 +1248,11 @@ function CrumbsShell() {
                 </div>
               ) : (
                 <div key="places" className={`tab-pane tab-from-${subDirection} flex flex-col gap-4`}>
+                  {/* U2 (Round 87): you're standing at a saved place */}
+                  {!data.loading && (
+                    <YoureHere places={data.places} onOpen={setSelected} onLog={() => setQuickLog(true)} />
+                  )}
+                  {!data.loading && data.places.length > 0 && <WhatsNew />}
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Search
@@ -1330,7 +1367,13 @@ function CrumbsShell() {
                   )}
                   {/* D3 (Round 83, #309): one Filter pill; what's on shows as chips */}
                   <FilterPill
-                    active={(filter !== 'All' ? 1 : 0) + (sort !== 'Newest' ? 1 : 0) + (areaChoice ? 1 : 0)}
+                    active={
+                      (filter !== 'All' ? 1 : 0) +
+                      (sort !== 'Newest' ? 1 : 0) +
+                      (areaChoice ? 1 : 0) +
+                      factKeys.length +
+                      (openAt ? 1 : 0)
+                    }
                     onOpen={() => setFiltering(true)}
                     chips={[
                       ...(filter !== 'All'
@@ -1342,6 +1385,14 @@ function CrumbsShell() {
                       ...(areaChoice
                         ? [{ key: 'area', label: `Near ${areaChoice.name}`, onClear: () => setAreaName(null) }]
                         : []),
+                      ...(openAt
+                        ? [{ key: 'open', label: openAtLabel(openAt) ?? 'Open', onClear: () => setOpenAt(null) }]
+                        : []),
+                      ...factKeys.map((key) => ({
+                        key: `fact-${key}`,
+                        label: ATTRS.find((a) => a.key === key)?.yes ?? key,
+                        onClear: () => setFactKeys((keys) => keys.filter((k) => k !== key)),
+                      })),
                     ]}
                   />
                   {filtering && (
@@ -1357,6 +1408,11 @@ function CrumbsShell() {
                       area={areaChoice?.key ?? null}
                       onArea={setAreaName}
                       groupName={data.group.name}
+                      factOptions={factOptions}
+                      facts={factKeys}
+                      onFacts={spaceFacts ? setFactKeys : undefined}
+                      openAt={openAt}
+                      onOpenAt={setOpenAt}
                       onClose={() => setFiltering(false)}
                       onReset={() => {
                         clearFilters()
