@@ -483,6 +483,15 @@ export function HomeTab({
           supabase={supabase}
           demo={demo}
           onClose={() => setOpenId(null)}
+          onVersion={(made) => {
+            if (made.group_id === groupId) {
+              setMeals((current) => [made, ...current.filter((m) => m.id !== made.id)])
+              setOpenId(made.id)
+              toast.success('Your own version — change anything in Edit')
+            } else {
+              toast.success('Your own version is in My Crumbs — change anything you like there')
+            }
+          }}
           onRemoved={() => {
             const removed = open.id
             setOpenId(null)

@@ -6,9 +6,11 @@ import { toast } from 'sonner'
 import { photoUrl } from '@/lib/photos'
 import { haptic } from '@/lib/motion'
 import { RatingStars } from './rating-stars'
-import { Bookmark } from 'lucide-react'
+import { Bookmark, Copy } from 'lucide-react'
 import type { Ingredient } from '@/hooks/use-crumbs-data'
 import { ingredientText, stepsOf } from '@/lib/meals'
+import { creditLine } from '@/lib/recipe-versions'
+import { makeMyVersion } from './recipe-version'
 
 type Tip = { tip: string | null; score: number; by: string; mine: boolean }
 type Recipe = {
@@ -29,6 +31,12 @@ type Recipe = {
   cuisine?: string | null
   ingredients?: Ingredient[] | null
   saved?: boolean
+  /** Round 90: a version of someone's recipe */
+  based_on_name?: string | null
+  based_on_by?: string | null
+  servings?: number | null
+  prep_minutes?: number | null
+  cook_minutes?: number | null
 }
 
 const recipe = (r: Partial<Recipe> & Pick<Recipe, 'id' | 'name' | 'by'>): Recipe => ({
@@ -294,6 +302,11 @@ function RecipeCard({
             {recipe.dietary.length ? ` · ${recipe.dietary.join(', ')}` : ''}
             {recipe.spice ? ` · ${'🌶️'.repeat(recipe.spice)}` : ''}
           </span>
+          {recipe.based_on_name && (
+            <span className="block text-xs text-muted-foreground">
+              ↪ {creditLine(recipe.based_on_name, recipe.based_on_by)}
+            </span>
+          )}
         </span>
         <span className="shrink-0 text-right">
           <span className="block font-serif text-xl text-primary">
@@ -358,6 +371,15 @@ function RecipeCard({
                 ))}
             </div>
           )}
+          <button
+            className="secondary self-start !min-h-10 text-sm"
+            onClick={async () => {
+              const made = await makeMyVersion(supabase, demo, recipe)
+              if (made) toast.success('Your own version is in My Crumbs — change anything you like there')
+            }}
+          >
+            <Copy size={14} /> Make my own version
+          </button>
           {!recipe.mine && (
             <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-2">
               <RatingStars

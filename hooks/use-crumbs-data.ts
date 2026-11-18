@@ -172,6 +172,10 @@ export type HomeMeal = {
   servings?: number | null
   prep_minutes?: number | null
   cook_minutes?: number | null
+  /** Round 90: a version of someone's recipe — the credit (set by the database only) */
+  based_on?: string | null
+  based_on_name?: string | null
+  based_on_by?: string | null
   home_meal_ratings: HomeMealRating[]
   home_meal_cooks: HomeMealCook[]
 }

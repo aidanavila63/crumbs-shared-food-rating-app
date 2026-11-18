@@ -6,7 +6,7 @@
 // Round 81: a recipe belongs to whoever added it. Only they edit it; members of the groups it's
 // shared with read, rate and log it. "Who can see it" picks the groups (and everyone on Crumbs).
 import { useEffect, useState } from 'react'
-import { BookOpen, ChefHat, Pencil, Plus, ShoppingCart, X } from 'lucide-react'
+import { BookOpen, ChefHat, Copy, Pencil, Plus, ShoppingCart, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, HomeMeal, Ingredient, Place, Profile } from '@/hooks/use-crumbs-data'
 import { canEditMeal, sharedIn } from '@/lib/meal-sharing'
@@ -26,6 +26,8 @@ import {
 import { photoUrl } from '@/lib/photos'
 import { scaleIngredients } from '@/lib/recipe-tools'
 import { addToShoppingList, CookMode, ServingsStepper, timeText } from './recipe-extras'
+import { CreditLine, makeMyVersion, useRecipeCredit } from './recipe-version'
+import { isTwinError } from '@/lib/recipe-versions'
 import { RatingStars } from './rating-stars'
 import { PhotoButton } from './photo-button'
 import { ReactionBar } from './social'
@@ -60,6 +62,7 @@ export function MealSheet({
   onDelete,
   onRemoved,
   onRemoveCook,
+  onVersion,
 }: {
   meal: HomeMeal
   places: Place[]
@@ -80,6 +83,8 @@ export function MealSheet({
   onRemoved?: () => void
   /** take away one "we made it" entry logged by mistake */
   onRemoveCook: (cookId: string) => void
+  /** Round 90: "Make my own version" made a copy in My Crumbs */
+  onVersion?: (meal: HomeMeal) => void
 }) {
   const hasRecipe = !!(meal.ingredients?.length || meal.recipe || meal.recipe_url)
   const editable = demo || canEditMeal(meal, userId, groupId)
@@ -180,7 +185,8 @@ export function MealSheet({
     const { error } = await supabase.from('home_meals').update(changes).eq('id', meal.id)
     if (error) {
       onUpdate(before)
-      toast.error(error.message)
+      // Round 90: a near-copy of a recipe already on Crumbs can't go on Crumbs
+      toast.error(error.message, isTwinError(error.message) ? { duration: 9000 } : undefined)
       return false
     }
     return true
@@ -276,6 +282,19 @@ export function MealSheet({
   const factor = baseServings ? serves / baseServings : 1
   const shownIngredients = scaleIngredients(meal.ingredients ?? [], factor)
   const [cooking, setCooking] = useState(false)
+  // Round 90: whose recipe this is based on, and making your own version
+  const credit = useRecipeCredit(supabase, demo, meal, userId, names)
+  const [versioning, setVersioning] = useState(false)
+  async function version() {
+    setVersioning(true)
+    const made = await makeMyVersion(supabase, demo, meal, {
+      // (the demo has no My Crumbs: its copy goes in this group)
+      personalGroupId: groups.find((g) => isPersonal(g))?.id ?? (demo ? groupId : null),
+      userId: userId ?? (demo ? 'demo-you' : null),
+    })
+    setVersioning(false)
+    if (made) onVersion?.(made)
+  }
 
   return (
     <Sheet label={meal.name} onClose={onClose}>
@@ -294,6 +313,7 @@ export function MealSheet({
               edit it
             </p>
           )}
+          <CreditLine credit={credit} />
         </div>
         <button className="icon-btn" aria-label="Close" onClick={onClose}>
           ×
@@ -415,6 +435,17 @@ export function MealSheet({
                   <Pencil size={14} /> Add the recipe
                 </button>
               )}
+            </div>
+          )}
+          {hasRecipe && v4 && (
+            <div className="flex flex-col gap-1 border-t border-[var(--border)] pt-3">
+              <button className="secondary" disabled={versioning} onClick={version}>
+                <Copy size={16} /> {versioning ? 'Making it…' : 'Make my own version'}
+              </button>
+              <p className="text-xs text-muted-foreground">
+                A copy in My Crumbs you can change any way you like. It always says whose recipe
+                it’s based on.
+              </p>
             </div>
           )}
           {canTakeOut && (
