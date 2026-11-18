@@ -10,7 +10,7 @@
 // recorded (Admin → Last runs), and the weekly backup has its own scheduled job (vercel.json →
 // /api/backup, Mondays) so a slow day can't squeeze it out.
 // Without CRON_SECRET it only does the harmless wake-up read.
-import webpush from 'web-push'
+import { webpush } from '@/lib/web-push'
 import { createClient } from '@supabase/supabase-js'
 import { limitAlerts, type LimitReport } from '@/lib/limits'
 import { isMonthEnd, leftoverAi, processMenuQueue } from '@/lib/menu-queue'

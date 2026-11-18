@@ -1,4 +1,4 @@
-import webpush from 'web-push'
+import { webpush } from '@/lib/web-push'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'

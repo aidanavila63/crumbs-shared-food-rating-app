@@ -3,7 +3,7 @@
 ## Current state (Nov 17 — read this first)
 - `main` is live on Vercel with **Rounds 1–83**. Aidan applied `crumbs-rounds77-83.patch` and pushed on Nov 17 (7893900..a216922), ran all seven SQL files (Admin → Database updates: 28 of 28, newest `20261122_round83`) and tested everything on his phone: all good. A long group name ends in "…" in the header, as designed; he may want look-and-feel changes later.
 - **Dates:** Rounds 78–83 were all built on Nov 17. The SQL file names `20261118_round79` … `20261122_round83` (and the old "Nov 18–22" in their headings) are just an order, not real dates; the files keep those names because the database has recorded them.
-- **Dependabot (Nov 17):** Aidan merged #3 (actions/setup-node 7), #4 (actions/checkout 7), #5 (19 small package updates incl. Next 16.4.6, React 19.3.1) and #6 (@types/node 26). **#7 (web-push 4) is left open: its checks fail.** After the merges GitHub showed the `database` check failing on main: a test bug, not an app bug — fixed in Round 84 below.
+- **Dependabot (Nov 17):** Aidan merged #3 (actions/setup-node 7), #4 (actions/checkout 7), #5 (19 small package updates incl. Next 16.4.6, React 19.3.1) and #6 (@types/node 26). After the merges GitHub showed the `database` check failing on main: a test bug, not an app bug — fixed in Round 84 (pushed, checks green). **#7 (web-push 4) failed because of how the app imported web-push — fixed in Round 85; after it's pushed, ask Dependabot to rebase #7, then merge it once its checks are green.**
 - **Approved but not built yet** (design pass, third pass, fourth pass) is listed in "Approved, not built (Nov 12–15)" at the bottom; what Round 77 built is ticked off in its own entry.
 - **Decisions, the plan and Aidan's setup steps from Nov 11–12 are in "Decisions and plan (Nov 11–12)" at the bottom.**
 - The newest rounds are at the **bottom** of this file. The notes directly under this block are from the first session (Oct 21) and are history only.
@@ -928,3 +928,11 @@ After the Dependabot merges, every commit on `main` showed a red ✕: the `check
 - **No SQL to run, nothing changes in the app.**
 **Checks:** database suite 43 files pass with every SQL file run twice, on a brand-new Postgres 16, both with the new default time zone and in UTC; the old test fails in the far time zone (reproduced before the fix).
 **Not verified:** the GitHub run itself (it runs when this is pushed).
+
+## Round 85 - Ready for web-push 4 (Nov 17, Claude)
+Dependabot #7 (web-push 3.6.7 → 4.0.0) failed every check and its Vercel preview. Cause: web-push 4 is an ES module with **named exports only**; the two places that send phone notifications (`app/api/notify`, `app/api/daily`) did `import webpush from 'web-push'` (a default import). The webpack build only warned ("does not contain a default export") — on the live site notifications would have silently stopped; Turbopack (what Vercel and CI use) refuses to build.
+- New `lib/web-push.ts`: one import that works for both versions (version 3's default export, or version 4's named exports). Both routes use it. Same calls as before (`setVapidDetails`, `sendNotification`; errors still carry `statusCode`, so unsubscribed phones are still tidied up).
+- `tests/web-push.test.ts`: the functions are there and a VAPID setup with fresh keys is accepted — run with web-push 3.6.7 (installed) and with 4.0.0 (temporarily): both pass.
+- **This patch keeps web-push 3.6.7.** After it's pushed: on GitHub, comment `@dependabot rebase` on #7, wait for its checks to go green, then merge #7. **No SQL to run.**
+**Checks:** 222 unit tests; typecheck; eslint 0 errors (53 warnings); production build (webpack) real + demo with web-push 3 and with 4: no import warnings; demo click-through "All good" on the updated packages (Next 16.4.6 etc.).
+**Not verified:** a Turbopack build here (it can't fetch Google Fonts in this workspace — CI and Vercel will run it on #7); sending a real notification to a phone.
