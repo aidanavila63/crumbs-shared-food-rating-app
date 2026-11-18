@@ -35,6 +35,7 @@ export function settingsOf(group?: Pick<Group, 'settings'> | null): Required<Gro
     tags: Array.isArray(s.tags) && s.tags.length ? s.tags.slice(0, 16) : DEFAULT_TAGS,
     members_add_locations: !!s.members_add_locations,
     main_location: typeof s.main_location === 'string' ? s.main_location : null,
+    delete_rule: s.delete_rule === 'own' ? 'own' : 'anyone',
   }
 }
 
@@ -123,4 +124,16 @@ export function balancedAverage(ratings: Rating[], offsets: Record<string, numbe
     Math.min(5, Math.max(0.5, ratingPoints(rating) / 20 + (offsets[rating.user_id] ?? 0))),
   )
   return adjusted.reduce((a, b) => a + b, 0) / adjusted.length
+}
+
+/** Round 92 (U12): may this person delete this place? (The database checks the same.) */
+export function mayDeletePlace(
+  group: Pick<Group, 'settings' | 'created_by'> | null | undefined,
+  place: { created_by?: string | null },
+  userId: string | undefined,
+  role: string | null | undefined,
+) {
+  if (!userId) return false
+  if (settingsOf(group).delete_rule !== 'own') return true
+  return place.created_by === userId || role === 'owner' || role === 'admin' || group?.created_by === userId
 }

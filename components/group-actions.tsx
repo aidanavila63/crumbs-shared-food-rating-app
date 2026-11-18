@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   ChevronRight,
   Copy,
+  Download,
   Link2,
   MapPin,
   MoreHorizontal,
@@ -24,6 +25,7 @@ import { GroupSettingsCard } from './group-settings'
 import { GroupLocationsCard } from './group-locations'
 import { SharePosterCard } from './share-poster'
 import { LeaveGroup } from './group-ownership'
+import { exportName, placesCsv, placesKml } from '@/lib/place-export'
 
 export function GroupActions({
   group,
@@ -63,7 +65,7 @@ export function GroupActions({
 }) {
   const myRole = userId === group.created_by ? 'owner' : members.find((m) => m.id === userId)?.role
   const canManage = myRole === 'owner' || myRole === 'admin'
-  const [open, setOpen] = useState<'menu' | 'invite' | 'settings' | 'locations' | null>(null)
+  const [open, setOpen] = useState<'menu' | 'invite' | 'settings' | 'locations' | 'download' | null>(null)
   const [showQr, setShowQr] = useState(true)
   const [qr, setQr] = useState<string | null>(null)
   // Crumbs-style QR (plum dots, cookie in the middle, crumb trail). The QR library is only downloaded when
@@ -136,6 +138,7 @@ export function GroupActions({
                   onClick={() => setOpen('settings')}
                 />
               )}
+              <MenuRow icon={<Download size={18} />} label="Download our places" onClick={() => setOpen('download')} />
               <MenuRow
                 icon={<ArrowLeftRight size={18} />}
                 label="Switch, start or join a group"
@@ -158,6 +161,34 @@ export function GroupActions({
                 }}
               />
             )}
+          </div>
+        </Overlay>
+      )}
+      {open === 'download' && (
+        <Overlay label="Download our places" title="Download our places" onClose={() => setOpen('menu')}>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              {places.length} place{places.length === 1 ? '' : 's'} in {group.name}, made on this phone
+              from what’s here (ratings are the group’s averages; nobody’s private notes or amounts).
+            </p>
+            <button
+              className="secondary"
+              onClick={() => saveText(placesCsv(places), exportName(group.name, 'csv'), 'text/csv')}
+            >
+              <Download size={16} /> Spreadsheet (CSV)
+            </button>
+            <span className="-mt-2 text-xs text-muted-foreground">Opens in Excel, Numbers or Google Sheets.</span>
+            <button
+              className="secondary"
+              onClick={() =>
+                saveText(placesKml(group.name, places), exportName(group.name, 'kml'), 'application/vnd.google-earth.kml+xml')
+              }
+            >
+              <Download size={16} /> Map file (KML)
+            </button>
+            <span className="-mt-2 text-xs text-muted-foreground">
+              Import into Google My Maps or Google Earth. Places without a map pin are left out.
+            </span>
           </div>
         </Overlay>
       )}
@@ -279,4 +310,18 @@ function MenuRow({ icon, label, onClick }: { icon: React.ReactNode; label: strin
       <ChevronRight size={18} className="text-muted-foreground" aria-hidden="true" />
     </button>
   )
+}
+
+/** U14 (Round 92): hand the phone a file to save or share. */
+function saveText(text: string, name: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  haptic('success')
+  toast.success(`Saved ${name}`)
 }

@@ -1,5 +1,5 @@
 // U16 (Round 87): the "Open" filter on Places. Round 91 (Aidan: "7 tonight" was confusing):
-// "For dinner" = open at some point 5–10 pm, "Night out" = open at some point 11 pm–2 am.
+// "For dinner" = open at some point 5–10 pm, "Night out" = open at some point 9 pm–2 am (Aidan, Nov 18).
 import { openStatus, type Hours } from './place-info.ts'
 
 /** null = any time · 'now' · 'dinner' · 'late' · a time you pick ("2026-11-20T19:30") */
@@ -30,9 +30,9 @@ export function openAtTimes(choice: OpenAt, now = new Date()): Date[] {
     return halfHours(at(now, day, 17), at(now, day, 22), now)
   }
   if (choice === 'late') {
-    // tonight 11 pm–2 am; in the small hours, the rest of this one
+    // tonight 9 pm–2 am; in the small hours, the rest of this one
     const day = now.getHours() < 2 ? -1 : 0
-    return halfHours(at(now, day, 23), at(now, day + 1, 2), now)
+    return halfHours(at(now, day, 21), at(now, day + 1, 2), now)
   }
   const picked = new Date(choice)
   return Number.isNaN(picked.getTime()) ? [] : [picked]

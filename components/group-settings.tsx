@@ -324,6 +324,23 @@ export function GroupSettingsCard({
             </div>
           ))}
 
+          {!personal && (
+            <div className="settings-row">
+              <span>
+                <span className="font-semibold">Only who added a place can delete it</span>
+                <span className="block text-sm text-muted-foreground">
+                  Off: anyone in the group can delete a place. On: only the person who added it, and
+                  the group’s owner and admins.
+                </span>
+              </span>
+              <Switch
+                label="Only who added a place can delete it"
+                checked={s.delete_rule === 'own'}
+                onChange={(on) => setSetting({ delete_rule: on ? 'own' : 'anyone' })}
+              />
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
             <span className="font-semibold">Vibe tags</span>
             <span className="text-sm text-muted-foreground">One-tap tags on every place page.</span>

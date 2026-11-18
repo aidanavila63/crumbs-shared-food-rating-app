@@ -74,17 +74,17 @@ test('for dinner and night out check the whole window', async () => {
   // after 10 pm it means tomorrow's dinner
   assert.equal(openAtTimes('dinner', new Date('2026-11-18T22:30:00'))[0].getDate(), 19)
   const night = openAtTimes('late', noon)
-  assert.equal(night[0].getHours(), 23)
+  assert.equal(night[0].getHours(), 21)
   assert.equal(night.at(-1)!.getHours(), 2)
   // at 1 am, night out is the rest of tonight
   assert.equal(openAtTimes('late', new Date('2026-11-19T01:00:00'))[0].getHours(), 1)
-  // checked in this computer's own time zone: a place open 6–9 pm local fits dinner, not night out
+  // checked in this computer's own time zone: a place open 6–8 pm local fits dinner, not night out
   const local = -new Date('2026-11-18T12:00:00').getTimezoneOffset()
   const hours = {
     utc: local,
     periods: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
       o: [d, 18, 0] as [number, number, number],
-      c: [d, 21, 0] as [number, number, number],
+      c: [d, 20, 0] as [number, number, number],
     })),
   }
   assert.equal(openAtMatches(hours, 'dinner', noon), true)

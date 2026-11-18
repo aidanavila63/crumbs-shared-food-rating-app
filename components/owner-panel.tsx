@@ -39,6 +39,7 @@ import { OwnerMenuPdf } from './menu-pdf'
 import {
   OwnerBigChange,
   OwnerPriceChange,
+  OwnerSiteBadge,
   OwnerTableQr,
   OwnerTags,
   OwnerTaps,
@@ -484,6 +485,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       />
       <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerTableQr name={r.name} tools={tools} />
+      <OwnerSiteBadge name={r.name} tools={tools} />
       <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
       <OwnerBigChange restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />

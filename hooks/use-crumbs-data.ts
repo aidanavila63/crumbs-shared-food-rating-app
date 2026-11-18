@@ -70,6 +70,8 @@ export type Dish = {
 export type Place = {
   /** U6 (Round 87): where someone heard about it */
   heard_from?: string | null
+  /** who added it (Round 92: "only who added a place can delete it") */
+  created_by?: string | null
   id: string
   group_id: string
   name: string
@@ -114,6 +116,9 @@ export type GroupSettings = {
   members_add_locations?: boolean
   /** Round 77: the group location Decide, Tonight, Surprise and Explore measure from */
   main_location?: string | null
+  /** Round 92 (U12): who may delete places — everyone (default) or the person who added it,
+   *  the owner and admins */
+  delete_rule?: 'anyone' | 'own'
 }
 export type Group = {
   id: string

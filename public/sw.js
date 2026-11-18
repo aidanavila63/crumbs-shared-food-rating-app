@@ -1,6 +1,8 @@
 // Crumbs service worker: fast static assets + graceful offline shell.
 // Never caches API, auth, or cross-origin (Supabase / Google) requests.
-const VERSION = 'crumbs-v7'
+const VERSION = 'crumbs-v8'
+// U18 (Round 92): how many notifications came in since Crumbs was last open (the app icon's number)
+const BADGE = 'crumbs-badge'
 // Build files (/_next/static, names change every deploy) live in their own cache so the ones a new
 // build no longer uses can be cleared out (Round 74: they used to pile up on the phone forever).
 const STATIC = 'crumbs-static-v1'
@@ -25,7 +27,7 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys.filter((key) => key !== VERSION && key !== STATIC).map((key) => caches.delete(key)),
+          keys.filter((key) => key !== VERSION && key !== STATIC && key !== BADGE).map((key) => caches.delete(key)),
         ),
       )
       .then(() => self.clients.claim()),
@@ -111,13 +113,16 @@ self.addEventListener('push', (event) => {
     data = { ...data, ...event.data.json() }
   } catch {}
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      tag: data.tag,
-      data: { tag: data.tag },
-      icon: '/icon-192.png',
-      badge: '/icon.svg',
-    }),
+    Promise.all([
+      self.registration.showNotification(data.title, {
+        body: data.body,
+        tag: data.tag,
+        data: { tag: data.tag },
+        icon: '/icon-192.png',
+        badge: '/icon.svg',
+      }),
+      bumpBadge(),
+    ]),
   )
 })
 
@@ -139,3 +144,16 @@ self.addEventListener('notificationclick', (event) => {
     }),
   )
 })
+
+// U18 (Round 92): the number on the app icon. Counts notifications since Crumbs was last opened;
+// the app clears it when it comes on screen (components/sw-register.tsx).
+async function bumpBadge() {
+  try {
+    if (!self.navigator || !('setAppBadge' in self.navigator)) return
+    const cache = await caches.open(BADGE)
+    const hit = await cache.match('/__badge')
+    const count = (hit ? Number(await hit.text()) || 0 : 0) + 1
+    await cache.put('/__badge', new Response(String(count)))
+    await self.navigator.setAppBadge(count)
+  } catch {}
+}

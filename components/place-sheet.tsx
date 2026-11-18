@@ -27,6 +27,7 @@ import {
   inputValue,
   overallFromCategories,
   raterOffsets,
+  mayDeletePlace,
   settingsOf,
   type CategoryKey,
 } from '@/lib/ratings'
@@ -1575,9 +1576,11 @@ export function PlaceSheet({
           <button className="secondary" onClick={sharePlace}>
             Share
           </button>
-          <button className="secondary text-destructive" onClick={removePlace}>
-            Delete
-          </button>
+          {mayDeletePlace(group, place, userId, me?.role) && (
+            <button className="secondary text-destructive" onClick={removePlace}>
+              Delete
+            </button>
+          )}
         </div>
         {restaurant.enabled && restaurant.restaurant && (
           <button

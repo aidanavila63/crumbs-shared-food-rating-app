@@ -165,7 +165,7 @@ export function FilterSheet<S extends string, O extends string>({
               <p className="text-xs text-muted-foreground">
                 {openAt === 'dinner'
                   ? 'Open at some point between 5 and 10 pm.'
-                  : 'Open at some point between 11 pm and 2 am.'}
+                  : 'Open at some point between 9 pm and 2 am.'}
               </p>
             )}
             <label className="flex items-center gap-2 text-sm">

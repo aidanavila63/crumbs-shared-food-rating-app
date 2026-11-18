@@ -22,6 +22,7 @@ import {
 import type { MenuDish, Restaurant } from '@/lib/restaurants'
 import { downloadPoster } from './owner-extras'
 import { findOnOsm } from './place-search'
+import { badgeSnippet } from '@/lib/site-badge'
 
 const notReady = (error: any, fn: string) =>
   new RegExp(`${fn}|schema cache|PGRST202`, 'i').test(error?.message ?? '')
@@ -118,6 +119,36 @@ export function OwnerTableQr({ name, tools }: { name: string; tools: OwnerTools 
       </a>
       <button className="secondary flex items-center justify-center gap-2" disabled={busy} onClick={make}>
         <Download size={16} /> {busy ? 'Making it…' : 'Download table QR'}
+      </button>
+    </section>
+  )
+}
+
+/** O2 (Round 92): a "Rated on Crumbs" badge for your own website, linking to your Crumbs page. */
+export function OwnerSiteBadge({ name, tools }: { name: string; tools: OwnerTools | null }) {
+  if (!tools?.city || !tools.slug) return null
+  const path = restaurantPath(tools.city, tools.slug)
+  const code = badgeSnippet(siteOrigin(), path, name)
+  return (
+    <section className="surface flex flex-col gap-2">
+      <h3 className="font-serif text-xl font-bold">Badge for your website</h3>
+      <p className="text-sm text-muted-foreground">
+        Shows “Rated on Crumbs” with your score once 3 groups have rated you (until then, “Find us
+        on Crumbs”) and links to your Crumbs page. Paste the code into your website.
+      </p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`${path}/badge.svg`} alt={`${name} on Crumbs`} width={220} height={56} />
+      <textarea className="field font-mono text-xs" rows={4} readOnly value={code} aria-label="Badge code" />
+      <button
+        className="secondary"
+        onClick={() =>
+          navigator.clipboard
+            .writeText(code)
+            .then(() => toast.success('Code copied'))
+            .catch(() => toast.error('Couldn’t copy — select the code and copy it'))
+        }
+      >
+        Copy the code
       </button>
     </section>
   )
