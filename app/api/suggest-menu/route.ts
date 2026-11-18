@@ -3,11 +3,10 @@ import { overDailyLimit } from '@/lib/tier-limits'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
-import { flagAllows } from '@/lib/flags-server'
 import { RobotsBlockedError, readMenuText } from '@/lib/menu-fetch'
 import { menuFingerprint, siteKey } from '@/lib/menu-fingerprint'
 import { cachedMenu, saveMenu } from '@/lib/read-cache'
-import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { gate } from '@/lib/server-gate'
 import { keepErrors } from '@/lib/server-errors'
 
 export const maxDuration = 30
@@ -26,16 +25,15 @@ const schema = z.object({
 
 async function handlePOST(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase, { key: 'menu_import', off: 'Menu import is switched off for now' })
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   if (tooManyRequests(data.user.id))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },
       { status: 429 },
     )
-  if (!(await flagAllows(supabase, 'menu_import', data.user.id)))
-    return Response.json({ error: 'Menu import is switched off for now' }, { status: 403 })
   const capped = await overDailyLimit(supabase, data.user.id, 'menuImport')
   if (capped) return Response.json({ error: capped }, { status: 429 })
 

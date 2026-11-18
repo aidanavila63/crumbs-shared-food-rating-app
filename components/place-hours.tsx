@@ -5,6 +5,7 @@ import type { Place } from '@/hooks/use-crumbs-data'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { loadRestaurant, shareHours } from '@/lib/restaurants'
 import { takeAllowance } from '@/lib/allowance'
+import { useWantGoogle } from './maps-provider'
 import {
   hasGoogleId,
   hoursAreStale,
@@ -79,8 +80,9 @@ export function PlaceHours({
   /** #126 no hours yet: offer to add them (opens the edit form on Hours) */
   onAddHours?: () => void
 }) {
-  const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
+  useWantGoogle(!googleDown && hasGoogleId(place) && hoursAreStale(place))
+  const places = useMapsLibrary('places')
   const tried = useRef(false)
   useEffect(() => {
     if (tried.current || !places || googleDown || !hasGoogleId(place) || !hoursAreStale(place))
@@ -132,8 +134,13 @@ export function HoursRefresher({
   demo: boolean
   onPlace: (id: string, changes: Partial<Place>) => void
 }) {
-  const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
+  // E27: only load Google when a want-to-try place's hours are actually due a refresh.
+  useWantGoogle(
+    !googleDown &&
+      all.some((place) => place.status === 'Want to try' && hasGoogleId(place) && hoursAreStale(place)),
+  )
+  const places = useMapsLibrary('places')
   const done = useRef(false)
   useEffect(() => {
     if (done.current || !places || googleDown || !all.length) return

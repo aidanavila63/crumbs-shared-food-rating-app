@@ -3,15 +3,16 @@
 // copies to be rebuilt on the next visit, so the change shows straight away.
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { gate } from '@/lib/server-gate'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { keepErrors } from '@/lib/server-errors'
 
 async function handlePOST(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase)
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   if (tooManyRequests(`revalidate:${data.user.id}`, 30)) return Response.json({ ok: false }, { status: 429 })
   const body = await request.json().catch(() => ({}))
   if (body.kind === 'restaurant') revalidatePath('/r/[city]/[slug]', 'page')

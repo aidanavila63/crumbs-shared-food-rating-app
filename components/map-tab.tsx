@@ -15,6 +15,7 @@ import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { ROUGH, fixLocationAction, locate } from '@/lib/location'
+import { useWantGoogle } from './maps-provider'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -347,6 +348,7 @@ export function MapTab({
     return () => clearTimeout(timer)
   }, [apiKey, googleReady, chooseOsm, googleDown])
   const useOsm = chooseOsm || googleDown || !apiKey
+  useWantGoogle(!useOsm)
   function pickProvider(osm: boolean) {
     setChooseOsm(osm)
     try {

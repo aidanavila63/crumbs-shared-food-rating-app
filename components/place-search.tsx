@@ -9,6 +9,7 @@ import { findRestaurant, searchRestaurants, type Restaurant } from '@/lib/restau
 import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { isFoodPlace } from '@/lib/food-types'
 import { fixLocationAction, knownArea, locate, type LatLng } from '@/lib/location'
+import { useWantGoogle } from './maps-provider'
 
 export type FoundPlace = {
   google_place_id: string
@@ -169,6 +170,7 @@ export function PlaceSearch({
   placeholder?: string
   autoFocus?: boolean
 }) {
+  useWantGoogle()
   const places = useMapsLibrary('places')
   const here = useUserLocation(true)
   // Never search the whole world: without a current fix, use the last known area, home, or

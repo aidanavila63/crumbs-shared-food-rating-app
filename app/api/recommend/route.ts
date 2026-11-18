@@ -3,8 +3,7 @@ import { overDailyLimit } from '@/lib/tier-limits'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
-import { flagAllows } from '@/lib/flags-server'
-import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { gate } from '@/lib/server-gate'
 import { keepErrors } from '@/lib/server-errors'
 
 const schema = z.object({
@@ -21,16 +20,15 @@ const schema = z.object({
 
 async function handlePOST(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase, { key: 'ai_ideas', off: 'AI ideas are switched off for now' })
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   if (tooManyRequests(data.user.id))
     return Response.json(
       { error: 'Slow down a little and try again in a few minutes' },
       { status: 429 },
     )
-  if (!(await flagAllows(supabase, 'ai_ideas', data.user.id)))
-    return Response.json({ error: 'AI ideas are switched off for now' }, { status: 403 })
   const capped = await overDailyLimit(supabase, data.user.id, 'ai')
   if (capped) return Response.json({ error: capped }, { status: 429 })
 

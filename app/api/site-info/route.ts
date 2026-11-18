@@ -6,7 +6,7 @@ import { cleanWebsite } from '@/lib/osm'
 import { takeAllowance } from '@/lib/allowance'
 import { cachedSite, saveSite } from '@/lib/read-cache'
 import { siteKey } from '@/lib/menu-fingerprint'
-import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { gate } from '@/lib/server-gate'
 import { keepErrors } from '@/lib/server-errors'
 
 // Reads a restaurant's own website (only where its robots.txt allows) for hours, phone,
@@ -56,9 +56,10 @@ async function readSite(
 
 async function handleGET(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase)
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   const site = cleanWebsite(new URL(request.url).searchParams.get('url'))
   if (!site) return Response.json({ error: 'Need a website' }, { status: 400 })
   if (tooManyRequests(`site:${data.user.id}`, 40))
@@ -70,9 +71,10 @@ async function handleGET(request: Request) {
 /** Save what a restaurant's website says onto its shared profile (at most monthly). */
 async function handlePOST(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase)
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   if (tooManyRequests(`site-merge:${data.user.id}`, 20))
     return Response.json({ error: 'Slow down a little' }, { status: 429 })
   const { restaurantId, utc } = await request.json().catch(() => ({}))

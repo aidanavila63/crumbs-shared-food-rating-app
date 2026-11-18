@@ -12,6 +12,7 @@ import type { Place } from '@/hooks/use-crumbs-data'
 import { addFoundPlace, notYetSaved, type FoundSpot } from '@/lib/add-found'
 import { distanceKm } from '@/lib/stats'
 import { haptic } from '@/lib/motion'
+import { useWantGoogle } from './maps-provider'
 
 type LatLng = { lat: number; lng: number }
 
@@ -100,6 +101,7 @@ export function NearbyOffList({
   const [spots, setSpots] = useState<FoundSpot[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
+  useWantGoogle()
   const googlePlaces = useMapsLibrary('places')
   const googleDown = useGoogleDown()
   const [adding, setAdding] = useState<string | null>(null)

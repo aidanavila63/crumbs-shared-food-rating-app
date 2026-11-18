@@ -185,17 +185,6 @@ async function handlePOST(request: Request) {
       text = `${who} gave ${dish} ${value}/100 at ${place.name}`
   }
   if (!text) return Response.json({ sent: 0 })
-
-  let others: string[]
-  if (fixed) others = fixed.filter((id) => id !== me.id)
-  else {
-    const { data: members } = await supabase
-      .from('group_members')
-      .select('user_id')
-      .eq('group_id', groupId)
-    others = (members ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id)
-  }
-  if (only) others = others.filter((id: string) => only!.includes(id))
   // #73: skip people who switched this kind of notification off (column exists from v4).
   const kind =
     body.type === 'place_rating'
@@ -214,11 +203,33 @@ async function handlePOST(request: Request) {
   // access (which only reaches other people's keys before 20261114_audit_fixes.sql has run).
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const sender =
+  const service =
     serviceKey && projectUrl
       ? createServiceClient(projectUrl, serviceKey, { auth: { persistSession: false } })
-      : db
-  const sent = await deliver(sender, others, kind, text, tag)
+      : null
+  // E25 (Round 86): with the server key, one database call finds the phones to send to (the group,
+  // or the people named, minus you and anyone who switched this kind off).
+  if (service) {
+    const { data: targets, error } = await service.rpc('push_targets', {
+      kind,
+      target_group: fixed ? null : groupId,
+      people: fixed ?? only,
+      sender: me.id,
+    })
+    if (!error) return Response.json({ sent: await send(service, targets ?? [], text, tag) })
+  }
+  // Older database or no server key: the old way (members, then settings, then phones).
+  let others: string[]
+  if (fixed) others = fixed.filter((id) => id !== me.id)
+  else {
+    const { data: members } = await supabase
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId)
+    others = (members ?? []).map((row: any) => row.user_id).filter((id: string) => id !== me.id)
+  }
+  if (only) others = others.filter((id: string) => only!.includes(id))
+  const sent = await deliver(service ?? db, others, kind, text, tag)
   return Response.json({ sent })
 }
 
@@ -236,7 +247,17 @@ async function deliver(db: any, ids: string[], kind: string, text: string, tag: 
     .from('push_subscriptions')
     .select('endpoint,p256dh,auth')
     .in('user_id', others)
+  return send(db, subs ?? [], text, tag)
+}
 
+/** Send to these phones; tidy up the ones that unsubscribed. */
+async function send(
+  db: any,
+  subs: { endpoint: string; p256dh: string; auth: string }[],
+  text: string,
+  tag: string,
+) {
+  if (!subs.length) return 0
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'mailto:crumbs.foodapp@gmail.com',
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
@@ -245,7 +266,7 @@ async function deliver(db: any, ids: string[], kind: string, text: string, tag: 
   const payload = JSON.stringify({ title: 'Crumbs', body: text, tag })
   let sent = 0
   await Promise.all(
-    (subs ?? []).map(async (sub: any) => {
+    subs.map(async (sub: any) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },

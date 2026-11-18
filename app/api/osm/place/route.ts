@@ -1,15 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { tooManyRequests } from '@/lib/rate-limit'
 import { OSM_UA, cleanWebsite, cuisineFromTag } from '@/lib/osm'
-import { isLetIn, NOT_LET_IN } from '@/lib/let-in'
+import { gate } from '@/lib/server-gate'
 import { keepErrors } from '@/lib/server-errors'
 
 // Best-effort extra details (website, cuisine) for one picked OpenStreetMap place.
 async function handleGET(request: Request) {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) return Response.json({ error: 'Please sign in first' }, { status: 401 })
-  if (!(await isLetIn(supabase, data.user.id))) return Response.json(NOT_LET_IN, { status: 403 })
+  // E17 (Round 86): signed in + let in (+ switch) in one go
+  const pass = await gate(supabase)
+  if ('response' in pass) return pass.response
+  const data = { user: { id: pass.userId } }
   if (tooManyRequests(`osm-place:${data.user.id}`, 30))
     return Response.json({ error: 'Too many requests, wait a moment' }, { status: 429 })
 

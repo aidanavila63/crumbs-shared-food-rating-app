@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type { Place } from '@/hooks/use-crumbs-data'
 import { findOnGoogle, findOnOsm } from './place-search'
 import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
+import { useWantGoogle } from './maps-provider'
 
 const PRICES = [1, 2, 3, 4]
 
@@ -20,6 +21,7 @@ export function PlaceEditor({
   demo: boolean
   onUpdate: (place: Place) => void
 }) {
+  useWantGoogle()
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
   const [open, setOpen] = useState(false)

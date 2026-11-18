@@ -5,6 +5,7 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import { useGoogleDown, markGoogleDown } from '@/lib/google-status'
 import { isMapsHost } from '@/lib/maps-link'
 import { findOnGoogle, findOnOsm, type FoundPlace } from './place-search'
+import { useWantGoogle } from './maps-provider'
 
 /** Paste a Google Maps share link and get the place filled in (one search, no list import). */
 export function MapsLinkImport({
@@ -17,6 +18,7 @@ export function MapsLinkImport({
   /** #164 a link shared to Crumbs from another app: read it straight away */
   initialLink?: string | null
 }) {
+  useWantGoogle()
   const places = useMapsLibrary('places')
   const googleDown = useGoogleDown()
   const [link, setLink] = useState(initialLink ?? '')
