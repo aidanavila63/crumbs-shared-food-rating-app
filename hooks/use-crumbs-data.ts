@@ -168,6 +168,10 @@ export type HomeMeal = {
   cuisine?: string | null
   /** amount + measure + what, one row each */
   ingredients?: Ingredient[] | null
+  /** U9 (Round 88) */
+  servings?: number | null
+  prep_minutes?: number | null
+  cook_minutes?: number | null
   home_meal_ratings: HomeMealRating[]
   home_meal_cooks: HomeMealCook[]
 }

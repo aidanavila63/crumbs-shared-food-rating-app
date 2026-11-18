@@ -2606,3 +2606,26 @@ html.map-locked body {
 .map-bleed .map-frame {
   border-radius: 0;
 }
+/* U9 recipes: cook mode and the shopping list */
+.cook-step {
+  min-height: 180px;
+}
+.shop-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  font-size: 1rem;
+}
+.shop-row + .shop-row {
+  border-top: 1px solid var(--border);
+}
+.shop-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+}
+.shop-done span {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}

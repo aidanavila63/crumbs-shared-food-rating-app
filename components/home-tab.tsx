@@ -2,7 +2,7 @@
 // #77 Home cooking: meals you make yourselves, kept apart from restaurants.
 import { track } from '@/lib/analytics'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpDown, ChefHat, ChevronDown, Dices, Plus, Utensils } from 'lucide-react'
+import { ArrowUpDown, ChefHat, ChevronDown, Dices, Plus, ShoppingCart, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, HomeMeal, Place, Profile } from '@/hooks/use-crumbs-data'
 import { lastCooked, mealAverage } from '@/lib/meals'
@@ -14,6 +14,7 @@ import { undoableDelete } from '@/lib/undoable'
 import { RatingStars } from './rating-stars'
 import { timeAgo } from './social'
 import { StatusFilter } from './status-filter'
+import { ShoppingList } from './recipe-extras'
 
 const today = () => new Date().toISOString().slice(0, 10)
 export { mealAverage } from '@/lib/meals'
@@ -48,6 +49,7 @@ export function HomeTab({
   v4: boolean
 }) {
   const [filter, setFilter] = useState<'All' | 'Cooked' | 'Want to cook' | 'Shared'>('All')
+  const [shopping, setShopping] = useState(false)
   // Our kitchen (your group's meals and recipes) vs everyone else's recipes on Crumbs
   const [section, setSection] = useState<'ours' | 'everyone' | 'saved'>('ours')
   // What kind of dish (Dessert, Soup…) — only kinds you've used show as filters.
@@ -122,7 +124,7 @@ export function HomeTab({
   }, [meals, filter, sort, query, kind])
 
   if (!v4 && !demo)
-    return (
+  return (
       <div className="surface flex flex-col items-center gap-2 text-center">
         <ChefHat size={36} className="text-primary" />
         <h3 className="font-serif text-2xl font-bold">Home cooking</h3>
@@ -274,6 +276,14 @@ export function HomeTab({
             <button className="secondary flex-1" onClick={surprise}>
               <Dices size={18} /> What should we cook?
             </button>
+            {/* U9 (Round 88): your own shopping list */}
+            <button
+              className="secondary size-12 shrink-0 !px-0"
+              aria-label="Shopping list"
+              onClick={() => setShopping(true)}
+            >
+              <ShoppingCart size={18} />
+            </button>
             <button
               className="primary size-12 shrink-0"
               aria-label="Add a meal"
@@ -321,6 +331,7 @@ export function HomeTab({
               </div>
             </div>
           )}
+          {shopping && <ShoppingList supabase={supabase} demo={demo} onClose={() => setShopping(false)} />}
           <StatusFilter
             label="Show meals"
             items={HOME_FILTERS}

@@ -6,7 +6,7 @@
 // Round 81: a recipe belongs to whoever added it. Only they edit it; members of the groups it's
 // shared with read, rate and log it. "Who can see it" picks the groups (and everyone on Crumbs).
 import { useEffect, useState } from 'react'
-import { BookOpen, ChefHat, Pencil, Plus, X } from 'lucide-react'
+import { BookOpen, ChefHat, Pencil, Plus, ShoppingCart, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Group, HomeMeal, Ingredient, Place, Profile } from '@/hooks/use-crumbs-data'
 import { canEditMeal, sharedIn } from '@/lib/meal-sharing'
@@ -24,6 +24,8 @@ import {
   stepsOf,
 } from '@/lib/meals'
 import { photoUrl } from '@/lib/photos'
+import { scaleIngredients } from '@/lib/recipe-tools'
+import { addToShoppingList, CookMode, ServingsStepper, timeText } from './recipe-extras'
 import { RatingStars } from './rating-stars'
 import { PhotoButton } from './photo-button'
 import { ReactionBar } from './social'
@@ -150,6 +152,9 @@ export function MealSheet({
     next: blank(),
     steps: meal.recipe ?? '',
     recipe_url: meal.recipe_url ?? '',
+    servings: meal.servings ? String(meal.servings) : '',
+    prep: meal.prep_minutes ? String(meal.prep_minutes) : '',
+    cook: meal.cook_minutes ? String(meal.cook_minutes) : '',
     notes: meal.notes ?? '',
   })
   const [draft, setDraft] = useState(startDraft)
@@ -162,6 +167,9 @@ export function MealSheet({
     JSON.stringify(draft.ingredients) !== JSON.stringify(meal.ingredients ?? []) ||
     (draft.steps.trim() || null) !== (meal.recipe ?? null) ||
     (draft.recipe_url.trim() || null) !== (meal.recipe_url ?? null) ||
+    numberOrNull(draft.servings, 50) !== (meal.servings ?? null) ||
+    numberOrNull(draft.prep, 2880) !== (meal.prep_minutes ?? null) ||
+    numberOrNull(draft.cook, 2880) !== (meal.cook_minutes ?? null) ||
     (draft.notes.trim() || null) !== (meal.notes ?? null) ||
     ingredientReady(draft.next)
 
@@ -176,6 +184,38 @@ export function MealSheet({
       return false
     }
     return true
+  }
+
+  // U9: read the recipe the linked page publishes (no AI) into the form
+  const [importing, setImporting] = useState(false)
+  async function fillFromLink() {
+    const url = draft.recipe_url.trim()
+    if (!safeUrl(url) && !safeUrl(`https://${url}`)) return toast.error('That doesn’t look like a web link')
+    if (demo) return toast('Reading recipes from links needs the real database')
+    setImporting(true)
+    try {
+      const response = await fetch('/api/recipe-import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok || !body.recipe) return toast.error(body.error || 'Couldn’t read that page')
+      const r = body.recipe
+      set({
+        name: draft.name.trim() ? draft.name : r.name,
+        ingredients: r.ingredients?.length ? r.ingredients : draft.ingredients,
+        steps: r.steps || draft.steps,
+        servings: r.servings ? String(r.servings) : draft.servings,
+        prep: r.prep_minutes ? String(r.prep_minutes) : draft.prep,
+        cook: r.cook_minutes ? String(r.cook_minutes) : draft.cook,
+        recipe_url: body.url || url,
+      })
+      haptic('success')
+      toast.success('Filled in from the page — check it over, then Save recipe')
+    } finally {
+      setImporting(false)
+    }
   }
 
   async function saveEdits() {
@@ -193,6 +233,10 @@ export function MealSheet({
       ingredients,
       recipe: draft.steps.trim() || null,
       recipe_url: url || null,
+      // only sent when set or changed (older databases don't have these columns yet)
+      ...(draft.servings || meal.servings ? { servings: numberOrNull(draft.servings, 50) } : {}),
+      ...(draft.prep || meal.prep_minutes ? { prep_minutes: numberOrNull(draft.prep, 2880) } : {}),
+      ...(draft.cook || meal.cook_minutes ? { cook_minutes: numberOrNull(draft.cook, 2880) } : {}),
       notes: draft.notes.trim() || null,
     })
     if (!ok) return
@@ -226,6 +270,12 @@ export function MealSheet({
   const home = groups.find((g) => g.id === meal.group_id)
   const shareable = orderSpaces(groups).filter((g) => g.id !== meal.group_id && !isPersonal(g))
   const steps = stepsOf(meal.recipe)
+  // U9 (Round 88): scale to how many you're cooking for, cook mode, shopping list
+  const baseServings = meal.servings ?? 0
+  const [serves, setServes] = useState(baseServings || 2)
+  const factor = baseServings ? serves / baseServings : 1
+  const shownIngredients = scaleIngredients(meal.ingredients ?? [], factor)
+  const [cooking, setCooking] = useState(false)
 
   return (
     <Sheet label={meal.name} onClose={onClose}>
@@ -302,15 +352,35 @@ export function MealSheet({
               {meal.spice ? ` · ${'🌶️'.repeat(meal.spice)}` : ''}
             </p>
           </div>
+          {timeText(meal.prep_minutes, meal.cook_minutes) && (
+            <p className="text-sm font-semibold">{timeText(meal.prep_minutes, meal.cook_minutes)}</p>
+          )}
           {(meal.ingredients?.length ?? 0) > 0 && (
             <div className="flex flex-col gap-2">
-              <h3 className="font-serif text-xl font-bold">Ingredients</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-serif text-xl font-bold">Ingredients</h3>
+                {baseServings > 0 && <ServingsStepper value={serves} base={baseServings} onChange={setServes} />}
+              </div>
               <ul className="recipe-ingredients">
-                {meal.ingredients!.map((i, n) => (
+                {shownIngredients.map((i, n) => (
                   <li key={n}>{ingredientText(i)}</li>
                 ))}
               </ul>
+              <button
+                className="secondary self-start !min-h-10 text-sm"
+                onClick={() => addToShoppingList(supabase, demo, meal.id, shownIngredients)}
+              >
+                <ShoppingCart size={16} /> Add to shopping list
+              </button>
             </div>
+          )}
+          {steps.length > 0 && (
+            <button className="primary" onClick={() => setCooking(true)}>
+              <ChefHat size={18} /> Cook mode
+            </button>
+          )}
+          {cooking && (
+            <CookMode name={meal.name} steps={steps} ingredients={shownIngredients} onClose={() => setCooking(false)} />
           )}
           {steps.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -577,14 +647,49 @@ export function MealSheet({
             value={draft.notes}
             onChange={(event) => set({ notes: event.target.value })}
           />
-          <input
-            className="field"
-            aria-label="Recipe link"
-            inputMode="url"
-            placeholder="Recipe link (optional)"
-            value={draft.recipe_url}
-            onChange={(event) => set({ recipe_url: event.target.value })}
-          />
+          <div className="flex gap-2">
+            <input
+              className="field"
+              aria-label="Recipe link"
+              inputMode="url"
+              placeholder="Recipe link (optional)"
+              value={draft.recipe_url}
+              onChange={(event) => set({ recipe_url: event.target.value })}
+            />
+            <button
+              className="secondary shrink-0 !px-3 text-sm"
+              disabled={!draft.recipe_url.trim() || importing}
+              onClick={fillFromLink}
+            >
+              {importing ? 'Reading…' : 'Fill from link'}
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <input
+              className="field"
+              aria-label="Servings"
+              inputMode="numeric"
+              placeholder="Serves"
+              value={draft.servings}
+              onChange={(event) => set({ servings: event.target.value.replace(/\D/g, '').slice(0, 2) })}
+            />
+            <input
+              className="field"
+              aria-label="Prep minutes"
+              inputMode="numeric"
+              placeholder="Prep min"
+              value={draft.prep}
+              onChange={(event) => set({ prep: event.target.value.replace(/\D/g, '').slice(0, 4) })}
+            />
+            <input
+              className="field"
+              aria-label="Cook minutes"
+              inputMode="numeric"
+              placeholder="Cook min"
+              value={draft.cook}
+              onChange={(event) => set({ cook: event.target.value.replace(/\D/g, '').slice(0, 4) })}
+            />
+          </div>
           <div className="flex gap-2">
             <button
               className="secondary flex-1"
@@ -746,4 +851,10 @@ function IngredientRow({
       {action}
     </div>
   )
+}
+
+/** "4" → 4; "" or out of range → null (U9) */
+function numberOrNull(text: string, max: number) {
+  const n = Number(text)
+  return text.trim() && Number.isInteger(n) && n > 0 && n <= max ? n : null
 }
