@@ -9,6 +9,7 @@ import { DAY_SHORT, datesText, daysText, type PostKind, type RestaurantPost } fr
 import { haptic } from '@/lib/motion'
 import { hoursToText, parseHoursText } from '@/lib/hours-text'
 import { specialHoursNote, type Hours } from '@/lib/place-info'
+import { coveredBySpecialHours, holidaysAhead, torontoToday } from '@/lib/holidays'
 import { siteOrigin } from '@/lib/site'
 
 const KINDS: { id: PostKind; label: string; hint: string }[] = [
@@ -518,9 +519,37 @@ export function OwnerSpecialHours({
   const [text, setText] = useState('')
   const [closed, setClosed] = useState(false)
   const [last, setLast] = useState('')
+  const [first, setFirst] = useState('')
   const [busy, setBusy] = useState(false)
   const parsed = closed ? { utc, periods: [] } : parseHoursText(text, utc)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = torontoToday()
+  // O4 (Round 94): the next holiday within two weeks that isn't covered yet (and not waved off)
+  const [waved, setWaved] = useState<string[]>([])
+  // (only one set of special hours at a time, so not while others are set)
+  const holiday = (hours?.until && hours.until >= today ? [] : holidaysAhead(today)).find(
+    (h) => !coveredBySpecialHours(hours, h.date, today) && !waved.includes(h.date) && !holidayWaved(restaurantId, h.date),
+  )
+
+  async function setDay(day: string, periods: Hours['periods'] | null) {
+    if (demo) return toast('Not available in demo mode')
+    setBusy(true)
+    try {
+      const { error } = await supabase.rpc('set_seasonal_hours', {
+        target: restaurantId,
+        hours: { utc, periods: periods ?? [] },
+        last_day: day,
+        first_day: day,
+      })
+      if (error) throw error
+      haptic('success')
+      toast.success('Saved — your page shows it')
+      onChanged()
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save that')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function save() {
     if (demo) return toast('Not available in demo mode')
@@ -528,7 +557,12 @@ export function OwnerSpecialHours({
     if (!last) return toast('Pick the last day')
     setBusy(true)
     try {
-      const { error } = await supabase.rpc('set_seasonal_hours', { target: restaurantId, hours: parsed, last_day: last })
+      const { error } = await supabase.rpc('set_seasonal_hours', {
+        target: restaurantId,
+        hours: parsed,
+        last_day: last,
+        ...(first && first > today ? { first_day: first } : {}),
+      })
       if (error) throw error
       haptic('success')
       toast.success('Special hours are on')
@@ -558,6 +592,39 @@ export function OwnerSpecialHours({
   return (
     <section className="surface flex flex-col gap-2">
       <h3 className="font-serif text-xl font-bold">Special hours</h3>
+      {holiday && !open && (
+        <div className="surface-soft flex flex-col gap-2 text-sm">
+          <p>
+            🗓 <strong>{holiday.name}</strong> is{' '}
+            {new Date(`${holiday.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            {' — '}different hours that day?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button className="secondary !min-h-9 text-sm" disabled={busy} onClick={() => setDay(holiday.date, [])}>
+              Closed that day
+            </button>
+            <button
+              className="secondary !min-h-9 text-sm"
+              onClick={() => {
+                setFirst(holiday.date)
+                setLast(holiday.date)
+                setOpen(true)
+              }}
+            >
+              Different hours
+            </button>
+            <button
+              className="text-xs font-semibold text-primary underline"
+              onClick={() => {
+                waveHoliday(restaurantId, holiday.date)
+                setWaved([...waved, holiday.date])
+              }}
+            >
+              Same as usual
+            </button>
+          </div>
+        </div>
+      )}
       {note ? (
         <>
           <p className="rounded-xl bg-[#fdf3dc] px-3 py-2 text-sm text-[#8a5a12] dark:bg-[#3a2a0c] dark:text-[#f0c36a]">
@@ -571,8 +638,8 @@ export function OwnerSpecialHours({
       ) : !open ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Holidays, summer, renovations… Set different hours until a date. Your usual hours come back by themselves
-            the day after.
+            Holidays, summer, renovations… Set different hours for a day or a stretch of days, now or ahead. Your usual
+            hours come back by themselves the day after. Crumbs reminds you two weeks before holidays.
           </p>
           <button className="secondary" onClick={() => setOpen(true)}>
             Set special hours
@@ -599,10 +666,28 @@ export function OwnerSpecialHours({
               {parsed ? `Reads as: ${hoursToText(parsed)}` : 'Couldn’t read those hours yet'}
             </p>
           )}
-          <label className="flex flex-col gap-1 text-sm">
-            Last day
-            <input className="field" type="date" min={today} value={last} onChange={(event) => setLast(event.target.value)} />
-          </label>
+          <div className="flex gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              First day
+              <input
+                className="field"
+                type="date"
+                min={today}
+                value={first || today}
+                onChange={(event) => setFirst(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              Last day
+              <input
+                className="field"
+                type="date"
+                min={first || today}
+                value={last}
+                onChange={(event) => setLast(event.target.value)}
+              />
+            </label>
+          </div>
           <div className="flex gap-2">
             <button className="secondary flex-1" onClick={() => setOpen(false)}>
               Cancel
@@ -615,4 +700,19 @@ export function OwnerSpecialHours({
       )}
     </section>
   )
+}
+
+// O4 (Round 94): "Same as usual" on a holiday reminder is remembered on this phone.
+const waveKey = (restaurantId: string, day: string) => `crumbs-holiday-${restaurantId}-${day}`
+function holidayWaved(restaurantId: string, day: string) {
+  try {
+    return localStorage.getItem(waveKey(restaurantId, day)) === '1'
+  } catch {
+    return false
+  }
+}
+function waveHoliday(restaurantId: string, day: string) {
+  try {
+    localStorage.setItem(waveKey(restaurantId, day), '1')
+  } catch {}
 }

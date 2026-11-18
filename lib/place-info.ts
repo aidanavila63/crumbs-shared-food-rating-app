@@ -8,6 +8,8 @@ export type Hours = {
   periods: { o: [number, number, number]; c: [number, number, number] | null }[]
   /** Part three: special (seasonal/holiday) hours apply through this day (YYYY-MM-DD, the restaurant's own day)… */
   until?: string
+  /** Round 94 (O4/U15): …starting this day (set ahead, e.g. Christmas Day); none = from when they were set */
+  from?: string
   /** …and these, the usual hours, apply after it. */
   regular?: Hours | null
 }
@@ -16,13 +18,42 @@ export type Hours = {
 export function currentHours(hours: Hours | null | undefined, now = new Date()): Hours | null {
   if (!hours) return null
   if (!hours.until) return hours
-  const day = new Date(now.getTime() + (Number(hours.utc) || 0) * 60000).toISOString().slice(0, 10)
+  const day = localDay(hours, now)
+  if (hours.from && day < hours.from) return hours.regular ?? null
   return day <= hours.until ? hours : (hours.regular ?? null)
+}
+
+/** The restaurant's own date (YYYY-MM-DD) at this moment. */
+const localDay = (hours: Pick<Hours, 'utc'>, now: Date) =>
+  new Date(now.getTime() + (Number(hours.utc) || 0) * 60000).toISOString().slice(0, 10)
+
+const dayLabel = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5)
+
+/** U15 (Round 94): special hours set ahead, shown up to two weeks before: "Closed Dec 25",
+ *  "Special hours Dec 24–26". Null otherwise. */
+export function upcomingHoursNote(hours: Hours | null | undefined, now = new Date()): string | null {
+  if (!hours?.until || !hours.from) return null
+  const day = localDay(hours, now)
+  if (day >= hours.from) return null
+  const ahead = daysBetween(day, hours.from)
+  if (ahead > 14) return null
+  const first = dayLabel(hours.from)
+  const last = dayLabel(hours.until)
+  if (!first || !last) return null
+  const range = hours.from === hours.until ? first : `${first}–${last.replace(/^[A-Z][a-z]{2} /, first.slice(0, 3) === last.slice(0, 3) ? '' : `${last.slice(0, 3)} `)}`
+  return `${hours.periods?.length ? 'Special hours' : 'Closed'} ${range}`
 }
 
 /** "Holiday hours until Dec 31" while special hours apply, otherwise null. */
 export function specialHoursNote(hours: Hours | null | undefined, now = new Date()): string | null {
-  if (!hours?.until || currentHours(hours, now) !== hours) return null
+  if (!hours?.until) return null
+  if (currentHours(hours, now) !== hours) return upcomingHoursNote(hours, now)
+  if (hours.from && hours.from === hours.until && !hours.periods?.length) return 'Closed today'
   const [y, m, d] = hours.until.split('-').map(Number)
   if (!y || !m || !d) return null
   const label = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
