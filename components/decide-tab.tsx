@@ -20,6 +20,7 @@ import { DecideTogether } from './decide-together'
 import { PlansCard, PlansPage, type PlanDraft } from './plans'
 import { CrawlPlanner } from './crawl-planner'
 import { NearbyRecs } from './nearby-recs'
+import { LovedNearYou } from './loved-near-you'
 import { beenAWhile, hiddenGems, sinceText } from '@/lib/smart-lists'
 import { useGems } from '@/hooks/use-gems'
 import { defaultWrappedYear, wrappedYears } from '@/lib/wrapped'
@@ -521,6 +522,9 @@ export function DecideTab({
           )}
         </div>
       )}
+
+      {/* U22 (Round 96) */}
+      {!loading && <LovedNearYou supabase={supabase} demo={demo} />}
 
       {!loading && (
         <NearbyRecs

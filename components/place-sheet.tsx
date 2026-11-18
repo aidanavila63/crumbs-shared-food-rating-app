@@ -44,6 +44,7 @@ import { useRestaurant } from '@/hooks/use-restaurant'
 import { usePublicRestaurant } from '@/hooks/use-public-restaurant'
 import { RestaurantPage } from './restaurant-page'
 import { MergePlaces } from './merge-places'
+import { PlaceHistory } from './place-history'
 import { ClaimForm } from './claim-form'
 import type { MenuDish } from '@/lib/restaurants'
 import { PointsSlider } from './points-slider'
@@ -1586,6 +1587,7 @@ export function PlaceSheet({
             </button>
           )}
         </div>
+        <PlaceHistory placeId={place.id} supabase={supabase} demo={demo} names={names} userId={userId} />
         {onMerged && (
           <MergePlaces
             place={place}

@@ -27,7 +27,7 @@ export function OsmMap({
   /** #36 Explore: OpenStreetMap spots you haven't saved */
   spots?: { google_place_id: string; latitude: number; longitude: number }[]
   onSpot?: (id: string) => void
-  onProbe?: (probe: () => { lat: number; lng: number } | null) => void
+  onProbe?: (probe: () => { lat: number; lng: number; zoom?: number | null } | null) => void
   /** #24 show warm spots instead of pins */
   heat?: boolean
   /** Pin text override (crawl stop numbers) */
@@ -75,7 +75,7 @@ export function OsmMap({
       resizer.observe(box.current)
       onProbe?.(() => {
         const c = map.getCenter()
-        return { lat: c.lat, lng: c.lng }
+        return { lat: c.lat, lng: c.lng, zoom: map.getZoom() }
       })
       draw()
     })()

@@ -8,6 +8,7 @@ import { distanceKm, mustTry } from '@/lib/stats'
 import { AdvancedMarker, Map, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
 import { groupPins } from '@/lib/pin-groups'
 import { googleNearby } from './nearby-off-list'
+import { nearestSpots } from '@/lib/explore'
 import type { Place, Status } from '@/hooks/use-crumbs-data'
 import { placeAverage } from './place-card'
 import { OsmMap } from './osm-map'
@@ -83,11 +84,20 @@ function HeatCircles({ places, onPick }: { places: Place[]; onPick: (id: string)
   }, [map, places, onPick])
   return null
 }
+/** Where the map is looking (and how far in), for Explore. */
+type MapView = { lat: number; lng: number; zoom?: number | null }
+// Round 96: Explore only zoomed in to about a neighbourhood, and at most this many new spots.
+const EXPLORE_MIN_ZOOM = 13
+const EXPLORE_MAX_SPOTS = 40
+
 /** Lets the Explore button ask the Google map where it's looking. */
-function CenterProbe({ onProbe }: { onProbe: (probe: () => { lat: number; lng: number } | null) => void }) {
+function CenterProbe({ onProbe }: { onProbe: (probe: () => MapView | null) => void }) {
   const map = useMap()
   useEffect(() => {
-    onProbe(() => map?.getCenter()?.toJSON() ?? null)
+    onProbe(() => {
+      const c = map?.getCenter()?.toJSON()
+      return c ? { ...c, zoom: map?.getZoom() ?? null } : null
+    })
   }, [map, onProbe])
   return null
 }
@@ -212,8 +222,8 @@ export function MapTab({
   const [spotId, setSpotId] = useState<string | null>(null)
   const [exploring, setExploring] = useState(false)
   const [exploreCenter, setExploreCenter] = useState<{ lat: number; lng: number } | null>(null)
-  const centerProbe = useRef<(() => { lat: number; lng: number } | null) | null>(null)
-  const setProbe = useCallback((probe: () => { lat: number; lng: number } | null) => {
+  const centerProbe = useRef<(() => MapView | null) | null>(null)
+  const setProbe = useCallback((probe: () => MapView | null) => {
     centerProbe.current = probe
   }, [])
   const spot = spots?.find((s) => s.google_place_id === spotId) ?? null
@@ -231,7 +241,15 @@ export function MapTab({
   async function explore() {
     if (exploring || spots) return stopExploring()
     haptic('tap')
-    const center = centerProbe.current?.() ?? location
+    const view = centerProbe.current?.() ?? null
+    const center = view ? { lat: view.lat, lng: view.lng } : location
+    // Round 96 (Aidan: "a restriction on distance… to reduce crash possibilities and loading
+    // times"): Explore looks about 1 km around the middle of the map, so it only runs zoomed in to
+    // a neighbourhood. Zoomed further out, the map zooms in there first.
+    if (view?.zoom != null && view.zoom < EXPLORE_MIN_ZOOM) {
+      setLocateTarget({ ...center })
+      toast('Zoomed in — Explore looks about 1 km around the middle of the map')
+    }
     const abort = new AbortController()
     exploreAbort.current = abort
     const giveUp = setTimeout(() => abort.abort(new Error('timeout')), 30000)
@@ -278,7 +296,7 @@ export function MapTab({
         if (freeError && !found.length) throw new Error(freeError)
       }
       if (abort.signal.aborted) return
-      const fresh = notYetSaved(found, places)
+      const fresh = nearestSpots(notYetSaved(found, places), center, EXPLORE_MAX_SPOTS)
       setSpots(fresh)
       if (!fresh.length) toast('Nothing new to eat around here')
     } catch (error: any) {
