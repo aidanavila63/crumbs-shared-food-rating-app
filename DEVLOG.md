@@ -1,7 +1,7 @@
 # Crumbs devlog
 
 ## Current state (Nov 18 — read this first)
-- **Live:** Rounds 1–96 (Aidan pushed 94–96 as `2e31a5b` on Nov 18; SQL through `20261202_round96` to run if not done). **Round 97 is built, not pushed** (`crumbs-round97.patch` + `20261203_round97.sql`); Aidan will say when to push the next few.
+- **Live:** Rounds 1–96 (Aidan pushed 94–96 as `2e31a5b` on Nov 18; SQL through `20261202_round96` to run if not done). **Rounds 97–98 are built, not pushed** (`crumbs-round97.patch` + `20261203_round97.sql`; `crumbs-round98.patch`, no SQL); Aidan will say when to push the next few.
 - **Next:** menu designs × colour schemes (above, under O15), designed in a new chat first.
 
 ## Earlier state (Nov 17)
@@ -1065,3 +1065,8 @@ Aidan (Nov 18): "lets do all the smaller changes first … the restaurant pages 
 **Checks:** 255 unit tests (new `tests/round97.test.ts`); typecheck; eslint 0 errors (53 warnings); database suite 54 files pass twice on a brand-new Postgres (`round97_test`: 2 expected refusals — a non-owner, a season ending before it starts; plus extras on the page and an out-of-season dish left out); demo build; demo click-through "All good"; the four Our group tabs, the dish editor and the two-column list at 1280 px seen.
 **Not verified:** on the live database; the redesigned tabs with a real group's data (long dish lists, many ratings).
 
+## Round 98 - no duplicates in "Add a place" search (Nov 18, Claude)
+Aidan (Nov 18), with a screenshot of searching "Nome": the last two results ("Nomé Izakaya North York — Yonge Street, North York" and "Nomé Izakaya (Don Mills) — O'Neill Road, North York") were the same restaurants as the two **On Crumbs** results above them ("Nome Izakaya — 4848 Yonge St" and "— 4 O'Neill Rd"). No SQL.
+- **Fix:** a Google / OpenStreetMap result is now left out when a place already shown as On Crumbs has the same name — ignoring accents, anything in brackets, area words from the addresses ("North York", "Toronto") and filler ("the", "restaurant") — **and** is on the same street ("Yonge St" = "Yonge Street", house numbers ignored), or within 250 m when both have a pin. Careful on purpose: different names on one street ("Pizza Pizza" / "Pizza Nova"), other branches on other streets, and results with only a city for an address all stay. Before, only the exact same Google id was caught. `lib/search-dedupe.ts`, used in `components/place-search.tsx`.
+**Checks:** 259 unit tests (new `tests/search-dedupe.test.ts`, with the Nomé example); typecheck; eslint 0 errors (53 warnings); demo build; demo click-through "All good".
+**Not verified:** with live Google results (the demo has no Google search); a place on Crumbs whose saved address is only a city won't hide its Google twin (by design).

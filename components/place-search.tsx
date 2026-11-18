@@ -10,6 +10,7 @@ import { allowanceMessage, takeAllowance } from '@/lib/allowance'
 import { isFoodPlace } from '@/lib/food-types'
 import { fixLocationAction, knownArea, locate, type LatLng } from '@/lib/location'
 import { useWantGoogle } from './maps-provider'
+import { withoutCrumbsTwins } from '@/lib/search-dedupe'
 
 export type FoundPlace = {
   google_place_id: string
@@ -188,6 +189,13 @@ export function PlaceSearch({
   const hiddenCount = hidden.length
   const [searched, setSearched] = useState('')
   const [crumbs, setCrumbs] = useState<Suggestion[]>([])
+  // Round 98: the same restaurant from Google under a slightly different name isn't listed twice.
+  const crumbSpots = crumbs.map((c) => ({
+    name: c.crumbs!.name,
+    address: c.crumbs!.formatted_address,
+    lat: c.crumbs!.latitude,
+    lng: c.crumbs!.longitude,
+  }))
   const [loading, setLoading] = useState(false)
   const token = useRef<any>(null)
   // Text we just filled in from a pick: don't search for it again.
@@ -410,9 +418,18 @@ export function PlaceSearch({
         <div className="suggestions" role="listbox">
           {[
             ...crumbs,
-            ...results.filter(
-              (item) =>
-                !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
+            ...withoutCrumbsTwins(
+              results.filter(
+                (item) =>
+                  !crumbs.some((c) => c.crumbs!.source_key === (item.prediction?.placeId ?? item.id)),
+              ),
+              crumbSpots,
+              (item) => ({
+                name: item.main,
+                address: item.secondary,
+                lat: item.osm?.latitude,
+                lng: item.osm?.longitude,
+              }),
             ),
             ...(showHidden ? hidden : []),
           ].map((item) => (
