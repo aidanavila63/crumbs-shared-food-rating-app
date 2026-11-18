@@ -34,6 +34,8 @@ export const BACKUP_TABLES = [
   'home_meal_shares',
   'shopping_items',
   'restaurant_taps', // Round 89: owners' tap counts per day
+  'plan_options', // Round 93: pick-a-day poll
+  'plan_votes',
   'home_meal_ratings',
   'home_meal_cooks',
   'recipe_saves',

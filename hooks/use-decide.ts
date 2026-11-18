@@ -426,6 +426,9 @@ export function useDecide({
     deletePlan,
     answer,
     reload: load,
+    /** Round 93: for the pick-a-day poll */
+    supabase,
+    demo,
   }
 }
 

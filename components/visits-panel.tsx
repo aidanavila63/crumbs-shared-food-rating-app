@@ -8,6 +8,7 @@ import { ScoreDisplay, ScoreInput } from './score-input'
 import { recall, remember } from '@/lib/remember'
 import { useSocial } from '@/hooks/use-social'
 import { SplitBill } from './split-bill'
+import { VisitPhotos } from './visit-photos'
 import { MEAL_TIMES, WAITS, mealTimeAt, type MealTime } from '@/lib/visit-rating'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -243,6 +244,23 @@ export function VisitsPanel({
               )}
               {visit.note}
             </p>
+          )}
+          {v4 && (
+            <VisitPhotos
+              visit={visit}
+              groupId={place.group_id}
+              supabase={supabase}
+              demo={demo}
+              canEdit={!!userId}
+              onChange={(paths) =>
+                onUpdate({
+                  ...place,
+                  place_visits: (place.place_visits ?? []).map((v) =>
+                    v.id === visit.id ? { ...v, photo_paths: paths } : v,
+                  ),
+                })
+              }
+            />
           )}
         </div>
       ))}

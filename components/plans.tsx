@@ -7,6 +7,7 @@ import type { Place, Profile } from '@/hooks/use-crumbs-data'
 import type { DecideStore, Plan, Rsvp } from '@/hooks/use-decide'
 import { bookingText, didYouGo, goodPickAsks, planIcs } from '@/lib/decide'
 import { haptic } from '@/lib/motion'
+import { DayPoll } from './day-poll'
 import { PlanB } from './plan-b'
 import { askConfirm } from '@/lib/ask'
 
@@ -347,6 +348,16 @@ function PlanCard({
           )
         })}
       </div>
+      {/* U17 (Round 93): pick-a-day poll */}
+      <DayPoll
+        plan={plan}
+        supabase={store.supabase}
+        demo={store.demo}
+        userId={userId}
+        members={members}
+        names={names}
+        onPick={(startsAt) => store.savePlan({ ...plan, starts_at: startsAt })}
+      />
       <div className="flex flex-wrap gap-2">
         {plan.starts_at && (
           <button

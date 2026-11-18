@@ -34,6 +34,8 @@ export type PlaceVisit = {
   place_id: string
   visited_on: string
   spend: number | null
+  /** U8 (Round 93): up to 3 photos */
+  photo_paths?: string[] | null
   // v4 (#5 score, #6 people, #78 kind, #37 who picked, #69/#70 memories)
   score?: number | null
   people?: number | null
