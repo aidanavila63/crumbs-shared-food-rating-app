@@ -5,13 +5,13 @@ import { useState, useSyncExternalStore } from 'react'
 import { Sparkles, X } from 'lucide-react'
 
 export const WHATS_NEW = {
-  id: '2026-11-r87',
+  id: '2026-11-r91',
   lines: [
-    'My Crumbs: your own private food map, next to your groups',
-    'Your recipes are yours now, shared into the groups you pick',
-    'Find a dish across Crumbs (Decide tab)',
-    'Filter places by what’s open and by Good to know details',
-    'Mute a group or set quiet hours (Settings → Notify me about)',
+    'Make your own version of any recipe — it always credits the original',
+    'Recipes: servings, times, Cook mode and a shopping list',
+    'Thousands of GTA restaurants now show up in search',
+    'Filter places open “For dinner” or for a “Night out”',
+    'Get a notification when someone reacts to your rating or recipe',
   ],
 }
 

@@ -15,7 +15,7 @@ import { markGoogleDown, useGoogleDown } from '@/lib/google-status'
 import { heatSpots, markerClass, type PinMode } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { ROUGH, fixLocationAction, locate } from '@/lib/location'
-import { useWantGoogle } from './maps-provider'
+import { useGoogleProvider, useWantGoogle } from './maps-provider'
 function FitBounds({ places }: { places: Place[] }) {
   const map = useMap()
   const located = places.filter((place) => place.latitude !== null && place.longitude !== null)
@@ -349,6 +349,7 @@ export function MapTab({
   }, [apiKey, googleReady, chooseOsm, googleDown])
   const useOsm = chooseOsm || googleDown || !apiKey
   useWantGoogle(!useOsm)
+  const providerReady = useGoogleProvider()
   function pickProvider(osm: boolean) {
     setChooseOsm(osm)
     try {
@@ -537,6 +538,9 @@ export function MapTab({
             }}
             onProbe={setProbe}
           />
+        ) : !providerReady ? (
+          // Round 91: Google's code is still loading (E27); the map can't exist before it
+          <div className="map-fit skeleton w-full" aria-busy="true" aria-label="Loading the map" />
         ) : (
           <>
             <Map

@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import type { Group, HomeMeal, Ingredient, Place, Profile } from '@/hooks/use-crumbs-data'
 import { canEditMeal, sharedIn } from '@/lib/meal-sharing'
 import { isPersonal, orderSpaces } from '@/lib/spaces'
+import { listEmoji } from '@/lib/group-look'
 import { dishAverage } from '@/lib/stats'
 import { haptic } from '@/lib/motion'
 import {
@@ -789,7 +790,7 @@ export function MealSheet({
               {shareable.map((g) => (
                 <div key={g.id} className="settings-row">
                   <span className="font-semibold">
-                    {g.emoji ? `${g.emoji} ` : ''}
+                    {listEmoji(g.emoji) ? `${listEmoji(g.emoji)} ` : ''}
                     {g.name}
                   </span>
                   <Switch

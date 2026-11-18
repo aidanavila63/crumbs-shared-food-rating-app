@@ -1,6 +1,6 @@
 // Crumbs service worker: fast static assets + graceful offline shell.
 // Never caches API, auth, or cross-origin (Supabase / Google) requests.
-const VERSION = 'crumbs-v6'
+const VERSION = 'crumbs-v7'
 // Build files (/_next/static, names change every deploy) live in their own cache so the ones a new
 // build no longer uses can be cleared out (Round 74: they used to pile up on the phone forever).
 const STATIC = 'crumbs-static-v1'
@@ -73,7 +73,9 @@ self.addEventListener('fetch', (event) => {
     return response
   })
   const saved = () => caches.match(request).then((hit) => hit || caches.match('/'))
-  if (request.mode !== 'navigate' || url.pathname !== '/') {
+  // Round 91: "/?update=1" is a refresh for a newer version: wait for it, never the saved copy
+  // (unless there's no signal at all).
+  if (request.mode !== 'navigate' || url.pathname !== '/' || url.searchParams.has('update')) {
     event.respondWith(network.catch(saved))
     return
   }

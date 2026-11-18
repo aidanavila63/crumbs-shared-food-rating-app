@@ -26,6 +26,7 @@ const NOTIFY_TYPES = [
   ['dish', 'Dish scores', 'Maya gave Tonkotsu 92/100'],
   ['craving', 'Cravings', 'Maya is craving ramen'],
   ['mention', 'Mentions', 'Maya mentioned you in a comment'],
+  ['reaction', 'Reactions', 'Maya reacted ❤️ to your rating of Hana Ramen'],
   ['plan', 'Plan reminders', 'Coming up: Friday dinner at Hana Ramen'],
   ['join', 'Joining', 'Sam asked to join · Maya let you in'],
 ] as const

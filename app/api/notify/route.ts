@@ -154,6 +154,52 @@ async function handlePOST(request: Request) {
     only = body.userIds.map(String).slice(0, 10)
     text = `${who} mentioned you: “${said}”`
     tag = `crumbs-mention-${Date.now()}`
+  } else if (body.type === 'reaction') {
+    // Round 91: someone reacted to your rating, recipe or post. Only after they really reacted
+    // (the row must exist), only to whoever it belongs to, and only within the group.
+    const target = String(body.target ?? '').slice(0, 120)
+    const emoji = String(body.emoji ?? '').slice(0, 8)
+    const gid = String(body.groupId ?? '')
+    const { data: reacted } = await supabase
+      .from('reactions')
+      .select('id')
+      .eq('group_id', gid)
+      .eq('target', target)
+      .eq('user_id', me.id)
+      .eq('emoji', emoji)
+      .maybeSingle()
+    if (!reacted) return Response.json({ sent: 0 })
+    const [what, id] = [target.slice(0, target.indexOf(':')), target.slice(target.indexOf(':') + 1)]
+    let owners: string[] = []
+    let about = ''
+    if (what === 'meal') {
+      const { data: meal } = await supabase.from('home_meals').select('name,created_by').eq('id', id).maybeSingle()
+      if (meal?.created_by) owners = [meal.created_by]
+      about = meal ? `your ${meal.name}` : ''
+    } else if (what === 'rating') {
+      const [{ data: place }, { data: raters }] = await Promise.all([
+        supabase.from('places').select('name').eq('id', id).maybeSingle(),
+        supabase.from('place_ratings').select('user_id').eq('place_id', id),
+      ])
+      owners = (raters ?? []).map((row: any) => row.user_id)
+      about = place ? `your rating of ${place.name}` : ''
+    } else if (what === 'activity') {
+      const { data: item } = await supabase
+        .from('activity')
+        .select('actor,places(name),home_meals(name)')
+        .eq('id', id)
+        .eq('group_id', gid)
+        .maybeSingle()
+      if (item?.actor) owners = [item.actor]
+      const name = (item as any)?.places?.name ?? (item as any)?.home_meals?.name
+      about = item ? (name ? `your post about ${name}` : 'your post') : ''
+    }
+    owners = owners.filter((uid) => uid && uid !== me.id)
+    if (!about || !owners.length) return Response.json({ sent: 0 })
+    groupId = gid
+    only = [...new Set(owners)].slice(0, 20)
+    text = `${who} reacted ${emoji} to ${about}`
+    tag = `crumbs-reaction-${target}`
   } else if (body.type === 'craving') {
     // "I'm craving ___": no place involved, just make sure the sender is in that group.
     const what = String(body.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
@@ -195,6 +241,8 @@ async function handlePOST(request: Request) {
           ? 'dish'
           : body.type === 'mention'
             ? 'mention'
+            : body.type === 'reaction'
+              ? 'reaction'
             : body.type === 'join_request' || body.type === 'join_accepted'
               ? 'join'
               : 'craving'

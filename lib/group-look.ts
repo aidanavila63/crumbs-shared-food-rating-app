@@ -2,6 +2,13 @@ import { crumbsBadge } from './group-badges.ts'
 
 // A group's emoji is a single emoji; older groups may have typed two, so show just the first.
 // One of Crumbs' own badges ("crumbs:loaf") gives its stand-in emoji where only text fits.
+/** Round 91 (Aidan): when groups are listed, Crumbs' own drawn badges aren't shown — only on the
+ *  group's own page. Keyboard emoji still show. */
+export function listEmoji(text?: string | null) {
+  if (!text || text.startsWith('crumbs:')) return null
+  return oneEmoji(text)
+}
+
 export function oneEmoji(text?: string | null) {
   if (!text) return null
   const badge = crumbsBadge(text)

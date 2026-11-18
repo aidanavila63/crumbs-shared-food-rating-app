@@ -158,15 +158,23 @@ export function FilterSheet<S extends string, O extends string>({
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Open">
               {choice(!openAt, 'Any time', () => onOpenAt(null))}
               {choice(openAt === 'now', 'Now', () => onOpenAt('now'))}
-              {choice(openAt === 'tonight', '7 tonight', () => onOpenAt('tonight'))}
+              {choice(openAt === 'dinner', 'For dinner', () => onOpenAt('dinner'))}
+              {choice(openAt === 'late', 'Night out', () => onOpenAt('late'))}
             </div>
+            {(openAt === 'dinner' || openAt === 'late') && (
+              <p className="text-xs text-muted-foreground">
+                {openAt === 'dinner'
+                  ? 'Open at some point between 5 and 10 pm.'
+                  : 'Open at some point between 11 pm and 2 am.'}
+              </p>
+            )}
             <label className="flex items-center gap-2 text-sm">
               <span className="shrink-0">Or at</span>
               <input
                 type="datetime-local"
                 className="field"
                 aria-label="Open at a time you pick"
-                value={openAt && openAt !== 'now' && openAt !== 'tonight' ? openAt : ''}
+                value={openAt && !['now', 'dinner', 'late'].includes(openAt) ? openAt : ''}
                 onChange={(event) => onOpenAt(event.target.value || null)}
               />
             </label>

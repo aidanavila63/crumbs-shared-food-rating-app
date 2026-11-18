@@ -8,7 +8,7 @@ import type { HomeMeal } from '@/hooks/use-crumbs-data'
 import { ActivityFeed, MemoriesCard } from './group-feed'
 import { photoUrl } from '@/lib/photos'
 import { tasteProfile } from '@/lib/catch-up'
-import { oneEmoji } from '@/lib/group-look'
+import { GroupBadge } from './group-badge'
 import { JoinRequestsCard } from './join-requests'
 import { AccessRequestsCard } from './access-requests'
 import { RecentlyDeleted } from './group-ownership'
@@ -67,7 +67,7 @@ export function GroupTab({
       {cover && (
         <div className="group-cover" style={{ backgroundImage: `url(${cover})` }}>
           <p className="font-serif text-3xl font-bold text-white">
-            {oneEmoji(group.emoji) ? `${oneEmoji(group.emoji)} ` : ''}
+            <GroupBadge group={group} size={26} className="mr-2 inline-grid align-middle" />
             {group.name}
           </p>
         </div>

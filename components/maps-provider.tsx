@@ -13,6 +13,12 @@ import { markGoogleDown } from '@/lib/google-status'
 
 const WantGoogle = createContext<() => void>(() => {})
 
+/** Round 91: true once Google's provider is mounted. Google's <Map> throws without it, so the
+ *  map waits for this (the first open after E27 crashed the Map tab: "Something crumbled"). */
+export function useGoogleProvider() {
+  return useContext(APIProviderContext) !== null
+}
+
 /** Call from anything that uses Google (map, places); pass false to not ask (yet). */
 export function useWantGoogle(need = true) {
   const want = useContext(WantGoogle)

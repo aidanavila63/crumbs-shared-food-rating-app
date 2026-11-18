@@ -1,7 +1,7 @@
 // Round 83: a group's badge — one of Crumbs' own line drawings, its emoji, or its first letter —
 // on the group's colour.
 import { crumbsBadge, type CrumbsBadge } from '@/lib/group-badges'
-import { oneEmoji } from '@/lib/group-look'
+import { listEmoji, oneEmoji } from '@/lib/group-look'
 
 export function BadgeDrawing({ badge, size = 20 }: { badge: CrumbsBadge; size?: number }) {
   return (
@@ -31,13 +31,16 @@ export function GroupBadge({
   group,
   size = 20,
   className = '',
+  plain = false,
 }: {
   group: { name: string; emoji?: string | null; color?: string | null }
   size?: number
   className?: string
+  /** Round 91: in lists of groups, Crumbs' own drawings show as the first letter instead */
+  plain?: boolean
 }) {
-  const own = crumbsBadge(group.emoji)
-  const emoji = own ? null : oneEmoji(group.emoji)
+  const own = plain ? null : crumbsBadge(group.emoji)
+  const emoji = own ? null : plain ? listEmoji(group.emoji) : oneEmoji(group.emoji)
   return (
     <span
       className={`group-badge ${own ? 'group-badge-drawn' : ''} ${className}`}

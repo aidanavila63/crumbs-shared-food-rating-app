@@ -1,6 +1,6 @@
 'use client'
 import { NearbyOffList, centreOf } from './nearby-off-list'
-import { oneEmoji } from '@/lib/group-look'
+import { listEmoji } from '@/lib/group-look'
 import { useShowScore } from './score-input'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -338,7 +338,7 @@ export function ListsTab({
                         toast.success(`Copied to ${g.name}`)
                       }}
                     >
-                      {oneEmoji(g.emoji) ? `${oneEmoji(g.emoji)} ` : ''}
+                      {listEmoji(g.emoji) ? `${listEmoji(g.emoji)} ` : ''}
                       {g.name}
                     </button>
                   ))}

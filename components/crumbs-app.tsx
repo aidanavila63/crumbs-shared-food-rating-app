@@ -32,7 +32,7 @@ import { MapsProvider } from './maps-provider'
 import { notifyMates } from '@/lib/push'
 import { takePendingAdd } from '@/lib/pending-add'
 import { HoursRefresher } from './place-hours'
-import { maskRatings, mergeMasked, openStatus } from '@/lib/place-info'
+import { maskRatings, mergeMasked } from '@/lib/place-info'
 import { haptic, motionAllowed, useMotionPrefs } from '@/lib/motion'
 import { distanceKm } from '@/lib/stats'
 import { useUserLocation } from '@/lib/use-user-location'
@@ -48,7 +48,7 @@ import { UnderlineTabs } from './underline-tabs'
 import { YoureHere } from './youre-here'
 import { WhatsNew } from './whats-new'
 import { FilterPill, FilterSheet } from './places-filter'
-import { openAtDate, openAtLabel, type OpenAt } from '@/lib/open-at'
+import { openAtLabel, openAtMatches, type OpenAt } from '@/lib/open-at'
 import { ATTRS, FILTER_ATTRS, hasAllFacts } from '@/lib/good-to-know'
 import { ProfileButton, ProfileHub, type HubPage } from './profile-hub'
 import { SocialContext, useSocialStore } from '@/hooks/use-social'
@@ -65,7 +65,7 @@ import { CatchUpCard } from './catch-up-card'
 import { tourDone } from '@/lib/guidebook'
 import { GroupSwitcher } from './group-switcher'
 import { GroupActions } from './group-actions'
-import { oneEmoji } from '@/lib/group-look'
+import { listEmoji } from '@/lib/group-look'
 import { cuisineWords, searchAll } from '@/lib/search-all'
 import { settingsOf } from '@/lib/ratings'
 import { middleOf, openLocationSetup, startAutoLocation } from '@/lib/location'
@@ -374,7 +374,7 @@ function CrumbsShell() {
         setOtherPlaces(
           (rows ?? []).map((p: Place) => {
             const g = others.find((x) => x.id === p.group_id)
-            return { ...p, name: `${oneEmoji(g?.emoji) ?? '👥'} ${p.name}` }
+            return { ...p, name: `${listEmoji(g?.emoji) ?? '👥'} ${p.name}` }
           }),
         )
       })
@@ -535,14 +535,14 @@ function CrumbsShell() {
   }, [view, area, deferredQuery, haystacks, inFilter])
   const filtered = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase()
-    const when = openAtDate(openAt)
+    const now = new Date()
     const list = view.filter(
       (place) =>
         (!area || inArea(place, area)) &&
         inFilter(place, filter) &&
         (!needle || (haystacks.get(place.id) ?? '').includes(needle)) &&
         hasAllFacts(place.restaurant_id, factKeys, spaceFacts) &&
-        (!when || openStatus(place.opening_hours, when)?.open === true),
+        (!openAt || openAtMatches(place.opening_hours, openAt, now)),
     )
     if (sort === 'Top rated') {
       const score = new Map(list.map((place) => [place.id, placeAverage(place)]))
@@ -975,7 +975,7 @@ function CrumbsShell() {
             <section key={w.group_id} className="surface" role="status">
               <p className="invite-waiting">
                 <span className="invite-dot" aria-hidden="true" />
-                Waiting to be let into {oneEmoji(w.emoji) ? `${oneEmoji(w.emoji)} ` : ''}
+                Waiting to be let into {listEmoji(w.emoji) ? `${listEmoji(w.emoji)} ` : ''}
                 {w.name}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">

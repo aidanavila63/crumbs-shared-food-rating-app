@@ -253,7 +253,7 @@ export function GroupSwitcher({
                   onSwitch(g)
                 }}
               >
-                <GroupBadge group={g} />
+                <GroupBadge group={g} plain />
                 <span className="min-w-0 flex-1 truncate font-serif text-xl font-bold">
                   {g.name}
                 </span>
@@ -393,7 +393,7 @@ export function GroupSwitcher({
               found.map((g) => (
                 <div key={g.id} className="surface flex flex-col gap-2">
                   <div className="flex items-center gap-3">
-                    <GroupBadge group={g} />
+                    <GroupBadge group={g} plain />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-serif text-xl font-bold">{g.name}</span>
                       <span className="block text-xs text-muted-foreground">

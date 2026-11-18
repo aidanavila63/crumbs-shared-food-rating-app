@@ -6,6 +6,30 @@ import { useEffect, useState } from 'react'
 import { haptic } from '@/lib/motion'
 
 const LOOK_EVERY = 5 * 60_000
+// Round 91 (Aidan: "occasionally stuck on an old version"): a phone can open Crumbs from its saved
+// copy (weak signal) or keep it open in the background for days. When a newer version is live,
+// Crumbs now refreshes by itself at a safe moment — right after opening, before you've touched
+// anything, or when you come back after 10+ minutes away — and otherwise shows the button.
+const OPENED_GRACE = 15_000
+const AWAY_LONG = 10 * 60_000
+const AUTO_KEY = 'crumbs-auto-update'
+
+/** Refresh to the newest version, waiting for the network (not the saved copy; see sw.js). */
+export function refreshToNewest() {
+  try {
+    sessionStorage.setItem(AUTO_KEY, String(Date.now()))
+  } catch {}
+  window.location.replace('/?update=1')
+}
+
+/** At most once every 2 minutes, so a phone that keeps getting the old copy can't loop. */
+function mayAutoRefresh() {
+  try {
+    return Date.now() - Number(sessionStorage.getItem(AUTO_KEY) ?? 0) > 120_000
+  } catch {
+    return false
+  }
+}
 export const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'local'
 
 /** "abc1234 · 16 Nov" for Settings and Admin. */
@@ -24,10 +48,29 @@ export function SiteNotice({ supabase, demo }: { supabase: any; demo: boolean })
   const [hidden, setHidden] = useState<string | null>(null)
 
   useEffect(() => {
+    // tidy the address after a refresh for an update
+    if (window.location.search.includes('update=1')) window.history.replaceState(null, '', '/')
+  }, [])
+
+  useEffect(() => {
     if (demo) return
     let last = 0
+    const opened = Date.now()
+    let touched = false
+    let hiddenAt = 0
+    const touch = () => {
+      touched = true
+    }
+    window.addEventListener('pointerdown', touch, { once: true })
+    window.addEventListener('keydown', touch, { once: true })
     const look = async () => {
-      if (document.visibilityState !== 'visible' || Date.now() - last < LOOK_EVERY) return
+      if (document.visibilityState !== 'visible') {
+        hiddenAt = Date.now()
+        return
+      }
+      const backAfterLong = hiddenAt > 0 && Date.now() - hiddenAt >= AWAY_LONG
+      hiddenAt = 0
+      if (!backAfterLong && Date.now() - last < LOOK_EVERY) return
       last = Date.now()
       const { data } = await supabase.from('site_settings').select('key,value')
       setNotice((data ?? []).find((r: any) => r.key === 'notice')?.value ?? null)
@@ -36,14 +79,22 @@ export function SiteNotice({ supabase, demo }: { supabase: any; demo: boolean })
       const live = await fetch('/api/version', { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
-      if (live?.build && live.build !== 'local' && live.build !== BUILD_ID) setUpdate(true)
+      if (live?.build && live.build !== 'local' && live.build !== BUILD_ID) {
+        const justOpened = !touched && Date.now() - opened < OPENED_GRACE
+        if ((justOpened || backAfterLong) && mayAutoRefresh()) return refreshToNewest()
+        setUpdate(true)
+      }
     }
     look()
     try {
       setHidden(sessionStorage.getItem('crumbs-notice-hidden'))
     } catch {}
     document.addEventListener('visibilitychange', look)
-    return () => document.removeEventListener('visibilitychange', look)
+    return () => {
+      document.removeEventListener('visibilitychange', look)
+      window.removeEventListener('pointerdown', touch)
+      window.removeEventListener('keydown', touch)
+    }
   }, [demo, supabase])
 
   const text = notice?.on && notice.text?.trim() ? notice.text.trim() : null
@@ -76,7 +127,7 @@ export function SiteNotice({ supabase, demo }: { supabase: any; demo: boolean })
           className="update-ready"
           onClick={() => {
             haptic('tap')
-            window.location.reload()
+            refreshToNewest()
           }}
         >
           Update ready — tap to refresh

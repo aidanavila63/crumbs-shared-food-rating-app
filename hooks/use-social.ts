@@ -3,6 +3,7 @@
 // One small store per group, shared through context so any card can show a reaction bar.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { notifyMates } from '@/lib/push'
 
 export type Reaction = { id: string; target: string; user_id: string; emoji: string }
 export type Comment = {
@@ -187,6 +188,9 @@ export function useSocialStore({
       if (error) {
         setReactions(before)
         toast.error(error.message)
+      } else if (!existing) {
+        // Round 91: tell whoever it belongs to (once a minute per thing, at most)
+        notifyMates({ type: 'reaction', groupId, target, emoji })
       }
     },
     [demo, groupId, reactions, supabase, userId],
