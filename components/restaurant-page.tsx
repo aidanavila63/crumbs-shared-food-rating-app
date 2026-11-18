@@ -20,7 +20,8 @@ import {
   histRows,
   hoursLines,
   isClosedForGood,
-  menuSections,
+  menuGroups,
+  dishExtras,
   metaLine,
   phoneHref,
   priceText,
@@ -395,30 +396,37 @@ function Overview({ data }: { data: PublicRestaurant }) {
 }
 
 export function MenuTab({ data }: { data: PublicRestaurant }) {
-  const sections = menuSections(data.menu)
-  if (!sections.length)
+  const groups = menuGroups(data.menu)
+  if (!groups.length)
     return (
       <div className="empty">
         <p className="font-semibold">No menu yet</p>
         <p className="mt-1 text-sm text-muted-foreground">Menus come from people who&apos;ve been (and the owner, once they claim the page).</p>
       </div>
     )
+  const many = groups.length > 1
   return (
     <div className="flex flex-col gap-4">
-      {sections.map((s) => (
-        <Card key={s.course} title={COURSE[s.course]}>
-          <ul className="flex flex-col gap-3">
-            {s.items.map((m) => (
-              <li key={m.name}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-semibold">{m.name}</span>
-                  {m.price !== null && <span className="text-sm text-muted-foreground">${Number(m.price).toFixed(2)}</span>}
-                </div>
-                {m.description && <p className="text-sm text-muted-foreground">{m.description}</p>}
-              </li>
-            ))}
-          </ul>
-        </Card>
+      {groups.map((g) => (
+        <div key={g.menu ?? 'main'} className="flex flex-col gap-4">
+          {many && <h2 className="font-serif text-2xl font-bold">{g.menu ?? 'Menu'}</h2>}
+          {g.sections.map((s) => (
+            <Card key={s.course} title={COURSE[s.course]}>
+              <ul className="flex flex-col gap-3">
+                {s.items.map((m) => (
+                  <li key={m.name}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-semibold">{m.name}</span>
+                      {m.price !== null && <span className="text-sm text-muted-foreground">${Number(m.price).toFixed(2)}</span>}
+                    </div>
+                    {m.description && <p className="text-sm text-muted-foreground">{m.description}</p>}
+                    {dishExtras(m) && <p className="text-xs font-semibold text-primary">{dishExtras(m)}</p>}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ))}
+        </div>
       ))}
     </div>
   )

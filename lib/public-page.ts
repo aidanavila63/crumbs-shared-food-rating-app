@@ -52,6 +52,10 @@ export type PublicRestaurant = {
     dietary: string[] | null
     description: string | null
     claimed: boolean
+    /** Round 97 (O5): when it's served, which menu it's on, seasonal last day */
+    served?: ('breakfast' | 'lunch' | 'dinner' | 'late')[] | null
+    menu_name?: string | null
+    until?: string | null
   }[]
   spend: { per_head: number; lunch: number | null; dinner: number | null } | null
   wait: number | null
@@ -234,6 +238,30 @@ export function directionsUrl(r: Pick<PublicRestaurant, 'name' | 'address' | 'go
 
 export const isClosedForGood = (r: Pick<PublicRestaurant, 'business_status'>) =>
   r.business_status === 'CLOSED_PERMANENTLY'
+
+/** Round 97 (O5): menus (the main one first, then Brunch, Drinks… A–Z), each by course. */
+export function menuGroups(menu: PublicRestaurant['menu']) {
+  const names = [...new Set((menu ?? []).map((m) => m.menu_name?.trim() || ''))].sort((a, b) =>
+    a === '' ? -1 : b === '' ? 1 : a.localeCompare(b),
+  )
+  return names.map((name) => ({
+    menu: name || null,
+    sections: menuSections((menu ?? []).filter((m) => (m.menu_name?.trim() || '') === name)),
+  }))
+}
+
+const SERVED: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', late: 'Late night' }
+/** "Lunch · Dinner", "Until Dec 8" — the little line under a dish. */
+export function dishExtras(m: Pick<PublicRestaurant['menu'][number], 'served' | 'until'>) {
+  const bits: string[] = []
+  if (m.served?.length && m.served.length < 4) bits.push(m.served.map((s) => SERVED[s] ?? s).join(' · '))
+  if (m.until) {
+    const [y, mo, d] = m.until.split('-').map(Number)
+    if (y && mo && d)
+      bits.push(`Until ${new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`)
+  }
+  return bits.join(' · ')
+}
 
 /** Menu grouped by course, in the usual order. */
 export function menuSections(menu: PublicRestaurant['menu']) {

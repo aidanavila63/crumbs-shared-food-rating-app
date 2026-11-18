@@ -177,9 +177,13 @@ async function handlePOST(request: Request) {
       if (meal?.created_by) owners = [meal.created_by]
       about = meal ? `your ${meal.name}` : ''
     } else if (what === 'rating') {
+      // "rating:<place>:<who rated>" (one person's rating) or "rating:<place>" (older cards)
+      const [placeId, rater] = id.split(':')
       const [{ data: place }, { data: raters }] = await Promise.all([
-        supabase.from('places').select('name').eq('id', id).maybeSingle(),
-        supabase.from('place_ratings').select('user_id').eq('place_id', id),
+        supabase.from('places').select('name').eq('id', placeId).maybeSingle(),
+        rater
+          ? supabase.from('place_ratings').select('user_id').eq('place_id', placeId).eq('user_id', rater)
+          : supabase.from('place_ratings').select('user_id').eq('place_id', placeId),
       ])
       owners = (raters ?? []).map((row: any) => row.user_id)
       about = place ? `your rating of ${place.name}` : ''

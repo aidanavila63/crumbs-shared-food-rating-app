@@ -44,6 +44,7 @@ import { useRestaurant } from '@/hooks/use-restaurant'
 import { usePublicRestaurant } from '@/hooks/use-public-restaurant'
 import { RestaurantPage } from './restaurant-page'
 import { MergePlaces } from './merge-places'
+import { UnderlineTabs } from './underline-tabs'
 import { PlaceHistory } from './place-history'
 import { ClaimForm } from './claim-form'
 import type { MenuDish } from '@/lib/restaurants'
@@ -415,6 +416,8 @@ export function PlaceSheet({
   const me = members.find((member) => member.id === userId) ?? null
   const privateNote = usePrivateNote({ placeId: place.id, userId, supabase, demo })
   const [tableOpen, setTableOpen] = useState(false)
+  // Round 97: the Our group tabs
+  const [groupTab, setGroupTab] = useState<'ratings' | 'dishes' | 'visits' | 'details'>('ratings')
   const [planBOpen, setPlanBOpen] = useState(false)
   // #47 the rating you just saved here, so it can go to your other groups too
   const [rated, setRated] = useState<{ rating: Partial<Rating>; at: number } | null>(null)
@@ -1027,63 +1030,67 @@ export function PlaceSheet({
     : [[null, sortedDishes]]
   const groupBody = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      {!shared && (
+        <>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {!shared && (
+              <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
+            )}
+            {!shared && restaurant.restaurant?.owner_verified && <VerifiedBadge />}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {place.formatted_address || 'Address not added'}
+            </p>
+            <PlaceHours
+              place={place}
+              supabase={supabase}
+              demo={demo}
+              onUpdate={onUpdate}
+              onAddHours={
+                restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
+              }
+            />
+            <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} store={restaurant} />
+            {onOpenPlace && allPlaces.length > 1 && (
+              <button
+                className="text-sm font-semibold text-primary underline"
+                onClick={() => setPlanBOpen(true)}
+              >
+                Closed or full? <RefreshCw size={14} className="inline" aria-hidden="true" /> Plan B
+              </button>
+            )}
+            {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
+              <p className="text-sm text-muted-foreground">
+                Lunch ~${restaurant.insights.lunch_per_head} · dinner ~$
+                {restaurant.insights.dinner_per_head} a person · from Crumbs visits
+              </p>
+            ) : restaurant.insights?.per_head ? (
+              <p className="text-sm text-muted-foreground">
+                About ${restaurant.insights.per_head} a person · from Crumbs visits
+              </p>
+            ) : null}
+            {(busyText(restaurant.insights?.busy) || waitText(restaurant.insights?.typical_wait)) && (
+              <p className="text-sm text-muted-foreground">
+                {[busyText(restaurant.insights?.busy), waitText(restaurant.insights?.typical_wait)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+            {knownFor(place).length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Known for {knownFor(place).join(' · ').toLowerCase()}
+              </p>
+            )}
+          </div>
           {!shared && (
-            <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
-          )}
-          {!shared && restaurant.restaurant?.owner_verified && <VerifiedBadge />}
-          <p className="mt-1 text-sm text-muted-foreground">
-            {place.formatted_address || 'Address not added'}
-          </p>
-          <PlaceHours
-            place={place}
-            supabase={supabase}
-            demo={demo}
-            onUpdate={onUpdate}
-            onAddHours={
-              restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
-            }
-          />
-          <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} store={restaurant} />
-          {onOpenPlace && allPlaces.length > 1 && (
-            <button
-              className="text-sm font-semibold text-primary underline"
-              onClick={() => setPlanBOpen(true)}
-            >
-              Closed or full? <RefreshCw size={14} className="inline" aria-hidden="true" /> Plan B
+            <button className="icon-btn" aria-label="Close" onClick={onClose}>
+              ×
             </button>
           )}
-          {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
-            <p className="text-sm text-muted-foreground">
-              Lunch ~${restaurant.insights.lunch_per_head} · dinner ~$
-              {restaurant.insights.dinner_per_head} a person · from Crumbs visits
-            </p>
-          ) : restaurant.insights?.per_head ? (
-            <p className="text-sm text-muted-foreground">
-              About ${restaurant.insights.per_head} a person · from Crumbs visits
-            </p>
-          ) : null}
-          {(busyText(restaurant.insights?.busy) || waitText(restaurant.insights?.typical_wait)) && (
-            <p className="text-sm text-muted-foreground">
-              {[busyText(restaurant.insights?.busy), waitText(restaurant.insights?.typical_wait)]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          )}
-          {knownFor(place).length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Known for {knownFor(place).join(' · ').toLowerCase()}
-            </p>
-          )}
         </div>
-        {!shared && (
-          <button className="icon-btn" aria-label="Close" onClick={onClose}>
-            ×
-          </button>
-        )}
-      </div>
-      <div className="mt-5 flex flex-col gap-5">
+        </>
+      )}
+      <div className={`${shared ? 'mt-1' : 'mt-5'} flex flex-col gap-5`}>
         {(privateNote.nextTime || privateNote.loyalty || dishes.some((d) => d.wishlist)) && (
           <div className="flex flex-col gap-2">
             {privateNote.nextTime && (
@@ -1108,14 +1115,6 @@ export function PlaceSheet({
             )}
           </div>
         )}
-        <PhotoButton
-          label={place.name}
-          path={place.photo_path}
-          folder={place.group_id}
-          supabase={supabase}
-          demo={demo}
-          onChange={setPlacePhoto}
-        />
         {maybeClosed && (
           <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
             <strong>⚠ Might be closed.</strong> {maybeClosedText(maybeClosed)}
@@ -1130,442 +1129,550 @@ export function PlaceSheet({
             ))}
           </div>
         )}
-        {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
-          <RestaurantPosts
-            restaurantId={restaurant.restaurant.id}
-            supabase={supabase}
-            demo={demo}
-            verified={!!restaurant.restaurant.owner_verified}
-          />
-        )}
-        {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
-          <GoodToKnow
-            restaurantId={restaurant.restaurant.id}
-            groupId={place.group_id}
-            userId={userId}
-            supabase={supabase}
-            demo={demo}
-          />
-        )}
-        {(order.length > 0 || skip.length > 0) && (
-          <div className="surface-soft flex flex-col gap-1">
-            <h3 className="font-serif text-xl font-bold">Dish highlights</h3>
-            {order.map((dish) => (
-              <p key={dish.id} className="text-sm">
-                <span className="tag mr-1">MUST TRY</span> <strong>{dish.name}</strong>
-                {dishAverage(dish) !== null ? ` · ${dishAverage(dish)}/100` : ''}
-              </p>
-            ))}
-            {skip.map((dish) => (
-              <p key={dish.id} className="text-sm text-muted-foreground">
-                👎 Skip the {dish.name}
-              </p>
-            ))}
-            <button
-              className="mt-1 self-start text-sm font-semibold text-primary underline"
-              onClick={() => setTableOpen(true)}
-            >
-              <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
-            </button>
-          </div>
-        )}
-        {/* #118 every dish photo your group took here, in one strip */}
-        {dishes.filter((d) => d.photo_path).length > 0 && (
-          <div className="dish-gallery" aria-label="Dish photos">
-            {dishes
-              .filter((d) => d.photo_path)
-              .map((d) => (
-                <figure key={d.id}>
-                  <ThumbImg path={d.photo_path} alt={d.name} />
-                  <figcaption>{d.name}</figcaption>
-                </figure>
-              ))}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-sm text-muted-foreground">Group average</p>
-            <p className="font-serif text-5xl text-primary">
-              {formatScore(average, scale)}
-              {scale === '10' && average > 0 && (
-                <span className="text-xl text-muted-foreground">/10</span>
-              )}
-            </p>
-            {basedOn(place) && (
-              <p className="text-xs text-muted-foreground">from {basedOn(place)}</p>
-            )}
-            {(ratingFromVisits(place.place_visits ?? [], userId)?.count ?? 0) >= 2 && (
-              <p className="text-xs text-muted-foreground">
-                Your rating comes from your {ratingFromVisits(place.place_visits ?? [], userId)!.count}{' '}
-                visits — recent ones count most
-              </p>
-            )}
-            {balanced !== null && (
-              <button
-                className="text-xs text-muted-foreground underline decoration-dotted"
-                onClick={() =>
-                  toast('Balanced score', {
-                    description:
-                      'Adjusts for how each person usually rates, so a tough rater’s 4 counts like a generous rater’s 4.5.',
-                  })
-                }
-              >
-                Balanced: {formatScore(balanced, scale)}
-              </button>
-            )}
-            {value && (
-              <button
-                className="ml-3 text-xs text-muted-foreground underline decoration-dotted"
-                onClick={() =>
-                  toast(`${value.label}: ${value.score}/10`, {
-                    description: `About $${Math.round(value.perHead)} a person here vs your usual $${Math.round(value.usual)}. Your group’s rating, nudged up when it costs less than usual and down when it costs more.`,
-                  })
-                }
-              >
-                💸 Value {value.score}/10
-              </button>
-            )}
-          </div>
-          <ScoreInput value={inputValue(mine, scale)} scale={scale} onChange={rate} />
-        </div>
-        {(v4 || demo) && mine && (
-          // #112 one-tap reasons, kept to one quiet scrolling line
-          <div className="reason-row" role="group" aria-label="Why? (up to 4)">
-            <span className="text-xs text-muted-foreground">Why?</span>
-            {[...REASONS.good, ...REASONS.bad].map((reason) => {
-              const on = (mine.reasons ?? []).includes(reason)
-              return (
-                <button
-                  key={reason}
-                  aria-pressed={on}
-                  className={`reason-chip ${on ? 'reason-chip-on' : ''}`}
-                  onClick={() => {
-                    const now = mine.reasons ?? []
-                    if (!on && now.length >= MAX_REASONS)
-                      return toast(`Up to ${MAX_REASONS} — tap one to swap it out`)
-                    haptic('select')
-                    saveMine({
-                      reasons: on ? now.filter((r) => r !== reason) : [...now, reason],
-                    })
-                  }}
-                >
-                  {reason}
-                </button>
-              )
-            })}
-          </div>
-        )}
-        {v4 && mine?.draft ? (
-          <div className="draft-note rise-panel">
-            <span className="text-sm">
-              <strong>📝 Draft</strong> — only you can see your rating.
-            </span>
-            <button className="primary !min-h-9 !px-4 text-sm" onClick={() => saveMine({ draft: false })}>
-              Post it
-            </button>
-          </div>
-        ) : v4 && !mine ? (
-          <label className="flex items-center gap-2 self-end text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              className="accent-[var(--primary)]"
-              checked={draftMode}
-              onChange={(event) => setDraftMode(event.target.checked)}
-            />
-            Save my rating as a draft (only I see it until I post it)
-          </label>
-        ) : null}
-        {v4 && s.categories && (
-          <div className="surface-soft flex flex-col gap-1">
-            {CATEGORIES.map(({ key, label }) => (
-              <div key={key} className="flex items-center justify-between gap-2">
-                <span className="w-16 text-sm font-semibold">{label}</span>
-                <RatingStars
-                  value={mine?.[key] ?? 0}
-                  label={`Your ${label.toLowerCase()} score`}
-                  onChange={(value) =>
-                    saveMine({ [key]: value } as Partial<Record<CategoryKey, number>>)
-                  }
-                />
-                <span
-                  className="w-10 text-right text-sm text-muted-foreground"
-                  aria-label={`Group ${label}`}
-                >
-                  {cats[key] !== null ? cats[key]!.toFixed(1) : '—'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {v4 && s.wouldReturn && (
-          <div className="chip-row" role="group" aria-label="Would you go back?">
-            {RETURN.map((item) => (
-              <button
-                key={item.id}
-                aria-pressed={mine?.would_return === item.id}
-                className={`chip chip-sm ${mine?.would_return === item.id ? 'chip-active' : ''}`}
-                onClick={() => {
-                  haptic('select')
-                  saveMine({ would_return: mine?.would_return === item.id ? null : item.id })
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="chip-row" role="group" aria-label="Vibe tags">
-          {[...new Set([...s.tags.filter((t) => !isReasonTag(t)), ...(place.tags ?? [])])].map((tag) => {
-            const on = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
-            return (
-              <button
-                key={tag}
-                aria-pressed={on}
-                className={`chip chip-sm ${on ? 'chip-active' : ''}`}
-                onClick={() => toggleVibe(tag)}
-              >
-                {tag}
-              </button>
-            )
-          })}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {(['Been', 'Want to try'] as Status[]).map((item) => (
-            <button
-              aria-pressed={status === item}
-              className={`chip ${status === item ? 'chip-active' : ''}`}
-              key={item}
-              onClick={() => updateStatus(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        {status === 'Been' && (
-          <VisitsPanel
-            place={place}
-            userId={userId}
-            supabase={supabase}
-            demo={demo}
-            onUpdate={onUpdate}
-            v4={v4}
-            scale={scale}
-            members={members}
-            names={names}
-            turns={v4 && s.turns}
-            onScored={(visits) => {
-              // #113b your rating = your visits, recent ones counting most
-              const r = ratingFromVisits(visits, userId)
-              const latest = visits.map((v) => v.visited_on).sort().at(-1) ?? null
-              if (r) saveMine(ratingRow(r.value), { ...place, place_visits: visits, visited_on: latest })
-            }}
-          />
-        )}
-        {lists.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <h3 className="font-serif text-xl font-bold">Lists</h3>
-            <div className="chip-row">
-              {lists.map((list) => {
-                const inList = list.list_places?.some((item) => item.place_id === place.id)
-                return (
-                  <button
-                    key={list.id}
-                    aria-pressed={!!inList}
-                    className={`chip ${inList ? 'chip-active' : ''}`}
-                    onClick={() => toggleList(list)}
-                  >
-                    {list.emoji} {list.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-        <QuickCheck
-          place={place}
-          store={restaurant}
-          supabase={supabase}
-          demo={demo}
-          onHours={saveHours}
+        {/* Round 97 (Aidan: "re-designed to look much cleaner"): the group's page in four tabs */}
+        <UnderlineTabs
+          tabs={[
+            { id: 'ratings' as const, label: 'Ratings', count: place.place_ratings.length || undefined },
+            { id: 'dishes' as const, label: 'Dishes', count: dishes.length || undefined },
+            ...(status === 'Been'
+              ? [{ id: 'visits' as const, label: 'Visits', count: place.place_visits?.length || undefined }]
+              : []),
+            { id: 'details' as const, label: 'Details' },
+          ]}
+          value={groupTab === 'visits' && status !== 'Been' ? 'ratings' : groupTab}
+          onChange={setGroupTab}
+          label="Our group"
         />
-        <FactsEditor
-          place={place}
-          supabase={supabase}
-          demo={demo}
-          userId={userId}
-          onUpdate={onUpdate}
-        />
-        <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
-        {place.heard_from && (
-          <p className="text-sm text-muted-foreground">
-            Heard about it from: <span className="text-foreground">{place.heard_from}</span>
-          </p>
-        )}
-        <div className="flex flex-col gap-2">
-          <h3 className="font-serif text-xl font-bold">Ratings</h3>
-          {place.place_ratings.length ? (
-            place.place_ratings.map((rating) => (
-              <div className="surface-soft flex flex-col gap-1" key={rating.user_id}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">
-                    {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Someone')}
-                    {rating.draft && <span className="tag ml-2">draft · only you</span>}
-                  </span>
-                  <ScoreDisplay rating={rating} scale={scale} />
-                </div>
-                {(rating.would_return || rating.notes) && (
-                  <p className="text-sm text-muted-foreground">
-                    {rating.would_return && (
-                      <span className="tag mr-1">
-                        {RETURN.find((item) => item.id === rating.would_return)?.label}
-                      </span>
+        {(groupTab === 'ratings' || (groupTab === 'visits' && status !== 'Been')) && (
+          <div key="ratings" className="tab-pane flex flex-col gap-4">
+            <section className="surface flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Group average</p>
+                  <p className="font-serif text-5xl text-primary">
+                    {formatScore(average, scale)}
+                    {scale === '10' && average > 0 && (
+                      <span className="text-xl text-muted-foreground">/10</span>
                     )}
-                    {rating.notes}
                   </p>
-                )}
-                <ReactionBar target={`rating:${place.id}:${rating.user_id}`} names={names} />
+                  {basedOn(place) && (
+                    <p className="text-xs text-muted-foreground">from {basedOn(place)}</p>
+                  )}
+                  {(ratingFromVisits(place.place_visits ?? [], userId)?.count ?? 0) >= 2 && (
+                    <p className="text-xs text-muted-foreground">
+                      Your rating comes from your {ratingFromVisits(place.place_visits ?? [], userId)!.count}{' '}
+                      visits — recent ones count most
+                    </p>
+                  )}
+                  {balanced !== null && (
+                    <button
+                      className="text-xs text-muted-foreground underline decoration-dotted"
+                      onClick={() =>
+                        toast('Balanced score', {
+                          description:
+                            'Adjusts for how each person usually rates, so a tough rater’s 4 counts like a generous rater’s 4.5.',
+                        })
+                      }
+                    >
+                      Balanced: {formatScore(balanced, scale)}
+                    </button>
+                  )}
+                  {value && (
+                    <button
+                      className="ml-3 text-xs text-muted-foreground underline decoration-dotted"
+                      onClick={() =>
+                        toast(`${value.label}: ${value.score}/10`, {
+                          description: `About $${Math.round(value.perHead)} a person here vs your usual $${Math.round(value.usual)}. Your group’s rating, nudged up when it costs less than usual and down when it costs more.`,
+                        })
+                      }
+                    >
+                      💸 Value {value.score}/10
+                    </button>
+                  )}
+                </div>
+                <ScoreInput value={inputValue(mine, scale)} scale={scale} onChange={rate} />
               </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No ratings yet.</p>
-          )}
-          <textarea
-            aria-label="Your notes"
-            className="field min-h-20 text-base"
-            placeholder="Your notes"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
-          />
-          {v4 && userId && <PrivateNote note={privateNote} />}
-        </div>
-        {(groups.length > 1 || demo || !!me?.profile_public) && (
-          <OtherGroups
-            place={place}
-            groups={groups}
-            userId={userId}
-            profile={me}
-            supabase={supabase}
-            demo={demo}
-            scale={scale}
-            rated={rated}
-          />
-        )}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-serif text-xl font-bold">Dishes</h3>
-            {order.length === 0 && skip.length === 0 && (
-              <button
-                className="text-sm font-semibold text-primary underline"
-                onClick={() => setTableOpen(true)}
-              >
-                <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
-              </button>
+              {(v4 || demo) && mine && (
+                // #112 one-tap reasons, kept to one quiet scrolling line
+                <div className="reason-row" role="group" aria-label="Why? (up to 4)">
+                  <span className="text-xs text-muted-foreground">Why?</span>
+                  {[...REASONS.good, ...REASONS.bad].map((reason) => {
+                    const on = (mine.reasons ?? []).includes(reason)
+                    return (
+                      <button
+                        key={reason}
+                        aria-pressed={on}
+                        className={`reason-chip ${on ? 'reason-chip-on' : ''}`}
+                        onClick={() => {
+                          const now = mine.reasons ?? []
+                          if (!on && now.length >= MAX_REASONS)
+                            return toast(`Up to ${MAX_REASONS} — tap one to swap it out`)
+                          haptic('select')
+                          saveMine({
+                            reasons: on ? now.filter((r) => r !== reason) : [...now, reason],
+                          })
+                        }}
+                      >
+                        {reason}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {v4 && mine?.draft ? (
+                <div className="draft-note rise-panel">
+                  <span className="text-sm">
+                    <strong>📝 Draft</strong> — only you can see your rating.
+                  </span>
+                  <button className="primary !min-h-9 !px-4 text-sm" onClick={() => saveMine({ draft: false })}>
+                    Post it
+                  </button>
+                </div>
+              ) : v4 && !mine ? (
+                <label className="flex items-center gap-2 self-end text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--primary)]"
+                    checked={draftMode}
+                    onChange={(event) => setDraftMode(event.target.checked)}
+                  />
+                  Save my rating as a draft (only I see it until I post it)
+                </label>
+              ) : null}
+              {v4 && s.categories && (
+                <div className="surface-soft flex flex-col gap-1">
+                  {CATEGORIES.map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between gap-2">
+                      <span className="w-16 text-sm font-semibold">{label}</span>
+                      <RatingStars
+                        value={mine?.[key] ?? 0}
+                        label={`Your ${label.toLowerCase()} score`}
+                        onChange={(value) =>
+                          saveMine({ [key]: value } as Partial<Record<CategoryKey, number>>)
+                        }
+                      />
+                      <span
+                        className="w-10 text-right text-sm text-muted-foreground"
+                        aria-label={`Group ${label}`}
+                      >
+                        {cats[key] !== null ? cats[key]!.toFixed(1) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {v4 && s.wouldReturn && (
+                <div className="chip-row" role="group" aria-label="Would you go back?">
+                  {RETURN.map((item) => (
+                    <button
+                      key={item.id}
+                      aria-pressed={mine?.would_return === item.id}
+                      className={`chip chip-sm ${mine?.would_return === item.id ? 'chip-active' : ''}`}
+                      onClick={() => {
+                        haptic('select')
+                        saveMine({ would_return: mine?.would_return === item.id ? null : item.id })
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="chip-row" role="group" aria-label="Vibe tags">
+                {[...new Set([...s.tags.filter((t) => !isReasonTag(t)), ...(place.tags ?? [])])].map((tag) => {
+                  const on = (place.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())
+                  return (
+                    <button
+                      key={tag}
+                      aria-pressed={on}
+                      className={`chip chip-sm ${on ? 'chip-active' : ''}`}
+                      onClick={() => toggleVibe(tag)}
+                    >
+                      {tag}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(['Been', 'Want to try'] as Status[]).map((item) => (
+                  <button
+                    aria-pressed={status === item}
+                    className={`chip ${status === item ? 'chip-active' : ''}`}
+                    key={item}
+                    onClick={() => updateStatus(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="surface flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <h3 className="font-serif text-xl font-bold">Ratings</h3>
+                {place.place_ratings.length ? (
+                  place.place_ratings.map((rating) => (
+                    <div className="surface-soft flex flex-col gap-1" key={rating.user_id}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold">
+                          {rating.user_id === userId ? 'You' : (names[rating.user_id] ?? 'Someone')}
+                          {rating.draft && <span className="tag ml-2">draft · only you</span>}
+                        </span>
+                        <ScoreDisplay rating={rating} scale={scale} />
+                      </div>
+                      {(rating.would_return || rating.notes) && (
+                        <p className="text-sm text-muted-foreground">
+                          {rating.would_return && (
+                            <span className="tag mr-1">
+                              {RETURN.find((item) => item.id === rating.would_return)?.label}
+                            </span>
+                          )}
+                          {rating.notes}
+                        </p>
+                      )}
+                      <ReactionBar target={`rating:${place.id}:${rating.user_id}`} names={names} />
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No ratings yet.</p>
+                )}
+                <textarea
+                  aria-label="Your notes"
+                  className="field min-h-20 text-base"
+                  placeholder="Your notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  onBlur={() => score && (mine?.notes ?? '') !== notes && saveMine({})}
+                />
+                {v4 && userId && <PrivateNote note={privateNote} />}
+              </div>
+            </section>
+            {lists.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <h3 className="font-serif text-xl font-bold">Lists</h3>
+                <div className="chip-row">
+                  {lists.map((list) => {
+                    const inList = list.list_places?.some((item) => item.place_id === place.id)
+                    return (
+                      <button
+                        key={list.id}
+                        aria-pressed={!!inList}
+                        className={`chip ${inList ? 'chip-active' : ''}`}
+                        onClick={() => toggleList(list)}
+                      >
+                        {list.emoji} {list.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             )}
-            {menuImport && (
-              <button
-                className="secondary !min-h-10 !px-3 text-sm"
-                disabled={saving}
-                onClick={suggestMenu}
-              >
-                {saving ? 'Reading website…' : 'Import menu from website'}
-              </button>
-            )}
-          </div>
-          {me?.safe_for_me && (
-            <p className="text-xs text-muted-foreground">
-              ✅ Fits you = matches your diet with none of your allergies reported. From people’s
-              reports only — always confirm with the restaurant.
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <ReadPhotoButton
-              label="Menu photo"
-              className="secondary self-start !min-h-10 !px-3 text-sm"
-              onText={(text) => {
-                const found = menuDishes(text)
-                if (!found.length)
-                  return toast('Couldn’t spot dishes with prices — try a closer photo')
-                setMenuDraft(found)
-              }}
-            />
-            {menuAi && (
-              <AiMenuPhotoButton
-                placeName={place.name}
-                demo={demo}
-                className="secondary self-start !min-h-10 !px-3 text-sm"
-                onDishes={setMenuDraft}
-              />
-            )}
-          </div>
-          {menuDraft && (
-            <MenuReview
-              lines={menuDraft}
-              existing={dishes.map((dish) => dish.name)}
-              onCancel={() => setMenuDraft(null)}
-              onSave={addMenuDishes}
-            />
-          )}
-          {importedOn && (
-            <p className="text-xs text-muted-foreground">
-              Auto-added from their website on {importedOn}. Dishes and prices may have changed, so
-              check the site.
-            </p>
-          )}
-          {dishGroups.map(([course, group]) => [
-            course && (
-              <h4
-                key={`h-${course}`}
-                className="mt-1 text-sm font-bold uppercase tracking-wide text-muted-foreground"
-              >
-                {COURSE_LABEL[course]}
-              </h4>
-            ),
-            ...group.map((dish) => (
-              <DishRow
-                v4={v4}
-                key={dish.id}
-                dish={dish}
+            {(groups.length > 1 || demo || !!me?.profile_public) && (
+              <OtherGroups
+                place={place}
+                groups={groups}
                 userId={userId}
-                names={names}
-                groupId={place.group_id}
+                profile={me}
                 supabase={supabase}
                 demo={demo}
-                onRate={(next) => rateDish(dish.id, next)}
-                onClear={() => clearDishRating(dish.id)}
-                members={members}
-                onPhoto={(path) => setDishPhoto(dish.id, path)}
-                onMeta={(changes) => setDishMeta(dish.id, changes)}
-                onNote={(note) => saveDishNote(dish.id, note)}
-                onRemove={() => removeDish(dish.id)}
-                fit={me?.safe_for_me ? fitsMe(dish, me) : null}
-                onMakeAtHome={v4 || demo ? () => makeAtHome(dish) : undefined}
+                scale={scale}
+                rated={rated}
               />
-            )),
-          ])}
-          <div className="flex gap-2">
-            <input
-              aria-label="Add a dish"
-              onKeyDown={(event) => event.key === 'Enter' && addDish()}
-              className="field"
-              placeholder="Add a dish"
-              value={dishName}
-              onChange={(event) => setDishName(event.target.value)}
-            />
-            <button className="primary min-w-16" onClick={addDish}>
-              Add
-            </button>
+            )}
           </div>
-        </div>
-        {(v4 || demo) && restaurant.restaurant && (
-          <MenuPdfLink restaurantId={restaurant.restaurant.id} supabase={supabase} demo={demo} />
         )}
-        <CommunityMenu
-          store={restaurant}
-          ours={dishes}
-          placeName={place.name}
-          onAddToOurs={addFromMenu}
-        />
+        {groupTab === 'dishes' && (
+          <div key="dishes" className="tab-pane flex flex-col gap-4">
+            {(order.length > 0 || skip.length > 0) && (
+              <div className="surface-soft flex flex-col gap-1">
+                <h3 className="font-serif text-xl font-bold">Dish highlights</h3>
+                {order.map((dish) => (
+                  <p key={dish.id} className="text-sm">
+                    <span className="tag mr-1">MUST TRY</span> <strong>{dish.name}</strong>
+                    {dishAverage(dish) !== null ? ` · ${dishAverage(dish)}/100` : ''}
+                  </p>
+                ))}
+                {skip.map((dish) => (
+                  <p key={dish.id} className="text-sm text-muted-foreground">
+                    👎 Skip the {dish.name}
+                  </p>
+                ))}
+                <button
+                  className="mt-1 self-start text-sm font-semibold text-primary underline"
+                  onClick={() => setTableOpen(true)}
+                >
+                  <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
+                </button>
+              </div>
+            )}
+            {/* #118 every dish photo your group took here, in one strip */}
+            {dishes.filter((d) => d.photo_path).length > 0 && (
+              <div className="dish-gallery" aria-label="Dish photos">
+                {dishes
+                  .filter((d) => d.photo_path)
+                  .map((d) => (
+                    <figure key={d.id}>
+                      <ThumbImg path={d.photo_path} alt={d.name} />
+                      <figcaption>{d.name}</figcaption>
+                    </figure>
+                  ))}
+              </div>
+            )}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif text-xl font-bold">Dishes</h3>
+                {order.length === 0 && skip.length === 0 && (
+                  <button
+                    className="text-sm font-semibold text-primary underline"
+                    onClick={() => setTableOpen(true)}
+                  >
+                    <UtensilsCrossed size={16} className="inline" aria-hidden="true" /> Order for the table
+                  </button>
+                )}
+                {menuImport && (
+                  <button
+                    className="secondary !min-h-10 !px-3 text-sm"
+                    disabled={saving}
+                    onClick={suggestMenu}
+                  >
+                    {saving ? 'Reading website…' : 'Import menu from website'}
+                  </button>
+                )}
+              </div>
+              {me?.safe_for_me && (
+                <p className="text-xs text-muted-foreground">
+                  ✅ Fits you = matches your diet with none of your allergies reported. From people’s
+                  reports only — always confirm with the restaurant.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <ReadPhotoButton
+                  label="Menu photo"
+                  className="secondary self-start !min-h-10 !px-3 text-sm"
+                  onText={(text) => {
+                    const found = menuDishes(text)
+                    if (!found.length)
+                      return toast('Couldn’t spot dishes with prices — try a closer photo')
+                    setMenuDraft(found)
+                  }}
+                />
+                {menuAi && (
+                  <AiMenuPhotoButton
+                    placeName={place.name}
+                    demo={demo}
+                    className="secondary self-start !min-h-10 !px-3 text-sm"
+                    onDishes={setMenuDraft}
+                  />
+                )}
+              </div>
+              {menuDraft && (
+                <MenuReview
+                  lines={menuDraft}
+                  existing={dishes.map((dish) => dish.name)}
+                  onCancel={() => setMenuDraft(null)}
+                  onSave={addMenuDishes}
+                />
+              )}
+              {importedOn && (
+                <p className="text-xs text-muted-foreground">
+                  Auto-added from their website on {importedOn}. Dishes and prices may have changed, so
+                  check the site.
+                </p>
+              )}
+              {dishGroups.map(([course, group]) => [
+                course && (
+                  <h4
+                    key={`h-${course}`}
+                    className="mt-1 text-sm font-bold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {COURSE_LABEL[course]}
+                  </h4>
+                ),
+                ...group.map((dish) => (
+                  <DishRow
+                    v4={v4}
+                    key={dish.id}
+                    dish={dish}
+                    userId={userId}
+                    names={names}
+                    groupId={place.group_id}
+                    supabase={supabase}
+                    demo={demo}
+                    onRate={(next) => rateDish(dish.id, next)}
+                    onClear={() => clearDishRating(dish.id)}
+                    members={members}
+                    onPhoto={(path) => setDishPhoto(dish.id, path)}
+                    onMeta={(changes) => setDishMeta(dish.id, changes)}
+                    onNote={(note) => saveDishNote(dish.id, note)}
+                    onRemove={() => removeDish(dish.id)}
+                    fit={me?.safe_for_me ? fitsMe(dish, me) : null}
+                    onMakeAtHome={v4 || demo ? () => makeAtHome(dish) : undefined}
+                  />
+                )),
+              ])}
+              <div className="flex gap-2">
+                <input
+                  aria-label="Add a dish"
+                  onKeyDown={(event) => event.key === 'Enter' && addDish()}
+                  className="field"
+                  placeholder="Add a dish"
+                  value={dishName}
+                  onChange={(event) => setDishName(event.target.value)}
+                />
+                <button className="primary min-w-16" onClick={addDish}>
+                  Add
+                </button>
+              </div>
+            </div>
+            {(v4 || demo) && restaurant.restaurant && (
+              <MenuPdfLink restaurantId={restaurant.restaurant.id} supabase={supabase} demo={demo} />
+            )}
+            <CommunityMenu
+              store={restaurant}
+              ours={dishes}
+              placeName={place.name}
+              onAddToOurs={addFromMenu}
+            />
+          </div>
+        )}
+        {groupTab === 'visits' && status === 'Been' && (
+          <div key="visits" className="tab-pane flex flex-col gap-4">
+            <section className="surface flex flex-col gap-3">
+              {status === 'Been' && (
+                <VisitsPanel
+                  place={place}
+                  userId={userId}
+                  supabase={supabase}
+                  demo={demo}
+                  onUpdate={onUpdate}
+                  v4={v4}
+                  scale={scale}
+                  members={members}
+                  names={names}
+                  turns={v4 && s.turns}
+                  onScored={(visits) => {
+                    // #113b your rating = your visits, recent ones counting most
+                    const r = ratingFromVisits(visits, userId)
+                    const latest = visits.map((v) => v.visited_on).sort().at(-1) ?? null
+                    if (r) saveMine(ratingRow(r.value), { ...place, place_visits: visits, visited_on: latest })
+                  }}
+                />
+              )}
+            </section>
+          </div>
+        )}
+        {groupTab === 'details' && (
+          <div key="details" className="tab-pane flex flex-col gap-4">
+            {shared && (
+              <section className="surface flex flex-col gap-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  {!shared && (
+                    <h2 className="font-serif text-3xl font-bold [overflow-wrap:anywhere]">{place.name}</h2>
+                  )}
+                  {!shared && restaurant.restaurant?.owner_verified && <VerifiedBadge />}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {place.formatted_address || 'Address not added'}
+                  </p>
+                  <PlaceHours
+                    place={place}
+                    supabase={supabase}
+                    demo={demo}
+                    onUpdate={onUpdate}
+                    onAddHours={
+                      restaurant.enabled && restaurant.restaurant ? () => setEditInfo('hours') : undefined
+                    }
+                  />
+                  <PlaceLinks place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} store={restaurant} />
+                  {onOpenPlace && allPlaces.length > 1 && (
+                    <button
+                      className="text-sm font-semibold text-primary underline"
+                      onClick={() => setPlanBOpen(true)}
+                    >
+                      Closed or full? <RefreshCw size={14} className="inline" aria-hidden="true" /> Plan B
+                    </button>
+                  )}
+                  {restaurant.insights?.lunch_per_head && restaurant.insights?.dinner_per_head ? (
+                    <p className="text-sm text-muted-foreground">
+                      Lunch ~${restaurant.insights.lunch_per_head} · dinner ~$
+                      {restaurant.insights.dinner_per_head} a person · from Crumbs visits
+                    </p>
+                  ) : restaurant.insights?.per_head ? (
+                    <p className="text-sm text-muted-foreground">
+                      About ${restaurant.insights.per_head} a person · from Crumbs visits
+                    </p>
+                  ) : null}
+                  {(busyText(restaurant.insights?.busy) || waitText(restaurant.insights?.typical_wait)) && (
+                    <p className="text-sm text-muted-foreground">
+                      {[busyText(restaurant.insights?.busy), waitText(restaurant.insights?.typical_wait)]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {knownFor(place).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Known for {knownFor(place).join(' · ').toLowerCase()}
+                    </p>
+                  )}
+                </div>
+                {!shared && (
+                  <button className="icon-btn" aria-label="Close" onClick={onClose}>
+                    ×
+                  </button>
+                )}
+              </div>
+              </section>
+            )}
+            <PhotoButton
+              label={place.name}
+              path={place.photo_path}
+              folder={place.group_id}
+              supabase={supabase}
+              demo={demo}
+              onChange={setPlacePhoto}
+            />
+            {!shared && (
+              <>
+              {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
+                <RestaurantPosts
+                  restaurantId={restaurant.restaurant.id}
+                  supabase={supabase}
+                  demo={demo}
+                  verified={!!restaurant.restaurant.owner_verified}
+                />
+              )}
+              </>
+            )}
+            {(v4 || demo) && restaurant.enabled && restaurant.restaurant && (
+              <GoodToKnow
+                restaurantId={restaurant.restaurant.id}
+                groupId={place.group_id}
+                userId={userId}
+                supabase={supabase}
+                demo={demo}
+              />
+            )}
+            <QuickCheck
+              place={place}
+              store={restaurant}
+              supabase={supabase}
+              demo={demo}
+              onHours={saveHours}
+            />
+            <FactsEditor
+              place={place}
+              supabase={supabase}
+              demo={demo}
+              userId={userId}
+              onUpdate={onUpdate}
+            />
+            <PlaceEditor place={place} supabase={supabase} demo={demo} onUpdate={onUpdate} />
+            {place.heard_from && (
+              <p className="text-sm text-muted-foreground">
+                Heard about it from: <span className="text-foreground">{place.heard_from}</span>
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex gap-2">
           <a
             className="secondary flex-1 text-center"

@@ -512,3 +512,23 @@ button.chip:active {
 .table-menu .font-serif {
   font-family: var(--menu-font, inherit);
 }
+
+/* U24 (Round 97): on a computer, the place screen and other panels are roomier, and the Places
+   list uses two columns */
+@media (min-width: 1024px) {
+  .sheet,
+  .overlay-scroll {
+    max-width: 720px;
+  }
+  .place-rows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+  .place-rows > .place-row {
+    border-top: 1px solid var(--border);
+  }
+  .place-rows > .place-row:nth-child(-n + 2) {
+    border-top: 0;
+  }
+}

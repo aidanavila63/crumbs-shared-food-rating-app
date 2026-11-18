@@ -238,6 +238,11 @@ export type MenuDish = {
   confirms: number
   flags: number
   price_checked_at: string
+  /** Round 97 (O5) */
+  served?: string[] | null
+  menu_name?: string | null
+  season_from?: string | null
+  season_to?: string | null
 }
 
 export type NewMenuDish = {

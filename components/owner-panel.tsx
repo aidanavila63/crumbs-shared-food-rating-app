@@ -59,6 +59,12 @@ const LABEL: Partial<Record<FactField, string>> = {
   status: 'Open?',
   name: 'Name',
 }
+const SERVED = [
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+  { id: 'late', label: 'Late night' },
+]
 const COURSES: { id: MenuDish['course']; label: string }[] = [
   { id: 'starter', label: 'Starter' },
   { id: 'main', label: 'Main' },
@@ -593,14 +599,27 @@ function OwnerMenu({
   onChanged: () => Promise<void>
 }) {
   const [edit, setEdit] = useState<string | null>(null)
-  const [draft, setDraft] = useState({ name: '', price: '', course: null as MenuDish['course'] })
+  const [draft, setDraft] = useState({
+    name: '',
+    price: '',
+    course: null as MenuDish['course'],
+    // Round 97 (O5)
+    served: [] as string[],
+    menu: '',
+    from: '',
+    to: '',
+  })
   const [adding, setAdding] = useState({ name: '', price: '' })
 
   const price = (text: string) => {
     const n = Number(text.replace(/[^0-9.]/g, ''))
     return text.trim() && Number.isFinite(n) ? Math.round(n * 100) / 100 : null
   }
-  async function save(dish: MenuDish, change: Parameters<typeof ownerEditDish>[2]) {
+  async function save(
+    dish: MenuDish,
+    change: Parameters<typeof ownerEditDish>[2],
+    extras?: { served: string[]; menu: string; from: string; to: string },
+  ) {
     try {
       if (demo) {
         onMenu(
@@ -616,6 +635,14 @@ function OwnerMenu({
                         course: change.course ?? null,
                         owner_ok: true,
                         hidden: false,
+                        ...(extras
+                          ? {
+                              served: extras.served.length ? extras.served : null,
+                              menu_name: extras.menu || null,
+                              season_from: extras.from || null,
+                              season_to: extras.to || null,
+                            }
+                          : {}),
                       }
                     : d,
                 ),
@@ -623,6 +650,24 @@ function OwnerMenu({
         )
       } else {
         await ownerEditDish(supabase, dish.id, change)
+        // Round 97 (O5): served-at times, which menu, seasonal — only when something changed
+        if (
+          extras &&
+          (extras.served.join() !== (dish.served ?? []).join() ||
+            extras.menu !== (dish.menu_name ?? '') ||
+            extras.from !== (dish.season_from ?? '') ||
+            extras.to !== (dish.season_to ?? ''))
+        ) {
+          const { error } = await supabase.rpc('owner_dish_extras', {
+            target_dish: dish.id,
+            served_at: extras.served.length ? extras.served : null,
+            menu: extras.menu || null,
+            from_day: extras.from || null,
+            to_day: extras.to || null,
+          })
+          if (error)
+            throw new Error(/owner_dish_extras|schema cache|PGRST202/i.test(error.message ?? '') ? 'Menus and seasons aren’t switched on yet' : error.message)
+        }
         await onChanged()
       }
       haptic('success')
@@ -718,6 +763,48 @@ function OwnerMenu({
                 </button>
               ))}
             </div>
+            {/* Round 97 (O5): when it's served, which menu, seasonal */}
+            <div className="chip-row" aria-label="Served at">
+              {SERVED.map((t) => (
+                <button
+                  key={t.id}
+                  aria-pressed={draft.served.includes(t.id)}
+                  className={`chip chip-sm ${draft.served.includes(t.id) ? 'chip-active' : ''}`}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      served: draft.served.includes(t.id) ? draft.served.filter((x) => x !== t.id) : [...draft.served, t.id],
+                    })
+                  }
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <input
+              className="field !min-h-10 text-sm"
+              aria-label="Which menu"
+              list="owner-menu-names"
+              maxLength={30}
+              placeholder="Menu: blank = main (or Brunch, Drinks…)"
+              value={draft.menu}
+              onChange={(event) => setDraft({ ...draft, menu: event.target.value })}
+            />
+            <datalist id="owner-menu-names">
+              {[...new Set(menu.map((d) => d.menu_name).filter(Boolean))].map((n) => (
+                <option key={n} value={n!} />
+              ))}
+            </datalist>
+            <div className="flex gap-2">
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+                Seasonal from
+                <input className="field !min-h-10 w-full min-w-0 text-sm" type="date" value={draft.from} onChange={(event) => setDraft({ ...draft, from: event.target.value })} />
+              </label>
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+                until
+                <input className="field !min-h-10 w-full min-w-0 text-sm" type="date" min={draft.from || undefined} value={draft.to} onChange={(event) => setDraft({ ...draft, to: event.target.value })} />
+              </label>
+            </div>
             <div className="flex gap-2">
               <button className="secondary !min-h-10 text-sm" onClick={() => setEdit(null)}>
                 Cancel
@@ -726,11 +813,15 @@ function OwnerMenu({
                 className="primary !min-h-10 flex-1 text-sm"
                 disabled={!draft.name.trim()}
                 onClick={() =>
-                  save(dish, {
-                    name: draft.name.trim(),
-                    price: price(draft.price),
-                    course: draft.course,
-                  })
+                  save(
+                    dish,
+                    {
+                      name: draft.name.trim(),
+                      price: price(draft.price),
+                      course: draft.course,
+                    },
+                    { served: draft.served, menu: draft.menu.trim(), from: draft.from, to: draft.to },
+                  )
                 }
               >
                 Save
@@ -764,6 +855,10 @@ function OwnerMenu({
                   name: dish.name,
                   price: dish.price === null ? '' : String(dish.price),
                   course: dish.course,
+                  served: dish.served ?? [],
+                  menu: dish.menu_name ?? '',
+                  from: dish.season_from ?? '',
+                  to: dish.season_to ?? '',
                 })
                 setEdit(dish.id)
               }}

@@ -5,13 +5,13 @@ import { useState, useSyncExternalStore } from 'react'
 import { Sparkles, X } from 'lucide-react'
 
 export const WHATS_NEW = {
-  id: '2026-11-r91',
+  id: '2026-11-r97',
   lines: [
-    'Make your own version of any recipe — it always credits the original',
-    'Recipes: servings, times, Cook mode and a shopping list',
-    'Thousands of GTA restaurants now show up in search',
-    'Filter places open “For dinner” or for a “Night out”',
-    'Get a notification when someone reacts to your rating or recipe',
+    'A cleaner “Our group” page: Ratings, Dishes, Visits and Details tabs',
+    'Same place twice? Merge them — and see each place’s History',
+    'Loved near you: places 3+ groups rate highly (Decide → For you)',
+    'Photos on visits, a pick-a-day poll on plans, and download your places',
+    'Trips can use their own currency',
   ],
 }
 
