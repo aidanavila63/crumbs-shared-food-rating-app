@@ -5,6 +5,10 @@
 # Needs a local Postgres 16; set PGHOST/PGPORT/PGUSER (CI sets them). Usage: supabase/tests/run.sh
 set -euo pipefail
 cd "$(dirname "$0")"
+# Round 84: run in a time zone far from Toronto. Crumbs counts days in Toronto time; a test that
+# mixes up "today here" and "today in Toronto" then fails every time, not just in the evenings
+# (the hibernation check in round78_test failed on GitHub after 7 pm Toronto time on Nov 17).
+export PGTZ=${PGTZ:-Pacific/Kiritimati}
 DB=${CRUMBS_TEST_DB:-crumbs_test}
 dropdb --if-exists "$DB" >/dev/null 2>&1 || true
 createdb "$DB"

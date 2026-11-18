@@ -78,7 +78,7 @@ update feature_flags set state = 'everyone' where key = 'new_people';
 begin; set local role authenticated; set local request.jwt.claim.sub = :'dee';
 select public.seen_today();
 commit;
-select 1 / (case when (select last_seen_on from profiles where id = :'dee') = current_date then 1 else 0 end) as seen;
+select 1 / (case when (select last_seen_on from profiles where id = :'dee') = (now() at time zone 'America/Toronto')::date then 1 else 0 end) as seen;  -- Crumbs' day is Toronto's
 update profiles set last_seen_on = current_date - 800 where id = :'eve';
 insert into push_subscriptions (user_id, endpoint, p256dh, auth) values (:'eve', 'https://push.example/r78', 'k', 'a')
 on conflict do nothing;
