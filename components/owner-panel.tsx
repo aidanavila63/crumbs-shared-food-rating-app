@@ -4,7 +4,7 @@ import { refreshPublicPages } from '@/lib/refresh-public'
 // suggest (grouped, never who), every detail, and the menu — add, fix prices, remove dishes.
 // Price level isn't set by hand: it follows the menu's prices.
 import { useEffect, useState } from 'react'
-import { ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   contributeFact,
@@ -12,31 +12,30 @@ import {
   keepOwnerValue,
   loadInsights,
   loadMenu,
+  loadMenuSections,
   loadRestaurant,
   myRestaurants,
   ownerEditDish,
   ownerSuggestions,
-  shareDishes,
-  sortMenu,
   dishKey,
   type FactField,
   type Insights,
   type MenuDish,
+  type MenuSection,
   type OwnedRestaurant,
   type Restaurant,
   type Suggestion,
 } from '@/lib/restaurants'
 import { hoursToText, localUtcOffset } from '@/lib/hours-text'
-import { menuDishes } from '@/lib/ocr-parse'
 import type { Hours } from '@/lib/place-info'
 import { haptic } from '@/lib/motion'
 import { track } from '@/lib/analytics'
 import { Overlay } from './overlay'
-import { ReadPhotoButton } from './photo-reader'
 import { FactEditor, STATUS, VerifiedBadge } from './restaurant-profile'
 import { OwnerBooking, OwnerInsights, OwnerPosts, OwnerPoster, OwnerSpecialHours } from './owner-extras'
 import { OwnerMenuPdf } from './menu-pdf'
 import { OwnerTeam } from './owner-team'
+import { OwnerMenu } from './owner-menu-editor'
 import { OwnerHeadsUps } from './plan-headsup'
 import {
   OwnerBigChange,
@@ -59,20 +58,6 @@ const LABEL: Partial<Record<FactField, string>> = {
   status: 'Open?',
   name: 'Name',
 }
-const SERVED = [
-  { id: 'breakfast', label: 'Breakfast' },
-  { id: 'lunch', label: 'Lunch' },
-  { id: 'dinner', label: 'Dinner' },
-  { id: 'late', label: 'Late night' },
-]
-const COURSES: { id: MenuDish['course']; label: string }[] = [
-  { id: 'starter', label: 'Starter' },
-  { id: 'main', label: 'Main' },
-  { id: 'side', label: 'Side' },
-  { id: 'dessert', label: 'Dessert' },
-  { id: 'drink', label: 'Drink' },
-]
-
 function valueOf(r: Restaurant, f: FactField): unknown {
   if (f === 'address') return r.formatted_address
   if (f === 'hours') return r.opening_hours
@@ -153,7 +138,12 @@ const demoMenu = (): MenuDish[] =>
     flags: hidden ? 2 : 0,
     hidden,
     price_checked_at: new Date().toISOString(),
+    section_id: i < 2 ? 'demo-cat-mains' : null,
+    position: i,
   })) as MenuDish[]
+const demoSections = (): MenuSection[] => [
+  { id: 'demo-cat-mains', restaurant_id: 'demo-owned', name: 'Smokehouse', name_local: null, menu_name: null, position: 0, display: { effect: 'list' } },
+]
 
 /** The list of pages you run; tap one to manage it. */
 export function OwnerPanel({ supabase, demo }: { supabase: any; demo: boolean }) {
@@ -243,6 +233,7 @@ export function OwnerPanel({ supabase, demo }: { supabase: any; demo: boolean })
 function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; demo: boolean }) {
   const [r, setR] = useState<Restaurant | null>(demo ? demoRestaurant() : null)
   const [menu, setMenu] = useState<MenuDish[]>(demo ? demoMenu() : [])
+  const [sections, setSections] = useState<MenuSection[]>(demo ? demoSections() : [])
   const [suggestions, setSuggestions] = useState<Suggestion[]>(
     demo
       ? [
@@ -278,14 +269,16 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
 
   async function reload() {
     if (demo) return
-    const [fresh, m, s] = await Promise.all([
+    const [fresh, m, s, cats] = await Promise.all([
       loadRestaurant(supabase, id),
       loadMenu(supabase, id),
       ownerSuggestions(supabase, id).catch(() => []),
+      loadMenuSections(supabase, id),
     ])
     setR(fresh)
     setMenu(m.menu)
     setSuggestions(s)
+    setSections(cats)
   }
   useEffect(() => {
     if (demo) return
@@ -481,9 +474,11 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       <OwnerMenu
         restaurantId={id}
         menu={menu}
+        sections={sections}
         supabase={supabase}
         demo={demo}
         onMenu={setMenu}
+        onSections={setSections}
         onChanged={reload}
       />
       <OwnerPriceChange
@@ -496,7 +491,7 @@ function OwnerRestaurant({ id, supabase, demo }: { id: string; supabase: any; de
       />
       <OwnerPastePrices restaurantId={id} menu={menu} supabase={supabase} demo={demo} onChanged={reload} />
       <OwnerMenuPdf restaurantId={r.id} supabase={supabase} demo={demo} />
-      <OwnerTableQr name={r.name} tools={tools} restaurant={r} supabase={supabase} demo={demo} onSaved={reload} />
+      <OwnerTableQr name={r.name} tools={tools} restaurant={r} menu={menu} sections={sections} supabase={supabase} demo={demo} onSaved={reload} />
       <OwnerSiteBadge name={r.name} tools={tools} />
       <OwnerBooking restaurantId={r.id} supabase={supabase} demo={demo} />
       <OwnerPoster restaurantId={r.id} name={r.name} />
@@ -579,330 +574,6 @@ function OwnerNames({
       <button className="primary" disabled={!dirty || busy || others.length > 8} onClick={save}>
         {busy ? 'Saving…' : others.length > 8 ? 'Up to 8 other names' : 'Save names'}
       </button>
-    </section>
-  )
-}
-
-function OwnerMenu({
-  restaurantId,
-  menu,
-  supabase,
-  demo,
-  onMenu,
-  onChanged,
-}: {
-  restaurantId: string
-  menu: MenuDish[]
-  supabase: any
-  demo: boolean
-  onMenu: (menu: MenuDish[]) => void
-  onChanged: () => Promise<void>
-}) {
-  const [edit, setEdit] = useState<string | null>(null)
-  const [draft, setDraft] = useState({
-    name: '',
-    price: '',
-    course: null as MenuDish['course'],
-    // Round 97 (O5)
-    served: [] as string[],
-    menu: '',
-    from: '',
-    to: '',
-  })
-  const [adding, setAdding] = useState({ name: '', price: '' })
-
-  const price = (text: string) => {
-    const n = Number(text.replace(/[^0-9.]/g, ''))
-    return text.trim() && Number.isFinite(n) ? Math.round(n * 100) / 100 : null
-  }
-  async function save(
-    dish: MenuDish,
-    change: Parameters<typeof ownerEditDish>[2],
-    extras?: { served: string[]; menu: string; from: string; to: string },
-  ) {
-    try {
-      if (demo) {
-        onMenu(
-          change === 'remove'
-            ? menu.filter((d) => d.id !== dish.id)
-            : sortMenu(
-                menu.map((d) =>
-                  d.id === dish.id
-                    ? {
-                        ...d,
-                        name: change.name ?? d.name,
-                        price: change.price ?? null,
-                        course: change.course ?? null,
-                        owner_ok: true,
-                        hidden: false,
-                        ...(extras
-                          ? {
-                              served: extras.served.length ? extras.served : null,
-                              menu_name: extras.menu || null,
-                              season_from: extras.from || null,
-                              season_to: extras.to || null,
-                            }
-                          : {}),
-                      }
-                    : d,
-                ),
-              ),
-        )
-      } else {
-        await ownerEditDish(supabase, dish.id, change)
-        // Round 97 (O5): served-at times, which menu, seasonal — only when something changed
-        if (
-          extras &&
-          (extras.served.join() !== (dish.served ?? []).join() ||
-            extras.menu !== (dish.menu_name ?? '') ||
-            extras.from !== (dish.season_from ?? '') ||
-            extras.to !== (dish.season_to ?? ''))
-        ) {
-          const { error } = await supabase.rpc('owner_dish_extras', {
-            target_dish: dish.id,
-            served_at: extras.served.length ? extras.served : null,
-            menu: extras.menu || null,
-            from_day: extras.from || null,
-            to_day: extras.to || null,
-          })
-          if (error)
-            throw new Error(/owner_dish_extras|schema cache|PGRST202/i.test(error.message ?? '') ? 'Menus and seasons aren’t switched on yet' : error.message)
-        }
-        await onChanged()
-      }
-      haptic('success')
-      toast.success(change === 'remove' ? `Removed ${dish.name}` : 'Saved')
-      setEdit(null)
-    } catch (error: any) {
-      toast.error(error?.message || 'Could not save that')
-    }
-  }
-  async function add(dishes: { name: string; price?: number | null }[], how: 'photo' | 'manual') {
-    if (!dishes.length) return
-    try {
-      if (demo) {
-        onMenu(
-          sortMenu([
-            ...menu,
-            ...dishes.map((d, i) => ({
-              id: `demo-owned-new-${Date.now()}-${i}`,
-              restaurant_id: restaurantId,
-              name: d.name,
-              name_key: dishKey(d.name),
-              price: d.price ?? null,
-              description: null,
-              course: null,
-              dietary: [],
-              source: how,
-              owner_ok: true,
-              confirms: 0,
-              flags: 0,
-              price_checked_at: new Date().toISOString(),
-            })),
-          ]),
-        )
-      } else {
-        await shareDishes(supabase, restaurantId, dishes, how)
-        await onChanged()
-      }
-      haptic('success')
-      toast.success(`Added ${dishes.length} dish${dishes.length === 1 ? '' : 'es'}`)
-      setAdding({ name: '', price: '' })
-    } catch (error: any) {
-      toast.error(error?.message || 'Could not add that')
-    }
-  }
-
-  return (
-    <section className="surface flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <h3 className="font-serif text-xl font-bold">Menu</h3>
-        <span className="text-xs text-muted-foreground">{menu.length} dishes</span>
-      </div>
-      <ReadPhotoButton
-        label="Snap your menu"
-        className="primary !min-h-10 text-sm"
-        onText={(text) => {
-          const found = menuDishes(text)
-          if (!found.length) return toast('Couldn’t read dishes there — try a closer photo')
-          add(found, 'photo')
-        }}
-      />
-      {menu.map((dish) =>
-        edit === dish.id ? (
-          <div
-            key={dish.id}
-            className="rise-panel flex flex-col gap-2 rounded-2xl bg-[var(--card)] p-3"
-          >
-            <input
-              className="field !min-h-10 text-sm"
-              aria-label="Dish name"
-              maxLength={120}
-              value={draft.name}
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-            />
-            <input
-              className="field !min-h-10 text-sm"
-              aria-label="Price"
-              inputMode="decimal"
-              placeholder="Price"
-              value={draft.price}
-              onChange={(event) => setDraft({ ...draft, price: event.target.value })}
-            />
-            <div className="chip-row">
-              {COURSES.map((c) => (
-                <button
-                  key={c.id}
-                  aria-pressed={draft.course === c.id}
-                  className={`chip chip-sm ${draft.course === c.id ? 'chip-active' : ''}`}
-                  onClick={() =>
-                    setDraft({ ...draft, course: draft.course === c.id ? null : c.id })
-                  }
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            {/* Round 97 (O5): when it's served, which menu, seasonal */}
-            <div className="chip-row" aria-label="Served at">
-              {SERVED.map((t) => (
-                <button
-                  key={t.id}
-                  aria-pressed={draft.served.includes(t.id)}
-                  className={`chip chip-sm ${draft.served.includes(t.id) ? 'chip-active' : ''}`}
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      served: draft.served.includes(t.id) ? draft.served.filter((x) => x !== t.id) : [...draft.served, t.id],
-                    })
-                  }
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <input
-              className="field !min-h-10 text-sm"
-              aria-label="Which menu"
-              list="owner-menu-names"
-              maxLength={30}
-              placeholder="Menu: blank = main (or Brunch, Drinks…)"
-              value={draft.menu}
-              onChange={(event) => setDraft({ ...draft, menu: event.target.value })}
-            />
-            <datalist id="owner-menu-names">
-              {[...new Set(menu.map((d) => d.menu_name).filter(Boolean))].map((n) => (
-                <option key={n} value={n!} />
-              ))}
-            </datalist>
-            <div className="flex gap-2">
-              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
-                Seasonal from
-                <input className="field !min-h-10 w-full min-w-0 text-sm" type="date" value={draft.from} onChange={(event) => setDraft({ ...draft, from: event.target.value })} />
-              </label>
-              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
-                until
-                <input className="field !min-h-10 w-full min-w-0 text-sm" type="date" min={draft.from || undefined} value={draft.to} onChange={(event) => setDraft({ ...draft, to: event.target.value })} />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button className="secondary !min-h-10 text-sm" onClick={() => setEdit(null)}>
-                Cancel
-              </button>
-              <button
-                className="primary !min-h-10 flex-1 text-sm"
-                disabled={!draft.name.trim()}
-                onClick={() =>
-                  save(
-                    dish,
-                    {
-                      name: draft.name.trim(),
-                      price: price(draft.price),
-                      course: draft.course,
-                    },
-                    { served: draft.served, menu: draft.menu.trim(), from: draft.from, to: draft.to },
-                  )
-                }
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div key={dish.id} className="menu-row flex items-center gap-2 py-1.5">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold leading-5">
-                {dish.name}
-                {dish.price !== null && (
-                  <span className="ml-2 font-normal text-muted-foreground">
-                    ${Number(dish.price).toFixed(Number(dish.price) % 1 ? 2 : 0)}
-                  </span>
-                )}
-              </p>
-              {dish.hidden ? (
-                <p className="text-xs font-semibold text-primary">
-                  Members say this isn’t on the menu any more — fix it or remove it
-                </p>
-              ) : !dish.owner_ok ? (
-                <p className="text-xs text-muted-foreground">Added by members</p>
-              ) : null}
-            </div>
-            <button
-              className="icon-btn !h-9 !w-9"
-              aria-label={`Edit ${dish.name}`}
-              onClick={() => {
-                setDraft({
-                  name: dish.name,
-                  price: dish.price === null ? '' : String(dish.price),
-                  course: dish.course,
-                  served: dish.served ?? [],
-                  menu: dish.menu_name ?? '',
-                  from: dish.season_from ?? '',
-                  to: dish.season_to ?? '',
-                })
-                setEdit(dish.id)
-              }}
-            >
-              <Pencil size={15} />
-            </button>
-            <button
-              className="icon-btn !h-9 !w-9"
-              aria-label={`Remove ${dish.name}`}
-              onClick={() => save(dish, 'remove')}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        ),
-      )}
-      <form
-        className="grid grid-cols-[minmax(0,1fr)_4.5rem_auto] gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!adding.name.trim()) return
-          add([{ name: adding.name.trim(), price: price(adding.price) }], 'manual')
-        }}
-      >
-        <input
-          className="field !min-h-10 text-sm"
-          aria-label="New dish"
-          placeholder="Add a dish"
-          maxLength={120}
-          value={adding.name}
-          onChange={(event) => setAdding({ ...adding, name: event.target.value })}
-        />
-        <input
-          className="field !min-h-10 text-sm"
-          aria-label="New dish price"
-          inputMode="decimal"
-          placeholder="$"
-          value={adding.price}
-          onChange={(event) => setAdding({ ...adding, price: event.target.value })}
-        />
-        <button className="secondary !min-h-10 shrink-0 text-sm" disabled={!adding.name.trim()}>
-          Add
-        </button>
-      </form>
     </section>
   )
 }

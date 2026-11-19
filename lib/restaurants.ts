@@ -45,6 +45,8 @@ export type Restaurant = {
   /** O15 (Round 95): the table menu's look and the logo */
   menu_theme?: string | null
   logo_path?: string | null
+  /** O15 v2 (Round 99) */
+  menu_design?: unknown
 }
 
 export type FactField =
@@ -243,6 +245,39 @@ export type MenuDish = {
   menu_name?: string | null
   season_from?: string | null
   season_to?: string | null
+  /** Round 99 (O15 v2): the table menu */
+  section_id?: string | null
+  position?: number | null
+  prices?: number[] | null
+  sold_out_on?: string | null
+  badges?: string[] | null
+  swatch?: string | null
+  name_local?: string | null
+  spice?: number | null
+  pairs_with?: string | null
+  photo_path?: string | null
+}
+
+/** Round 99 (O15 v2): a category the owner made for their menu, in their order. */
+export type MenuSection = {
+  id: string
+  restaurant_id: string
+  name: string
+  name_local: string | null
+  menu_name: string | null
+  position: number
+  display: unknown
+}
+
+export async function loadMenuSections(supabase: any, restaurantId: string): Promise<MenuSection[]> {
+  const { data, error } = await supabase
+    .from('restaurant_menu_sections')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .order('position')
+  // before Round 99's SQL runs there's no such table: no categories yet
+  if (error) return []
+  return (data ?? []) as MenuSection[]
 }
 
 export type NewMenuDish = {

@@ -1,23 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MENU_THEMES, contrast, menuTheme, themeStyle } from '../lib/menu-themes.ts'
 import { money } from '../lib/currency.ts'
 import { duplicateCandidates, nameKey } from '../lib/merge.ts'
 
-test('every table-menu theme keeps text readable', () => {
-  assert.ok(MENU_THEMES.length >= 30)
-  assert.equal(new Set(MENU_THEMES.map((t) => t.id)).size, MENU_THEMES.length)
-  for (const t of MENU_THEMES) {
-    assert.match(t.id, /^[a-z0-9-]{2,30}$/)
-    assert.ok(contrast(t.ink, t.card) >= 4.5, `${t.id}: text on cards`)
-    assert.ok(contrast(t.ink, t.bg) >= 4.5, `${t.id}: text on the page`)
-    assert.ok(contrast(t.muted, t.card) >= 3, `${t.id}: small grey text`)
-    assert.ok(contrast(t.accentInk, t.accent) >= 3, `${t.id}: button text`)
-  }
-  assert.equal(menuTheme('nope').id, 'crumbs')
-  assert.equal(themeStyle(menuTheme('black-gold'))['--card'], '#1A1A1A')
-  assert.ok(MENU_THEMES.some((t) => t.id === 'portuguese') && MENU_THEMES.some((t) => t.id === 'mosaic'))
-})
+// Round 95's table-menu themes became Round 99's designs: their readability and old ids are checked in round99.test.ts.
 
 test('trip money in its own currency', () => {
   assert.match(money(1234.5, 'EUR'), /1,?234[.,]50/)

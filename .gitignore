@@ -23,3 +23,4 @@ smoke-*.png
 
 # a stray second copy of the repo some machines have inside it: never commit it
 /crumbs-shared-food-rating-app/
+__pycache__/

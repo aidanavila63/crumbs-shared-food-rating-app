@@ -15,7 +15,12 @@ async function handlePOST(request: Request) {
   const data = { user: { id: pass.userId } }
   if (tooManyRequests(`revalidate:${data.user.id}`, 30)) return Response.json({ ok: false }, { status: 429 })
   const body = await request.json().catch(() => ({}))
-  if (body.kind === 'restaurant') revalidatePath('/r/[city]/[slug]', 'page')
+  if (body.kind === 'restaurant') {
+    revalidatePath('/r/[city]/[slug]', 'page')
+    // Round 99: the table menu (and its printable copy) too, so "sold out" and a new look show straight away
+    revalidatePath('/r/[city]/[slug]/menu', 'page')
+    revalidatePath('/r/[city]/[slug]/menu/print', 'page')
+  }
   else if (body.kind === 'profile') revalidatePath('/u/[handle]', 'page')
   else return Response.json({ error: 'Bad request' }, { status: 400 })
   return Response.json({ ok: true })

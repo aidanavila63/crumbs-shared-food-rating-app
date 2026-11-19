@@ -55,6 +55,19 @@ export const DEMO_RESTAURANT: PublicRestaurant = {
   },
   tips: [{ kind: 'entrance', body: 'Door is on the side street, past the bakery.', photo_path: null }],
   posts: [],
+  // Round 99: a table-menu look and categories, so /r/etobicoke/lantern-pho/menu shows them in the demo
+  menu_design: { v: 2, mode: 'style', style: 'lotus', way: 0, seasonal: true, specials: true, loved: true },
+  menu_sections: [
+    { id: 'demo-sec-pho', name: 'Phở', name_local: null, menu_name: null, display: { effect: 'sizes', sizes: ['Small', 'Large'] } },
+    { id: 'demo-sec-start', name: 'To start', name_local: 'Khai vị', menu_name: null, display: { effect: 'list' } },
+    { id: 'demo-sec-drinks', name: 'Drinks', name_local: null, menu_name: null, display: { effect: 'chips' } },
+  ],
+  menu_items: [
+    { id: 'demo-d1', name: 'Beef pho', section: 'demo-sec-pho', position: 0, prices: [13.5, 15.5], sold_out_on: null, badges: ['House favourite'], swatch: null, name_local: 'Phở bò', spice: 0, pairs_with: 'Iced coffee', photo_path: null },
+    { id: 'demo-d2', name: 'Vermicelli bowl', section: 'demo-sec-pho', position: 1, prices: null, sold_out_on: null, badges: null, swatch: null, name_local: 'Bún', spice: 1, pairs_with: null, photo_path: null, dietary: ['Dairy-free'] },
+    { id: 'demo-d3', name: 'Spring rolls', section: 'demo-sec-start', position: 0, prices: null, sold_out_on: null, badges: ['Popular'], swatch: null, name_local: 'Gỏi cuốn', spice: 0, pairs_with: null, photo_path: null, dietary: ['Gluten-free'] },
+    { id: 'demo-d4', name: 'Iced coffee', section: 'demo-sec-drinks', position: 0, prices: null, sold_out_on: null, badges: null, swatch: '#7A4B2A', name_local: 'Cà phê sữa đá', spice: 0, pairs_with: null, photo_path: null },
+  ],
 }
 
 export const DEMO_PROFILE: PublicProfile = {

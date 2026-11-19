@@ -5,6 +5,7 @@ import { knownFacts, type AttrKey, type AttrSummary } from './good-to-know.ts'
 import { hoursToText } from './hours-text.ts'
 import { busyText, waitText, type MealTime } from './visit-rating.ts'
 import type { Hours } from './place-info.ts'
+import type { MenuBits } from './table-menu-data.ts'
 
 export type PublicRestaurant = {
   id: string
@@ -70,6 +71,10 @@ export type PublicRestaurant = {
   /** O15 (Round 95) */
   menu_theme?: string | null
   logo_path?: string | null
+  /** O15 v2 (Round 99): the table menu's look, the owner's categories and each dish's details */
+  menu_design?: MenuBits['menu_design']
+  menu_sections?: MenuBits['menu_sections']
+  menu_items?: MenuBits['menu_items']
 }
 
 export type PublicProfile = {

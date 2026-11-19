@@ -39,6 +39,7 @@ export const BACKUP_TABLES = [
   'restaurant_manager_invites', // Round 95
   'plan_headsups', // Round 95
   'place_changes', // Round 96: change history (last 30 per place)
+  'restaurant_menu_sections', // Round 99: owners' menu categories
   'home_meal_ratings',
   'home_meal_cooks',
   'recipe_saves',

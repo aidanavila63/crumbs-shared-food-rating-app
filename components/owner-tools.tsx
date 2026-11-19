@@ -3,8 +3,8 @@
 // "we moved / new name / closed" (O7) and changing all prices at once (O5).
 // The database side is supabase/migrations/20261126_round89.sql; the small rules are in
 // lib/owner-tools.ts.
-import { useEffect, useState } from 'react'
-import { Download, QrCode } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Download, Printer, QrCode } from 'lucide-react'
 import { toast } from 'sonner'
 import { haptic } from '@/lib/motion'
 import { siteOrigin } from '@/lib/site'
@@ -19,12 +19,17 @@ import {
   tapText,
   type OwnerTools,
 } from '@/lib/owner-tools'
-import type { MenuDish, Restaurant } from '@/lib/restaurants'
+import type { MenuDish, MenuSection, Restaurant } from '@/lib/restaurants'
 import { downloadPoster } from './owner-extras'
 import { findOnOsm } from './place-search'
 import { badgeSnippet } from '@/lib/site-badge'
 import { menuDishes } from '@/lib/ocr-parse'
-import { MENU_THEMES } from '@/lib/menu-themes'
+import { normalizeDesign, type MenuDesign } from '@/lib/menu-design'
+import { buildTableMenu } from '@/lib/table-menu-data'
+import { torontoToday } from '@/lib/holidays'
+import { photoUrl } from '@/lib/photos'
+import { refreshPublicPages } from '@/lib/refresh-public'
+import { MenuLookStudio } from './menu-studio'
 import { PhotoButton } from './photo-button'
 import { dishKey } from '@/lib/restaurants'
 
@@ -85,11 +90,13 @@ export function OwnerTaps({ tools }: { tools: OwnerTools | null }) {
   )
 }
 
-/** O1: a poster for the tables — scanning it opens just your menu. */
+/** O1: a poster for the tables — scanning it opens just your menu. O15 v2 (Round 99): its look. */
 export function OwnerTableQr({
   name,
   tools,
   restaurant,
+  menu = [],
+  sections = [],
   supabase,
   demo,
   onSaved,
@@ -97,23 +104,64 @@ export function OwnerTableQr({
   name: string
   tools: OwnerTools | null
   restaurant?: Restaurant
+  menu?: MenuDish[]
+  sections?: MenuSection[]
   supabase?: any
   demo?: boolean
   onSaved?: () => void
 }) {
   const [busy, setBusy] = useState(false)
-  // O15 (Round 95): the menu's look and your logo
-  const [theme, setTheme] = useState<string>(restaurant?.menu_theme ?? 'crumbs')
+  const [saving, setSaving] = useState(false)
+  const [design, setDesign] = useState<MenuDesign>(() => normalizeDesign(restaurant?.menu_design, restaurant?.menu_theme))
   const [logo, setLogo] = useState<string | null>(restaurant?.logo_path ?? null)
-  async function saveLook(nextTheme: string, nextLogo: string | null) {
-    setTheme(nextTheme)
-    setLogo(nextLogo)
+  const today = torontoToday()
+  // the preview is drawn from your real menu, the same way diners see it
+  const preview = useMemo(
+    () =>
+      buildTableMenu(
+        {
+          name,
+          cuisine: restaurant?.cuisine ?? null,
+          menu: menu.filter((d) => !d.hidden).map((d) => ({ name: d.name, price: d.price, course: d.course, dietary: d.dietary, description: d.description, served: d.served, menu_name: d.menu_name })),
+          menu_sections: sections,
+          menu_items: menu.map((d) => ({
+            id: d.id, name: d.name, section: d.section_id ?? null, position: d.position ?? null, prices: d.prices ?? null, sold_out_on: d.sold_out_on ?? null,
+            badges: d.badges ?? null, swatch: d.swatch ?? null, name_local: d.name_local ?? null, spice: d.spice ?? null, pairs_with: d.pairs_with ?? null,
+            photo_path: d.photo_path ?? null, dietary: d.dietary,
+          })),
+        },
+        { today, meal: null, logo: photoUrl(logo) },
+      ).data,
+    [name, restaurant?.cuisine, menu, sections, today, logo],
+  )
+  async function saveDesign(next: MenuDesign) {
+    setSaving(true)
+    try {
+      if (!demo && restaurant) {
+        const { error } = await supabase.rpc('owner_set_menu_design', { target: restaurant.id, design: next })
+        if (error) throw new Error(/owner_set_menu_design|schema cache|PGRST202/i.test(error.message ?? '') ? 'The new menu designs aren’t switched on yet' : error.message)
+        refreshPublicPages('restaurant')
+        onSaved?.()
+      }
+      setDesign(next)
+      haptic('success')
+      toast.success('Menu look saved')
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save the look')
+    } finally {
+      setSaving(false)
+    }
+  }
+  async function saveLogo(path: string | null) {
+    setLogo(path)
     if (demo || !restaurant) return true
-    const { error } = await supabase.rpc('owner_set_menu_look', { target: restaurant.id, theme: nextTheme, logo: nextLogo })
+    // the logo lives with the restaurant page; Round 95's call keeps it (and leaves the old look as it was)
+    const { error } = await supabase.rpc('owner_set_menu_look', { target: restaurant.id, theme: restaurant.menu_theme ?? 'crumbs', logo: path })
     if (error) {
-      toast.error(/owner_set_menu_look|schema cache|PGRST202/i.test(error.message ?? '') ? 'Menu looks aren’t switched on yet' : error.message)
+      toast.error(/owner_set_menu_look|schema cache|PGRST202/i.test(error.message ?? '') ? 'Logos aren’t switched on yet' : error.message)
       return false
     }
+    refreshPublicPages('restaurant')
     onSaved?.()
     return true
   }
@@ -139,56 +187,39 @@ export function OwnerTableQr({
     }
   }
   return (
-    <section className="surface flex flex-col gap-2">
+    <section className="surface flex flex-col gap-3">
       <h3 className="flex items-center gap-2 font-serif text-xl font-bold">
         <QrCode size={20} /> Table QR menu
       </h3>
       <p className="text-sm text-muted-foreground">
-        A QR for your tables. Scanning it opens just your menu and your posts — no app, no sign-in.
-        It shows the menu you keep below.
+        A QR for your tables. Scanning it opens just your menu — no app, no sign-in. Everything on it comes from the
+        menu you keep above (categories, prices, sold out today); here you only pick how it looks.
       </p>
       {restaurant && (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-semibold">Look</p>
-          {(['Cuisine', 'Style'] as const).map((group) => (
-            <div key={group} className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={`${group} looks`}>
-              {MENU_THEMES.filter((t) => t.group === group).map((t) => (
-                <button
-                  key={t.id}
-                  role="radio"
-                  aria-checked={theme === t.id}
-                  className={`chip chip-sm ${theme === t.id ? 'chip-active' : ''}`}
-                  onClick={() => saveLook(t.id, logo)}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="mr-1 inline-block size-3 rounded-full border border-black/10"
-                    style={{ background: t.accent }}
-                  />
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          ))}
-          <PhotoButton
-            path={logo}
-            folder={restaurant.id}
-            supabase={supabase}
-            demo={!!demo}
-            label="Your logo"
-            aspect={1}
-            onChange={(path) => saveLook(theme, path)}
-          />
-        </div>
+        <MenuLookStudio
+          key={restaurant.id}
+          initial={design}
+          data={preview}
+          today={today}
+          saving={saving}
+          onSave={saveDesign}
+          previewLink={link}
+          logoSlot={
+            <PhotoButton path={logo} folder={restaurant.id} supabase={supabase} demo={!!demo} label="Your logo" aspect={1} onChange={saveLogo} />
+          }
+        />
       )}
-      <a
-        className="text-sm font-semibold text-primary underline"
-        href={restaurant ? `${link}?look=${theme}` : link}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        See what diners see
-      </a>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {!restaurant && (
+          <a className="text-sm font-semibold text-primary underline" href={link} target="_blank" rel="noopener noreferrer">
+            See what diners see
+          </a>
+        )}
+        <a className="text-sm font-semibold text-primary underline" href={`${link}/print`} target="_blank" rel="noopener noreferrer">
+          <Printer size={14} className="mr-1 inline align-[-2px]" />
+          Print table tents or a paper menu
+        </a>
+      </div>
       <button className="secondary flex items-center justify-center gap-2" disabled={busy} onClick={make}>
         <Download size={16} /> {busy ? 'Making it…' : 'Download table QR'}
       </button>

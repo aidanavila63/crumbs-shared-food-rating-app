@@ -5,13 +5,13 @@ import { useState, useSyncExternalStore } from 'react'
 import { Sparkles, X } from 'lucide-react'
 
 export const WHATS_NEW = {
-  id: '2026-11-r97',
+  id: '2026-11-r99',
   lines: [
-    'A cleaner “Our group” page: Ratings, Dishes, Visits and Details tabs',
-    'Same place twice? Merge them — and see each place’s History',
-    'Loved near you: places 3+ groups rate highly (Decide → For you)',
-    'Photos on visits, a pick-a-day poll on plans, and download your places',
-    'Trips can use their own currency',
+    'Restaurant owners: 30 new table-menu styles for cuisines and kinds of place, or build your own',
+    'Full-page menu designs, 19 font pairs, 15 layouts and your logo',
+    'Menu categories with their own look: pizza sizes in columns, flavour swatches, add-ons and more',
+    'Sold out today, specials, “Loved on Crumbs”, diet filters, two languages and night mode',
+    'Print matching table tents and a paper menu',
   ],
 }
 
