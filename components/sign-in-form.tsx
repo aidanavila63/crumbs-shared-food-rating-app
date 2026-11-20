@@ -87,7 +87,9 @@ export function SignInForm({ supabase, next = '/' }: { supabase: any; next?: str
         onClick={async () => {
           const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
-            options: { redirectTo: callback() },
+            // always show Google's account picker, so a phone signed into several Google accounts
+            // doesn't drop you into the wrong one (Round 100)
+            options: { redirectTo: callback(), queryParams: { prompt: 'select_account' } },
           })
           if (error) toast.error(error.message)
         }}

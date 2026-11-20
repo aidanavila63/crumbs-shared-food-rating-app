@@ -1,8 +1,8 @@
 # Crumbs devlog
 
-## Current state (Nov 18 — read this first)
-- **Live:** Rounds 1–98 (Aidan pushed 97–98, `main` at `86f6d44`). All 39 SQL files are run (Admin → Database updates, newest `20261203_round97`).
-- **Round 99 is built, not pushed** (`crumbs-round99.patch` + `20261204_round99.sql`, which makes 40): the new table menu designs (O15 v2). See its entry at the bottom.
+## Current state (Nov 20 — read this first)
+- **Live:** Rounds 1–99 (Aidan pushed Round 99 as `bb855dd` on Nov 18). SQL: 39 files confirmed run; `20261204_round99` (the 40th) not yet confirmed.
+- **Round 100 (no SQL), built, not pushed:** Google sign-in always shows the account picker.
 - **Next:** Aidan's phone test of Round 99 (real menu, real logo, printing a tent).
 
 ## Earlier state (Nov 17)
@@ -1082,3 +1082,8 @@ Aidan (Nov 18), after the design previews: "Do it all" — and "the sold out tod
 - Retired `lib/menu-themes.ts` (Round 95's list; its ids still load). What's new card updated (`2026-11-r99`). Admin newest SQL `20261204_round99`.
 **Checks:** 266 unit tests (`tests/round99.test.ts`: every style readable in all colourways, any picked colours readable, old looks still load, category settings, full-page designs, seasons and night, prices, and the table menu filled from app data — categories, sizes, sold out only today, specials, loved, diets, Drinks menu, time of day); typecheck; eslint 0 errors (53 warnings, none new); database suite 55 files pass on a brand-new Postgres (`round99_test`: 8 expected refusals — a non-owner adding a category, a non-owner setting the look, a look that isn't a v2 design, a dish put in another restaurant's category, a photo from another restaurant, ordering with another restaurant's dish, size prices with a gap, a diet label that isn't Crumbs' own; plus the owner building Pizza and Pasta and reordering, removing a category keeps its dishes, an unclaimed page shows none of it); production build and demo build (`next build --webpack`, Google Fonts stood in locally); headless Chrome in the demo: the table menu at phone size, the owner menu editor (⚙ settings, edit a dish, sold out), the studio and its preview, and both print layouts saved to PDF — no page errors.
 **Not verified:** on the live database; real fonts (the build here used stand-ins, so letter shapes weren't seen); printing on paper and folding a tent; a real logo upload in the studio; many categories or very long menus on a phone.
+
+## Round 100 - Google sign-in always asks which account (Nov 20, Claude)
+Aidan (Nov 20): logged out of Crumbs on his phone, and "Continue with Google" went straight into a different Google account of his. Google skips its account picker when it thinks it knows which account you want. Now the button asks Google to always show the picker (`prompt: 'select_account'` in `components/sign-in-form.tsx`). No SQL. Signing in by email (magic link or the 6-digit code) was already a way around it.
+**Checks:** typecheck; unit tests.
+**Not verified:** on a phone with several Google accounts (no Google sign-in here). If a Crumbs account was made for the wrong Google account, it's an empty separate account; it can be removed in Supabase → Authentication → Users.
